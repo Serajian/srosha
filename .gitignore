@@ -1,0 +1,69 @@
+# Go build artifacts
+/bin/
+/build/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+main
+/generated/
+/data/
+
+# ------------------------
+# Vendor & cache
+# ------------------------
+/vendor/
+/.cache/
+
+# Dependency directories (remove the comment below if you use Go modules)
+# /vendor/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+*.pid
+*.seed
+*.bak
+*.sql~
+*.*.md
+*.gob
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Coverage reports
+coverage.out
+*.coverprofile
+
+# generated files
+internal/infrastructure/persistence/postgres/gen/*
+internal/interfaces/rest/docs/*
+*_mock.go
+
+# ------------------------
+# Local data & volumes
+# ------------------------
+deployment/docker/volumes/
+data/
+# graphify knowledge-graph build output
+graphify-out/
+
+# eval run outputs are working material, not deliverables
+.claude/skills/*-workspace/
