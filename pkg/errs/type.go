@@ -1,26 +1,30 @@
 package errs
 
+// Type is the transport-neutral classification of an error.
+//
+// It carries no HTTP status and no gRPC code on purpose: this package is
+// imported by internal/core, and core must not know which protocol is in
+// front of it. Each adapter owns its own mapping -- see
+// adapter/api/grpc/errors.go for Type -> codes.Code.
 type Type int
 
 const (
 	ErrUnknown Type = iota
 
-	ErrInvalidInput   // 400
-	ErrUnauthorized   // 401
-	ErrForbidden      // 403
-	ErrNotFound       // 404
-	ErrDuplicateEntry // 409
-	ErrTooMany        // 429
+	ErrInvalidInput
+	ErrUnauthorized
+	ErrForbidden
+	ErrNotFound
+	ErrDuplicateEntry
+	ErrTooMany
 
-	ErrInternal    // 500
-	ErrUnavailable // 503
-	ErrTimeout     // 504
+	ErrInternal
+	ErrUnavailable
+	ErrTimeout
 )
 
 func (t Type) String() string {
 	switch t {
-	case ErrUnknown:
-		return "UNKNOWN"
 	case ErrInvalidInput:
 		return "INVALID_INPUT"
 	case ErrUnauthorized:
@@ -39,11 +43,9 @@ func (t Type) String() string {
 		return "SERVICE_UNAVAILABLE"
 	case ErrTimeout:
 		return "TIMEOUT"
+	case ErrUnknown:
+		return "UNKNOWN"
 	default:
 		return "UNKNOWN"
 	}
-}
-
-func (t Type) IsErrNotFound() bool {
-	return t == ErrNotFound
 }

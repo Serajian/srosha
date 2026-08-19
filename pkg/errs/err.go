@@ -3,43 +3,53 @@ package errs
 import (
 	"errors"
 	"fmt"
-	"net/http"
 )
 
-// Code is a public, permanent business error code that clients branch on. Its
-// zero value means "no specific meaning — fall back to the HTTP status". The
-// numbers themselves live in internal/core/shared/errcode, not here, so this
-// package stays domain-neutral.
-type Code int
-
+// AppError separates what the caller is allowed to see from what the operator
+// needs.
+//
+//	message -- safe to return to a client; never leaks internals
+//	reason  -- the detail, for logs only; may name columns, limits, providers
+//
+// Keep sentinel errors alongside it rather than instead of it. A fresh
+// AppError has no identity, so `errors.Is` cannot tell "invalid target" from
+// "empty body" -- both are ErrInvalidInput. Attaching a sentinel with WithErr
+// restores that, because Unwrap walks the reason chain:
+//
+//	return errs.InvalidInputErr("invalid id").
+//		WithErr(shared.ErrInvalidID).
+//		WithStr(fmt.Sprintf("expected %d chars, got %d", n, len(s)))
 type AppError struct {
-	typ        Type
-	message    string
-	statusCode int
-	reason     error
-	code       Code
+	typ     Type
+	message string
+	reason  error
 }
 
-func New(t Type, msg string, code int) *AppError {
-	return &AppError{typ: t, message: msg, statusCode: code}
+func New(t Type, msg string) *AppError {
+	return &AppError{typ: t, message: msg}
 }
 
-// WithErr immutable-style. Accumulates onto any existing reason instead of
-// replacing it, so WithErr and WithStr no longer overwrite each other.
+// WithErr attaches a cause. It copies rather than mutating, so a package-level
+// AppError used as a template cannot be corrupted by one caller. The new cause
+// is ACCUMULATED onto any existing one, so WithErr and WithStr never overwrite
+// each other.
 func (e *AppError) WithErr(err error) *AppError {
 	cp := *e
 	cp.reason = chainReason(e.reason, err)
 	return &cp
 }
 
+// WithStr attaches free-form detail as a cause.
 func (e *AppError) WithStr(str string) *AppError {
 	cp := *e
 	cp.reason = chainReason(e.reason, errors.New(str))
 	return &cp
 }
 
-// chainReason combines an existing reason with a new one rather than dropping the
-// old one. Both stay in the Unwrap chain, so errors.Is/As keep traversing them.
+// chainReason keeps both causes in the Unwrap chain. The double %w produces an
+// error whose Unwrap returns a slice, which errors.Is and errors.As traverse
+// in full -- so a sentinel attached first is still findable after more detail
+// is added on top.
 func chainReason(existing, next error) error {
 	switch {
 	case existing == nil:
@@ -59,58 +69,47 @@ func (e *AppError) Error() string {
 	return prefix
 }
 
-// WithCode attaches a business error code, immutable-style like WithErr.
-func (e *AppError) WithCode(c Code) *AppError {
-	cp := *e
-	cp.code = c
-	return &cp
-}
-
 func (e *AppError) Unwrap() error { return e.reason }
 
 func (e *AppError) Type() Type      { return e.typ }
 func (e *AppError) Message() string { return e.message }
-func (e *AppError) StatusCode() int { return e.statusCode }
 func (e *AppError) Reason() error   { return e.reason }
-func (e *AppError) Code() Code      { return e.code }
 
-// helpers
+// --- constructors ----------------------------------------------------------
 
-func InternalErr(
-	msg string,
-) *AppError {
-	return New(ErrInternal, msg, http.StatusInternalServerError)
-}
+func InvalidInputErr(msg string) *AppError { return New(ErrInvalidInput, msg) }
+func UnauthorizedErr(msg string) *AppError { return New(ErrUnauthorized, msg) }
+func ForbiddenErr(msg string) *AppError    { return New(ErrForbidden, msg) }
+func NotFoundErr(msg string) *AppError     { return New(ErrNotFound, msg) }
+func DuplicateErr(msg string) *AppError    { return New(ErrDuplicateEntry, msg) }
+func TooManyErr(msg string) *AppError      { return New(ErrTooMany, msg) }
+func InternalErr(msg string) *AppError     { return New(ErrInternal, msg) }
+func UnavailableErr(msg string) *AppError  { return New(ErrUnavailable, msg) }
+func TimeoutErr(msg string) *AppError      { return New(ErrTimeout, msg) }
 
-func UnauthorizedErr(
-	msg string,
-) *AppError {
-	return New(ErrUnauthorized, msg, http.StatusUnauthorized)
-}
+// --- inspection ------------------------------------------------------------
 
-func BadRequestErr(
-	msg string,
-) *AppError {
-	return New(ErrInvalidInput, msg, http.StatusBadRequest)
-}
-func NotFoundErr(msg string) *AppError  { return New(ErrNotFound, msg, http.StatusNotFound) }
-func ForbiddenErr(msg string) *AppError { return New(ErrForbidden, msg, http.StatusForbidden) }
-
-func TooManyErr(
-	msg string,
-) *AppError {
-	return New(ErrTooMany, msg, http.StatusTooManyRequests)
-}
-
-func UnavailableErr(msg string) *AppError {
-	return New(ErrUnavailable, msg, http.StatusServiceUnavailable)
-}
-func TimeoutErr(msg string) *AppError   { return New(ErrTimeout, msg, http.StatusGatewayTimeout) }
-func DuplicateErr(msg string) *AppError { return New(ErrDuplicateEntry, msg, http.StatusConflict) }
-
-// As type guard
+// As extracts the AppError from anywhere in the chain.
 func As(err error) (*AppError, bool) {
 	var ae *AppError
 	ok := errors.As(err, &ae)
 	return ae, ok
+}
+
+// IsType reports whether err is an AppError of the given type. Adapters use it
+// to decide a response without unpacking the error themselves.
+func IsType(err error, t Type) bool {
+	ae, ok := As(err)
+	return ok && ae.typ == t
+}
+
+// TypeOf returns the classification of err, or ErrInternal for anything that
+// is not an AppError. An unclassified error reaching a boundary is a bug or an
+// infrastructure failure, and both are safest reported as internal rather than
+// as something the client could act on.
+func TypeOf(err error) Type {
+	if ae, ok := As(err); ok {
+		return ae.typ
+	}
+	return ErrInternal
 }

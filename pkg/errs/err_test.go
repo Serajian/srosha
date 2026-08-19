@@ -1,85 +1,87 @@
-package errs
+package errs_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
+
+	"github.com/Serajian/srosha/pkg/errs"
 )
 
-// WithErr and WithStr must ACCUMULATE onto an existing reason, not overwrite it.
-func TestWithErrAndWithStrAccumulate(t *testing.T) {
-	t.Parallel()
+var (
+	errSentinelA = errors.New("sentinel a")
+	errSentinelB = errors.New("sentinel b")
+)
 
-	cases := []struct {
-		name string
-		got  string
-		want string
-	}{
-		{
-			name: "WithErr then WithStr",
-			got: BadRequestErr(
-				"ctx",
-			).WithErr(errors.New("invalid syntax")).
-				WithStr("player_game_id").
-				Error(),
-			want: "INVALID_INPUT: ctx (invalid syntax: player_game_id)",
-		},
-		{
-			name: "WithStr then WithErr",
-			got: BadRequestErr(
-				"ctx",
-			).WithStr("player_game_id").
-				WithErr(errors.New("invalid syntax")).
-				Error(),
-			want: "INVALID_INPUT: ctx (player_game_id: invalid syntax)",
-		},
-		{
-			name: "single WithStr unchanged",
-			got:  InternalErr("ctx").WithStr("boom").Error(),
-			want: "INTERNAL_ERROR: ctx (boom)",
-		},
-		{
-			name: "single WithErr unchanged",
-			got:  InternalErr("ctx").WithErr(errors.New("boom")).Error(),
-			want: "INTERNAL_ERROR: ctx (boom)",
-		},
+func TestSentinelStaysFindableAfterMoreDetail(t *testing.T) {
+	err := errs.InvalidInputErr("invalid id").
+		WithErr(errSentinelA).
+		WithStr("expected 26 chars, got 10")
+
+	if !errors.Is(err, errSentinelA) {
+		t.Error("sentinel was lost once detail was appended")
 	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			if tc.got != tc.want {
-				t.Fatalf("Error() = %q, want %q", tc.got, tc.want)
-			}
-		})
+	if !strings.Contains(err.Error(), "expected 26 chars") {
+		t.Errorf("detail missing from message: %q", err.Error())
 	}
 }
 
-// Several WithStr in a row must ALL be kept, joined in order — not just the last.
-func TestRepeatedWithStrKeepsAll(t *testing.T) {
-	t.Parallel()
+func TestBothCausesSurvive(t *testing.T) {
+	err := errs.InternalErr("write failed").
+		WithErr(errSentinelA).
+		WithErr(errSentinelB)
 
-	got := BadRequestErr("ctx").WithStr("a").WithStr("b").WithStr("c").Error()
-	want := "INVALID_INPUT: ctx (a: b: c)"
-	if got != want {
-		t.Fatalf("Error() = %q, want %q", got, want)
+	if !errors.Is(err, errSentinelA) {
+		t.Error("first cause was dropped")
+	}
+	if !errors.Is(err, errSentinelB) {
+		t.Error("second cause was dropped")
 	}
 }
 
-// The originally wrapped error must stay discoverable after a later WithStr — the
-// accumulation must not break errors.Is/As traversal.
-func TestChainedReasonStaysUnwrappable(t *testing.T) {
-	t.Parallel()
+func TestWithErrDoesNotMutateTheOriginal(t *testing.T) {
+	base := errs.NotFoundErr("notification not found")
+	derived := base.WithErr(errSentinelA)
 
-	sentinel := errors.New("sentinel")
-	err := BadRequestErr("ctx").WithErr(sentinel).WithStr("label")
-
-	if !errors.Is(err, sentinel) {
-		t.Fatal("errors.Is lost the wrapped error after a later WithStr")
+	if base.Reason() != nil {
+		t.Error("the template was mutated; a shared package-level error would be corrupted")
 	}
+	if !errors.Is(derived, errSentinelA) {
+		t.Error("the copy lost its cause")
+	}
+}
 
-	// the top-level AppError type must still be recoverable
-	if ae, ok := As(err); !ok || ae.Type() != ErrInvalidInput {
-		t.Fatalf("As() = (%v, %v), want bad-request AppError", ae, ok)
+func TestAsFindsAppErrorThroughWrapping(t *testing.T) {
+	wrapped := errs.DuplicateErr("idempotency key already used").WithErr(errSentinelA)
+
+	ae, ok := errs.As(wrapped)
+	if !ok {
+		t.Fatal("As did not find the AppError")
+	}
+	if ae.Type() != errs.ErrDuplicateEntry {
+		t.Errorf("type = %v, want ErrDuplicateEntry", ae.Type())
+	}
+	if ae.Message() != "idempotency key already used" {
+		t.Errorf("message = %q", ae.Message())
+	}
+}
+
+func TestTypeOfTreatsUnclassifiedAsInternal(t *testing.T) {
+	if got := errs.TypeOf(errors.New("some driver blew up")); got != errs.ErrInternal {
+		t.Errorf("type = %v, want ErrInternal", got)
+	}
+	if got := errs.TypeOf(nil); got != errs.ErrInternal {
+		t.Errorf("type = %v, want ErrInternal", got)
+	}
+}
+
+func TestIsType(t *testing.T) {
+	err := errs.TooManyErr("rate limit exceeded")
+
+	if !errs.IsType(err, errs.ErrTooMany) {
+		t.Error("IsType missed the matching type")
+	}
+	if errs.IsType(err, errs.ErrNotFound) {
+		t.Error("IsType matched the wrong type")
 	}
 }
