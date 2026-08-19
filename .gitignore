@@ -53,7 +53,7 @@ coverage.out
 *.coverprofile
 
 # generated files
-internal/infrastructure/persistence/postgres/gen/*
+internal/infra/persistence/postgres/gen/*
 internal/interfaces/rest/docs/*
 *_mock.go
 
