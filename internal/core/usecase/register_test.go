@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/Serajian/srosha/internal/core/domain/source"
 	"github.com/Serajian/srosha/internal/core/domain/webhook"
@@ -33,7 +32,7 @@ func newRegisterRig(t *testing.T) *registerRig {
 }
 
 func reg(u string) webhook.Registration {
-	return webhook.Registration{CallbackURL: u, BatchInterval: 5 * time.Second, MaxBatchSize: 200}
+	return webhook.Registration{CallbackURL: u}
 }
 
 func TestRegisterStoresTheCallback(t *testing.T) {

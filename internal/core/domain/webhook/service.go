@@ -55,6 +55,16 @@ func (s *Service) Get(ctx context.Context, sourceID string) (*Webhook, error) {
 	return s.repo.ReadBySourceID(ctx, sourceID)
 }
 
+func (s *Service) RecordSuccess(ctx context.Context, w *Webhook) error {
+	w.RecordSuccess(s.now())
+	return s.repo.Update(ctx, w)
+}
+
+func (s *Service) RecordFailure(ctx context.Context, w *Webhook, maxFailures int) error {
+	w.RecordFailure(maxFailures, s.now())
+	return s.repo.Update(ctx, w)
+}
+
 func (s *Service) Deactivate(ctx context.Context, w *Webhook) error {
 	w.Deactivate(s.now())
 	return s.repo.Update(ctx, w)

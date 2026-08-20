@@ -9,14 +9,6 @@ import (
 // Registration is what a source asked for when registering its callback.
 type Registration struct {
 	CallbackURL string
-
-	// BatchInterval bounds how often we call. Zero means send each outcome as
-	// it settles, which is only sensible when the fan-out is small.
-	BatchInterval time.Duration
-
-	// MaxBatchSize caps one call, so a thousand deliveries settling at once do
-	// not become one request that times out.
-	MaxBatchSize int
 }
 
 // URLPolicy is how strict the URL check is. Production forbids plain http and
@@ -35,13 +27,38 @@ type Snapshot struct {
 	ID       shared.ID
 	SourceID string
 
-	CallbackURL   string
-	BatchInterval time.Duration
-	MaxBatchSize  int
+	CallbackURL string
 
 	IsActive            bool
 	ConsecutiveFailures int
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// Batch is one message's outcome, sent when every recipient has settled.
+//
+// ID is for tracing only. A client telling duplicates apart must use
+// DeliveryID: a delivery settles once and never changes, while a batch is
+// whatever had finished at the moment it was built.
+type Batch struct {
+	ID             shared.ID
+	NotificationID shared.ID
+	SentAt         time.Time
+	Results        []Result
+}
+
+// Result is what happened to one recipient.
+//
+// There is no field for the provider's own error text. That is written for
+// operators and can name hosts, limits and internals; Reason says what happened
+// without any of it.
+type Result struct {
+	DeliveryID        shared.ID
+	Channel           string
+	Address           string
+	Status            string
+	Reason            string
+	ProviderMessageID string
+	SettledAt         time.Time
 }

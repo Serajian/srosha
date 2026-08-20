@@ -39,6 +39,13 @@ func (s *Service) Get(ctx context.Context, id shared.ID) (*Delivery, error) {
 	return s.repo.ReadByID(ctx, id)
 }
 
+// ListAllForNotification returns every delivery of one message, unpaged.
+func (s *Service) ListAllForNotification(
+	ctx context.Context, notificationID shared.ID,
+) ([]Delivery, error) {
+	return s.repo.ListByNotificationID(ctx, notificationID)
+}
+
 func (s *Service) ListForNotification(
 	ctx context.Context, notificationID shared.ID, c shared.Cursor,
 ) (shared.Pagination[Delivery], error) {

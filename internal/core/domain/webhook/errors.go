@@ -12,7 +12,4 @@ var (
 	ErrInsecureURL      = errors.New("callback url must use https")
 	ErrPrivateURL       = errors.New("callback url points inside our own network")
 	ErrCredentialsInURL = errors.New("callback url must not carry credentials")
-
-	ErrBatchIntervalOutOfRange = errors.New("batch interval is out of range")
-	ErrBatchSizeOutOfRange     = errors.New("batch size is out of range")
 )

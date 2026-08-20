@@ -17,7 +17,7 @@ var (
 )
 
 func reg(u string) webhook.Registration {
-	return webhook.Registration{CallbackURL: u, BatchInterval: 5 * time.Second, MaxBatchSize: 200}
+	return webhook.Registration{CallbackURL: u}
 }
 
 func newHook(t *testing.T) *webhook.Webhook {
@@ -40,9 +40,6 @@ func TestNewRegistersAnActiveWebhook(t *testing.T) {
 	}
 	if w.ConsecutiveFailures() != 0 {
 		t.Errorf("ConsecutiveFailures() = %d, want 0", w.ConsecutiveFailures())
-	}
-	if w.SendsImmediately() {
-		t.Error("SendsImmediately() = true, want false for a 5s interval")
 	}
 }
 
@@ -145,46 +142,6 @@ func TestPolicyRelaxesTheRuleForDevelopment(t *testing.T) {
 	}
 }
 
-func TestNewChecksBatchBounds(t *testing.T) {
-	tests := []struct {
-		name     string
-		interval time.Duration
-		size     int
-		sentinel error
-	}{
-		{"negative interval", -time.Second, 100, webhook.ErrBatchIntervalOutOfRange},
-		{"interval too long", 10 * time.Minute, 100, webhook.ErrBatchIntervalOutOfRange},
-		{"zero size", time.Second, 0, webhook.ErrBatchSizeOutOfRange},
-		{"size too large", time.Second, 10_000, webhook.ErrBatchSizeOutOfRange},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := webhook.Registration{
-				CallbackURL:   "https://acme.com/hook",
-				BatchInterval: tt.interval,
-				MaxBatchSize:  tt.size,
-			}
-			_, err := webhook.New(hookID, "acme", r, webhook.Strict, now)
-			if !errors.Is(err, tt.sentinel) {
-				t.Errorf("errors.Is(%v) = false, got %v", tt.sentinel, err)
-			}
-		})
-	}
-}
-
-func TestZeroIntervalMeansImmediate(t *testing.T) {
-	r := webhook.Registration{CallbackURL: "https://acme.com/hook", MaxBatchSize: 1}
-
-	w, err := webhook.New(hookID, "acme", r, webhook.Strict, now)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	if !w.SendsImmediately() {
-		t.Error("SendsImmediately() = false for a zero interval")
-	}
-}
-
 // A dead endpoint must stop being called; an endpoint that fails now and then
 // must not be switched off, which is why success clears the run.
 func TestFailureRunSwitchesTheWebhookOff(t *testing.T) {
@@ -213,7 +170,7 @@ func TestFailureRunSwitchesTheWebhookOff(t *testing.T) {
 func TestActivateClearsTheFailureRun(t *testing.T) {
 	w := webhook.Restore(webhook.Snapshot{
 		ID: hookID, SourceID: "acme", CallbackURL: "https://acme.com/hook",
-		MaxBatchSize: 100, IsActive: false, ConsecutiveFailures: 9,
+		IsActive: false, ConsecutiveFailures: 9,
 	})
 
 	w.Activate(later)
@@ -242,8 +199,8 @@ func TestDeactivate(t *testing.T) {
 func TestRestoreRoundTrip(t *testing.T) {
 	s := webhook.Snapshot{
 		ID: hookID, SourceID: "acme",
-		CallbackURL: "https://acme.com/hook", BatchInterval: 30 * time.Second,
-		MaxBatchSize: 50, IsActive: false, ConsecutiveFailures: 3,
+		CallbackURL: "https://acme.com/hook",
+		IsActive:    false, ConsecutiveFailures: 3,
 		CreatedAt: now, UpdatedAt: later,
 	}
 
@@ -251,9 +208,6 @@ func TestRestoreRoundTrip(t *testing.T) {
 
 	if w.ID != s.ID || w.SourceID != s.SourceID || w.CallbackURL != s.CallbackURL {
 		t.Error("identity not carried through")
-	}
-	if w.BatchInterval != s.BatchInterval || w.MaxBatchSize != s.MaxBatchSize {
-		t.Error("batch settings not carried through")
 	}
 	if w.IsActive() || w.ConsecutiveFailures() != 3 {
 		t.Error("state not carried through")

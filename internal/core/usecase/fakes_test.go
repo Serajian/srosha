@@ -179,6 +179,16 @@ func (r *fakeDeliveries) PageByNotificationID(
 	return page, nil
 }
 
+func (r *fakeDeliveries) ListByNotificationID(
+	_ context.Context, id shared.ID,
+) ([]delivery.Delivery, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]delivery.Delivery, len(r.byNotif[id]))
+	copy(out, r.byNotif[id])
+	return out, nil
+}
+
 func (r *fakeDeliveries) ListStale(
 	_ context.Context, olderThan time.Duration, limit int,
 ) ([]delivery.Delivery, error) {
@@ -319,4 +329,32 @@ func (r *fakeWebhooks) Update(_ context.Context, w *webhook.Webhook) error {
 	got := *w
 	r.bySource[w.SourceID] = &got
 	return nil
+}
+
+type fakeNotifier struct {
+	mu      sync.Mutex
+	batches []webhook.Batch
+	err     error
+}
+
+func (n *fakeNotifier) Notify(_ context.Context, _ *webhook.Webhook, b webhook.Batch) error {
+	if n.err != nil {
+		return n.err
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.batches = append(n.batches, b)
+	return nil
+}
+
+func (n *fakeNotifier) count() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return len(n.batches)
+}
+
+func (n *fakeNotifier) last() webhook.Batch {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.batches[len(n.batches)-1]
 }

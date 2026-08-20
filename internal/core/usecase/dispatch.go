@@ -8,6 +8,7 @@ import (
 
 	"github.com/Serajian/srosha/internal/core/domain/delivery"
 	"github.com/Serajian/srosha/internal/core/domain/notification"
+	"github.com/Serajian/srosha/internal/core/domain/webhook"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/pkg/errs"
 )
@@ -21,9 +22,16 @@ import (
 type Dispatcher struct {
 	notifs     *notification.Service
 	deliveries *delivery.Service
+	webhooks   *webhook.Service
 	senders    delivery.SenderRegistry
+	notifier   webhook.Notifier
+	newID      shared.IDFunc
 	now        shared.NowFunc
 	log        *slog.Logger
+
+	// maxWebhookFailures switches a callback off after that many failures in a
+	// row, so a dead endpoint is not called for every message for ever.
+	maxWebhookFailures int
 
 	// maxAttempts must match the broker's own delivery limit. Set it higher and
 	// the broker gives up first, leaving the row pending with no outcome.
@@ -39,17 +47,22 @@ type Dispatcher struct {
 func NewDispatcher(
 	notifs *notification.Service,
 	deliveries *delivery.Service,
+	webhooks *webhook.Service,
 	senders delivery.SenderRegistry,
+	notifier webhook.Notifier,
+	newID shared.IDFunc,
 	now shared.NowFunc,
 	log *slog.Logger,
-	maxAttempts int,
+	maxAttempts, maxWebhookFailures int,
 	after, giveUp time.Duration,
 	batch int,
 ) *Dispatcher {
 	return &Dispatcher{
-		notifs: notifs, deliveries: deliveries, senders: senders,
-		now: now, log: log,
-		maxAttempts: maxAttempts, after: after, giveUp: giveUp, batch: batch,
+		notifs: notifs, deliveries: deliveries, webhooks: webhooks,
+		senders: senders, notifier: notifier,
+		newID: newID, now: now, log: log,
+		maxAttempts: maxAttempts, maxWebhookFailures: maxWebhookFailures,
+		after: after, giveUp: giveUp, batch: batch,
 	}
 }
 
@@ -124,11 +137,11 @@ func (d *Dispatcher) deliver(
 	if n == nil {
 		d.log.ErrorContext(ctx, "delivery without a message",
 			"delivery_id", del.ID, "notification_id", del.NotificationID)
-		return d.fail(ctx, del, delivery.FailurePermanent, "message is gone")
+		return d.fail(ctx, del, nil, delivery.FailurePermanent, "message is gone")
 	}
 
 	if n.IsExpired(d.now()) {
-		return d.fail(ctx, del, delivery.FailureExpired, "")
+		return d.fail(ctx, del, n, delivery.FailureExpired, "")
 	}
 
 	sender, err := d.senders.For(ctx, n.SourceID, del.Recipient.Channel, del.SenderName)
@@ -136,7 +149,7 @@ func (d *Dispatcher) deliver(
 		// A configuration answer -- no such identity, none set up -- will read
 		// the same on every retry. Anything else is the lookup itself failing.
 		if errs.IsType(err, errs.ErrInvalidInput) {
-			return d.fail(ctx, del, delivery.FailureNoSender, err.Error())
+			return d.fail(ctx, del, n, delivery.FailureNoSender, err.Error())
 		}
 		return err
 	}
@@ -147,23 +160,28 @@ func (d *Dispatcher) deliver(
 		Body:      n.Body,
 	})
 	if err != nil {
-		return d.sendFailed(ctx, del, err, lastChance)
+		return d.sendFailed(ctx, del, n, err, lastChance)
 	}
 
-	return settled(d.deliveries.RecordSent(ctx, del, providerID, del.Attempts()+1))
+	if err := settled(d.deliveries.RecordSent(ctx, del, providerID, del.Attempts()+1)); err != nil {
+		return err
+	}
+	d.announce(ctx, n)
+	return nil
 }
 
 // sendFailed decides whether the send is worth another go.
 func (d *Dispatcher) sendFailed(
-	ctx context.Context, del *delivery.Delivery, err error, lastChance bool,
+	ctx context.Context, del *delivery.Delivery, n *notification.Notification,
+	err error, lastChance bool,
 ) error {
 	if shared.IsPermanentSend(err) {
-		return d.fail(ctx, del, delivery.FailurePermanent, err.Error())
+		return d.fail(ctx, del, n, delivery.FailurePermanent, err.Error())
 	}
 	if lastChance {
 		// Recording it rather than letting the attempt vanish means the outcome
 		// is stored and the source can be told.
-		return d.fail(ctx, del, delivery.FailureMaxAttempts, err.Error())
+		return d.fail(ctx, del, n, delivery.FailureMaxAttempts, err.Error())
 	}
 
 	// Transient, with time left: write nothing at all and let it come back. The
@@ -174,9 +192,14 @@ func (d *Dispatcher) sendFailed(
 }
 
 func (d *Dispatcher) fail(
-	ctx context.Context, del *delivery.Delivery, reason delivery.FailureReason, detail string,
+	ctx context.Context, del *delivery.Delivery, n *notification.Notification,
+	reason delivery.FailureReason, detail string,
 ) error {
-	return settled(d.deliveries.RecordFailure(ctx, del, reason, detail, del.Attempts()+1))
+	if err := settled(d.deliveries.RecordFailure(ctx, del, reason, detail, del.Attempts()+1)); err != nil {
+		return err
+	}
+	d.announce(ctx, n)
+	return nil
 }
 
 // settled turns "this delivery already moved" into success. Another worker got
@@ -186,4 +209,75 @@ func settled(err error) error {
 		return nil
 	}
 	return err
+}
+
+// announce tells the source what happened, once the whole message has settled.
+//
+// It runs after a delivery is recorded and is deliberately best effort: a
+// failure here is logged and forgotten. The query API is how a source learns an
+// outcome for certain; this is the convenience on top of it, and srosha does
+// not keep a queue of callbacks it still owes anybody.
+func (d *Dispatcher) announce(ctx context.Context, n *notification.Notification) {
+	if n == nil {
+		return // no message, so nobody to tell and no source to tell it to
+	}
+
+	ds, err := d.deliveries.ListAllForNotification(ctx, n.ID)
+	if err != nil {
+		d.log.ErrorContext(ctx, "could not read the message to announce it",
+			"notification_id", n.ID, "err", err)
+		return
+	}
+
+	// Not finished yet. Whoever settles the last one does the announcing.
+	for i := range ds {
+		if !ds[i].IsSettled() {
+			return
+		}
+	}
+
+	w, err := d.webhooks.Get(ctx, n.SourceID)
+	if err != nil || w == nil || !w.IsActive() {
+		return
+	}
+
+	batch := webhook.Batch{
+		ID:             d.newID(),
+		NotificationID: n.ID,
+		SentAt:         d.now(),
+		Results:        results(ds),
+	}
+
+	if err := d.notifier.Notify(ctx, w, batch); err != nil {
+		d.log.WarnContext(ctx, "callback failed and will not be retried",
+			"notification_id", n.ID, "webhook_id", w.ID, "err", err)
+
+		// A dead endpoint would otherwise be called once for every message from
+		// now on. After enough failures in a row it is switched off.
+		if err := d.webhooks.RecordFailure(ctx, w, d.maxWebhookFailures); err != nil {
+			d.log.ErrorContext(ctx, "could not record the callback failure", "err", err)
+		}
+		return
+	}
+
+	if err := d.webhooks.RecordSuccess(ctx, w); err != nil {
+		d.log.ErrorContext(ctx, "could not record the callback success", "err", err)
+	}
+}
+
+func results(ds []delivery.Delivery) []webhook.Result {
+	out := make([]webhook.Result, 0, len(ds))
+	for i := range ds {
+		d := &ds[i]
+		out = append(out, webhook.Result{
+			DeliveryID:        d.ID,
+			Channel:           d.Recipient.Channel.String(),
+			Address:           d.Recipient.Address,
+			Status:            d.Status().String(),
+			Reason:            d.FailureReason().String(),
+			ProviderMessageID: d.ProviderMessageID(),
+			SettledAt:         d.UpdatedAt(),
+		})
+	}
+	return out
 }

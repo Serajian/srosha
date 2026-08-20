@@ -11,15 +11,17 @@ import (
 	"github.com/Serajian/srosha/internal/core/domain/delivery"
 	"github.com/Serajian/srosha/internal/core/domain/notification"
 	"github.com/Serajian/srosha/internal/core/domain/source"
+	"github.com/Serajian/srosha/internal/core/domain/webhook"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/pkg/errs"
 )
 
 const (
-	maxAttempts     = 5
-	reconcileAfter  = 5 * time.Minute
-	reconcileGiveUp = 30 * time.Minute
+	maxAttempts        = 5
+	maxWebhookFailures = 3
+	reconcileAfter     = 5 * time.Minute
+	reconcileGiveUp    = 30 * time.Minute
 )
 
 type dispatchRig struct {
@@ -27,7 +29,10 @@ type dispatchRig struct {
 	deliveries *fakeDeliveries
 	sender     *fakeSender
 	deliveryID shared.ID
+	base       *rig
 	notifs     *fakeNotifications
+	notifier   *fakeNotifier
+	webhooks   *fakeWebhooks
 }
 
 // dispatchOpts is everything a dispatch test may want to change: the message
@@ -38,6 +43,10 @@ type dispatchOpts struct {
 	sender   *fakeSender
 	registry fakeRegistry
 	at       time.Time
+
+	// callback registers a webhook for acme before the run; empty means none.
+	callback  string
+	notifyErr error
 }
 
 // newDispatchRig submits a real message first, so the dispatcher works on rows
@@ -70,15 +79,30 @@ func newDispatchRig(t *testing.T, tweak func(*dispatchOpts)) *dispatchRig {
 		deliveries: r.deliveries,
 		sender:     o.sender,
 		deliveryID: ds[0].ID,
+		base:       r,
 		notifs:     r.notifs,
 	}
+	d.notifier = &fakeNotifier{err: o.notifyErr}
+	d.webhooks = newFakeWebhooks()
+	webhookSvc := webhook.NewService(d.webhooks, seqIDs(), clock, webhook.Strict)
+
+	if o.callback != "" {
+		if _, err := webhookSvc.Register(context.Background(), "acme",
+			webhook.Registration{CallbackURL: o.callback}); err != nil {
+			t.Fatalf("could not register the callback: %v", err)
+		}
+	}
+
 	d.dispatcher = usecase.NewDispatcher(
 		notification.NewService(r.notifs, seqIDs(), clock),
 		delivery.NewService(r.deliveries, r.publisher, seqIDs(), clock),
+		webhookSvc,
 		o.registry,
+		d.notifier,
+		seqIDs(),
 		clock,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		maxAttempts,
+		maxAttempts, maxWebhookFailures,
 		reconcileAfter, reconcileGiveUp, 100,
 	)
 	return d
@@ -362,5 +386,23 @@ func TestRecoverIgnoresSettledDeliveries(t *testing.T) {
 
 	if d.sender.count() != sentOnce {
 		t.Error("recovery sent a delivery that was already settled")
+	}
+}
+
+// sendAnother submits a fresh single-recipient message and dispatches it, so a
+// test can drive several complete messages through the same rig.
+func (d *dispatchRig) sendAnother(t *testing.T) {
+	t.Helper()
+
+	c := cmd()
+	c.Routes = []source.Route{{Channel: shared.ChannelEmail}}
+
+	res, err := d.base.submitter.Submit(context.Background(), c)
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	ds := d.base.deliveries.all(res.ID)
+	if err := d.dispatcher.Handle(context.Background(), ds[0].ID, 1); err != nil {
+		t.Fatalf("Handle() error = %v", err)
 	}
 }
