@@ -12,10 +12,10 @@ import (
 // the constants, every ceiling check inverts silently -- nothing else would
 // fail to compile.
 func TestPriorityOrdering(t *testing.T) {
-	if !(shared.PriorityNormal < shared.PriorityHigh) {
+	if shared.PriorityNormal >= shared.PriorityHigh {
 		t.Error("NORMAL must sort below HIGH")
 	}
-	if !(shared.PriorityHigh < shared.PriorityCritical) {
+	if shared.PriorityHigh >= shared.PriorityCritical {
 		t.Error("HIGH must sort below CRITICAL")
 	}
 }

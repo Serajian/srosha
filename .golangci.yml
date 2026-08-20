@@ -1,0 +1,72 @@
+# golangci-lint v2. Pinned deliberately: without this file the linter set is
+# whatever the installed version defaults to, so the same code passes on one
+# machine and fails on another.
+version: "2"
+
+run:
+  timeout: 2m
+  tests: true
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    # errorlint guards the error model in docs/CONVENTIONS.md: %w must not
+    # become %v, and an error must not be compared by its message text.
+    - errorlint
+    # noctx and bodyclose cover the sender and notifier adapters: every outbound
+    # call carries a context, every response body is closed.
+    - noctx
+    - bodyclose
+    - nilerr
+    - unconvert
+    - wastedassign
+    - misspell
+    - revive
+    - gosec
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # readability of a struct beats a few bytes of padding
+    revive:
+      rules:
+        - name: exported
+          disabled: true # doc comments are a review matter, not a build gate
+    misspell:
+      # US, not UK: the wire vocabulary follows HTTP and Go -- UNAUTHORIZED,
+      # not UNAUTHORISED.
+      locale: US
+
+  exclusions:
+    generated: lax
+    paths:
+      - gen
+    rules:
+      # Tests may assert on unchecked calls and use weak randomness.
+      - path: _test\.go$
+        linters:
+          - errcheck
+          - gosec
+
+# Kept in step with `make format`, so `golangci-lint fmt` and the Makefile can
+# never disagree about what formatted means.
+formatters:
+  enable:
+    - gofumpt
+    - gci
+  settings:
+    gofumpt:
+      extra-rules: true
+    gci:
+      sections:
+        - standard
+        - prefix(github.com/Serajian/srosha)
+        - default
+      custom-order: true
+  exclusions:
+    generated: lax
+    paths:
+      - gen

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# The slow gate. Same source of truth as `make prepush`.
+# Skip once with: git push --no-verify
+set -uo pipefail
+
+RED='\033[31m'; YELLOW='\033[33m'; RESET='\033[0m'
+
+if ! make --no-print-directory prepush; then
+   printf "${RED}pre-push failed. Run 'make fix', or bypass with --no-verify.${RESET}\n"
+   exit 1
+fi
+
+if [ "$(git rev-parse --abbrev-ref HEAD)" = "master" ]; then
+   printf "${YELLOW}⚠  pushing master, the base branch — conventions expect a feature branch${RESET}\n"
+fi
