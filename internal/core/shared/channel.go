@@ -3,6 +3,7 @@ package shared
 import (
 	"fmt"
 	"net/mail"
+	"strconv"
 	"strings"
 
 	"github.com/Serajian/srosha/pkg/errs"
@@ -78,16 +79,18 @@ func (c Channel) ValidateAddress(address string) error {
 		}
 
 	case ChannelTelegram, ChannelBale:
-		// Either a numeric chat id -- negative for groups and channels -- or an
-		// @username.
+		// A numeric chat id, negative for groups and channels. Or an @name,
+		// which the Bot API resolves only for PUBLIC channels -- never for a
+		// person, whatever their username. The two are indistinguishable here,
+		// so the shape is all we can check.
 		if strings.HasPrefix(t, "@") {
-			if len(t) < 2 {
-				return invalidAddress(c, t, "empty username")
+			if !isUsername(t[1:]) {
+				return invalidAddress(c, t, "not a valid @name")
 			}
 			return nil
 		}
-		if !isNumericID(t) {
-			return invalidAddress(c, t, "neither a chat id nor an @username")
+		if !isChatID(t) {
+			return invalidAddress(c, t, "neither a chat id nor an @name")
 		}
 
 	case ChannelWhatsApp:
@@ -116,23 +119,40 @@ func invalidAddress(c Channel, address, detail string) error {
 		WithStr(fmt.Sprintf("channel %q, address %q: %s", c, address, detail))
 }
 
-func isNumericID(s string) bool {
-	s = strings.TrimPrefix(s, "-")
-	if s == "" {
+// isChatID checks the value fits an int64, which is what a chat id is. Digits
+// alone are not enough: a forty-digit number is not an id, it is a typo.
+func isChatID(s string) bool {
+	_, err := strconv.ParseInt(s, 10, 64)
+	return err == nil
+}
+
+// isUsername follows the Telegram rule: 5 to 32 characters, letters, digits and
+// underscores, starting with a letter and ending with a letter or digit.
+func isUsername(s string) bool {
+	if len(s) < minUsernameLen || len(s) > maxUsernameLen {
 		return false
 	}
-	for _, r := range s {
-		if r < '0' || r > '9' {
+	for i, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+			if i == 0 {
+				return false
+			}
+		case r == '_':
+			if i == 0 || i == len(s)-1 {
+				return false
+			}
+		default:
 			return false
 		}
 	}
 	return true
 }
 
-// isE164 checks the +<digits> form, 8 to 15 digits.
 func isE164(s string) bool {
 	digits, ok := strings.CutPrefix(s, "+")
-	if !ok || len(digits) < 8 || len(digits) > 15 {
+	if !ok || len(digits) < minE164Digits || len(digits) > maxE164Digits {
 		return false
 	}
 	for _, r := range digits {

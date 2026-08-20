@@ -67,10 +67,62 @@ func TestValidateAddress(t *testing.T) {
 		{"email missing at", shared.ChannelEmail, "ops.example.com", shared.ErrInvalidAddress},
 		{"email is a phone number", shared.ChannelEmail, "+989121234567", shared.ErrInvalidAddress},
 
+		{"telegram chat id", shared.ChannelTelegram, "123456789", nil},
+		{"telegram group id is negative", shared.ChannelTelegram, "-1001234567890", nil},
+		{
+			"telegram chat id too large for an int64", shared.ChannelTelegram,
+			"12345678901234567890123456", shared.ErrInvalidAddress,
+		},
+		{
+			"telegram chat id with a stray sign",
+			shared.ChannelTelegram,
+			"--100",
+			shared.ErrInvalidAddress,
+		},
+
+		{"telegram public channel name", shared.ChannelTelegram, "@acmenews", nil},
+		{"telegram name too short", shared.ChannelTelegram, "@abcd", shared.ErrInvalidAddress},
+		{
+			"telegram name too long", shared.ChannelTelegram,
+			"@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", shared.ErrInvalidAddress,
+		},
+		{
+			"telegram name starting with a digit",
+			shared.ChannelTelegram,
+			"@1acme",
+			shared.ErrInvalidAddress,
+		},
+		{
+			"telegram name starting with an underscore",
+			shared.ChannelTelegram,
+			"@_acme",
+			shared.ErrInvalidAddress,
+		},
+		{
+			"telegram name ending with an underscore",
+			shared.ChannelTelegram,
+			"@acme_",
+			shared.ErrInvalidAddress,
+		},
+		{
+			"telegram name with a dash",
+			shared.ChannelTelegram,
+			"@acme-news",
+			shared.ErrInvalidAddress,
+		},
+		{"telegram name with an underscore inside", shared.ChannelTelegram, "@acme_news", nil},
+		{"telegram bare at", shared.ChannelTelegram, "@", shared.ErrInvalidAddress},
+		{"bale follows the same rule", shared.ChannelBale, "@acmenews", nil},
+
 		{"telegram group id", shared.ChannelTelegram, "-1001234567890", nil},
 		{"telegram user id", shared.ChannelTelegram, "123456789", nil},
 		{"telegram username", shared.ChannelTelegram, "@ops_channel", nil},
-		{"telegram given an email", shared.ChannelTelegram, "ops@example.com", shared.ErrInvalidAddress},
+		{
+			"telegram given an email",
+			shared.ChannelTelegram,
+			"ops@example.com",
+			shared.ErrInvalidAddress,
+		},
 		{"telegram bare at", shared.ChannelTelegram, "@", shared.ErrInvalidAddress},
 		{"telegram lone minus", shared.ChannelTelegram, "-", shared.ErrInvalidAddress},
 
@@ -80,7 +132,12 @@ func TestValidateAddress(t *testing.T) {
 		{"whatsapp e164", shared.ChannelWhatsApp, "+989121234567", nil},
 		{"whatsapp missing plus", shared.ChannelWhatsApp, "989121234567", shared.ErrInvalidAddress},
 		{"whatsapp too short", shared.ChannelWhatsApp, "+1234567", shared.ErrInvalidAddress},
-		{"whatsapp with spaces", shared.ChannelWhatsApp, "+98 912 123 4567", shared.ErrInvalidAddress},
+		{
+			"whatsapp with spaces",
+			shared.ChannelWhatsApp,
+			"+98 912 123 4567",
+			shared.ErrInvalidAddress,
+		},
 
 		{"whitespace only", shared.ChannelEmail, "   ", shared.ErrEmptyAddress},
 		{"empty", shared.ChannelTelegram, "", shared.ErrEmptyAddress},

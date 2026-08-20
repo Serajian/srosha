@@ -36,7 +36,13 @@ func email(addr string) shared.Recipient {
 
 func newOne(t *testing.T) *delivery.Delivery {
 	t.Helper()
-	set, err := delivery.NewSet(notifID, []shared.Recipient{telegram("123456789")}, nil, seqIDs(), now)
+	set, err := delivery.NewSet(
+		notifID,
+		[]shared.Recipient{telegram("123456789")},
+		nil,
+		seqIDs(),
+		now,
+	)
 	if err != nil {
 		t.Fatalf("NewSet() error = %v", err)
 	}
@@ -128,8 +134,8 @@ func TestNewSetAllowsRepeatsThatAreNotDuplicates(t *testing.T) {
 			telegram("111111111"), telegram("222222222"),
 		}},
 		{"same address, different channels", []shared.Recipient{
-			{Channel: shared.ChannelTelegram, Address: "@ali"},
-			{Channel: shared.ChannelBale, Address: "@ali"},
+			{Channel: shared.ChannelTelegram, Address: "@acmenews"},
+			{Channel: shared.ChannelBale, Address: "@acmenews"},
 		}},
 	}
 

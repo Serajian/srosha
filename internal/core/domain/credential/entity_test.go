@@ -223,14 +223,18 @@ func TestPickRefuses(t *testing.T) {
 			sentinel: credential.ErrNoDefault,
 		},
 		{
-			name:     "the default was deactivated",
-			creds:    []credential.Credential{*credential.Restore(snap("transactional", true, false))},
+			name: "the default was deactivated",
+			creds: []credential.Credential{
+				*credential.Restore(snap("transactional", true, false)),
+			},
 			want:     "",
 			sentinel: credential.ErrNoDefault,
 		},
 		{
-			name:     "unknown name",
-			creds:    []credential.Credential{*credential.Restore(snap("transactional", true, true))},
+			name: "unknown name",
+			creds: []credential.Credential{
+				*credential.Restore(snap("transactional", true, true)),
+			},
 			want:     "marketing",
 			sentinel: credential.ErrNotFound,
 		},

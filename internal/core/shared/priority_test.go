@@ -30,8 +30,18 @@ func TestClamp(t *testing.T) {
 		{"below ceiling", shared.PriorityNormal, shared.PriorityHigh, shared.PriorityNormal},
 		{"at ceiling", shared.PriorityHigh, shared.PriorityHigh, shared.PriorityHigh},
 		{"one above ceiling", shared.PriorityCritical, shared.PriorityHigh, shared.PriorityHigh},
-		{"far above ceiling", shared.PriorityCritical, shared.PriorityNormal, shared.PriorityNormal},
-		{"ceiling is the maximum", shared.PriorityCritical, shared.PriorityCritical, shared.PriorityCritical},
+		{
+			"far above ceiling",
+			shared.PriorityCritical,
+			shared.PriorityNormal,
+			shared.PriorityNormal,
+		},
+		{
+			"ceiling is the maximum",
+			shared.PriorityCritical,
+			shared.PriorityCritical,
+			shared.PriorityCritical,
+		},
 	}
 
 	for _, tc := range cases {
@@ -50,7 +60,12 @@ func TestClampNeverRaises(t *testing.T) {
 		for _, ceiling := range all {
 			got := requested.Clamp(ceiling)
 			if got > requested {
-				t.Errorf("Clamp(%v, %v) = %v: a downgrade must never raise priority", requested, ceiling, got)
+				t.Errorf(
+					"Clamp(%v, %v) = %v: a downgrade must never raise priority",
+					requested,
+					ceiling,
+					got,
+				)
 			}
 			if got > ceiling {
 				t.Errorf("Clamp(%v, %v) = %v: result exceeds the ceiling", requested, ceiling, got)

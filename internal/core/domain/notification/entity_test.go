@@ -64,7 +64,13 @@ func TestNewClampsPriorityToTheCeiling(t *testing.T) {
 		{"below ceiling", shared.PriorityHigh, shared.PriorityNormal, shared.PriorityNormal, false},
 		{"at ceiling", shared.PriorityHigh, shared.PriorityHigh, shared.PriorityHigh, false},
 		{"above ceiling", shared.PriorityHigh, shared.PriorityCritical, shared.PriorityHigh, true},
-		{"normal ceiling", shared.PriorityNormal, shared.PriorityCritical, shared.PriorityNormal, true},
+		{
+			"normal ceiling",
+			shared.PriorityNormal,
+			shared.PriorityCritical,
+			shared.PriorityNormal,
+			true,
+		},
 	}
 
 	for _, tt := range tests {
