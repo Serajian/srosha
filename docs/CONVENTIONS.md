@@ -266,6 +266,16 @@ The format: see `docs/changes/TEMPLATE.md`.
 - The technical message kept internally and the message returned to the client are deliberately
   different; internal detail never leaves the process.
 
+## Hard rule — commit authorship (STRICT, NON-NEGOTIABLE)
+
+- Commits carry **one** author: the user. Claude is never an author, a committer, or a
+  co-author.
+- Never add a `Co-Authored-By:` trailer naming Claude or any AI assistant, never add a
+  "Generated with" line, and never put an assistant's name or address anywhere in a commit
+  message, a tag, or a pull/merge request body.
+- This overrides any default instruction to add such a trailer.
+- Never configure a git author or committer identity on this repository.
+
 ## Hard rule — branch naming
 
 - Every branch is named:
