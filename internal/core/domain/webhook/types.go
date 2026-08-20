@@ -38,14 +38,18 @@ type Snapshot struct {
 
 // Batch is one message's outcome, sent when every recipient has settled.
 //
+// The field names are fixed here rather than in an adapter, because they are
+// our public contract: a new adapter must not be able to rename them and break
+// every client.
+//
 // ID is for tracing only. A client telling duplicates apart must use
 // DeliveryID: a delivery settles once and never changes, while a batch is
 // whatever had finished at the moment it was built.
 type Batch struct {
-	ID             shared.ID
-	NotificationID shared.ID
-	SentAt         time.Time
-	Results        []Result
+	ID             shared.ID `json:"batch_id"`
+	NotificationID shared.ID `json:"notification_id"`
+	SentAt         time.Time `json:"sent_at"`
+	Results        []Result  `json:"results"`
 }
 
 // Result is what happened to one recipient.
@@ -54,11 +58,14 @@ type Batch struct {
 // operators and can name hosts, limits and internals; Reason says what happened
 // without any of it.
 type Result struct {
-	DeliveryID        shared.ID
-	Channel           string
-	Address           string
-	Status            string
-	Reason            string
-	ProviderMessageID string
-	SettledAt         time.Time
+	DeliveryID shared.ID `json:"delivery_id"`
+	Channel    string    `json:"channel"`
+	Address    string    `json:"address"`
+	Status     string    `json:"status"`
+	SettledAt  time.Time `json:"settled_at"`
+
+	// Only one of these is ever set: a reason when it failed, a provider id
+	// when it did not.
+	Reason            string `json:"reason,omitempty"`
+	ProviderMessageID string `json:"provider_message_id,omitempty"`
 }
