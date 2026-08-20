@@ -139,6 +139,15 @@ connection URL. Generate with `openssl rand -hex 24`.
 | Env keys | `GOOSE_DRIVER`, `GOOSE_MIGRATION_DIR`, `GOOSE_DBSTRING` |
 | When | a separate deployment step, never from an application entrypoint |
 
+| Group | Keys | gateway | dispatcher |
+| --- | --- | --- | --- |
+| reconcile | `NOTIF_RECONCILE_AFTER`, `NOTIF_RECONCILE_GIVE_UP` | — | ✅ |
+
+`RECONCILE_AFTER` is how long a delivery may sit pending before the scheduler
+picks it up; `RECONCILE_GIVE_UP` is the age past which its next attempt is the
+last one. The scheduler runs in the dispatcher, because recovery sends rather
+than republishes. See `docs/ARCHITECTURE.md`.
+
 ---
 
 ## Local development

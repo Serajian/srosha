@@ -10,19 +10,24 @@ import (
 
 	"github.com/Serajian/srosha/internal/core/domain/delivery"
 	"github.com/Serajian/srosha/internal/core/domain/notification"
+	"github.com/Serajian/srosha/internal/core/domain/source"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/pkg/errs"
 )
 
-const maxAttempts = 5
+const (
+	maxAttempts     = 5
+	reconcileAfter  = 5 * time.Minute
+	reconcileGiveUp = 30 * time.Minute
+)
 
 type dispatchRig struct {
 	dispatcher *usecase.Dispatcher
 	deliveries *fakeDeliveries
 	sender     *fakeSender
-	event      shared.DispatchEvent
 	deliveryID shared.ID
+	notifs     *fakeNotifications
 }
 
 // dispatchOpts is everything a dispatch test may want to change: the message
@@ -59,25 +64,22 @@ func newDispatchRig(t *testing.T, tweak func(*dispatchOpts)) *dispatchRig {
 	}
 	ds := r.deliveries.all(res.ID)
 	clock := fixedNow(o.at)
+	r.deliveries.staleAt = o.at // one notion of "now" for the whole rig
 
 	d := &dispatchRig{
 		deliveries: r.deliveries,
 		sender:     o.sender,
 		deliveryID: ds[0].ID,
-		event: shared.DispatchEvent{
-			DeliveryID: ds[0].ID,
-			SourceID:   "acme",
-			Channel:    ds[0].Recipient.Channel,
-			Priority:   shared.PriorityNormal,
-		},
+		notifs:     r.notifs,
 	}
 	d.dispatcher = usecase.NewDispatcher(
 		notification.NewService(r.notifs, seqIDs(), clock),
 		delivery.NewService(r.deliveries, r.publisher, seqIDs(), clock),
 		o.registry,
 		clock,
-		maxAttempts,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		maxAttempts,
+		reconcileAfter, reconcileGiveUp, 100,
 	)
 	return d
 }
@@ -94,7 +96,7 @@ func (d *dispatchRig) reload(t *testing.T) *delivery.Delivery {
 func TestHandleSendsAndRecordsTheOutcome(t *testing.T) {
 	d := newDispatchRig(t, nil)
 
-	if err := d.dispatcher.Handle(context.Background(), d.event, 1); err != nil {
+	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
 
@@ -117,7 +119,7 @@ func TestHandleSendsAndRecordsTheOutcome(t *testing.T) {
 func TestHandleSendsTheRightMessage(t *testing.T) {
 	d := newDispatchRig(t, nil)
 
-	if err := d.dispatcher.Handle(context.Background(), d.event, 1); err != nil {
+	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1); err != nil {
 		t.Fatalf("Handle() error = %v", err)
 	}
 
@@ -135,10 +137,10 @@ func TestHandleSendsTheRightMessage(t *testing.T) {
 func TestHandleIgnoresASettledDelivery(t *testing.T) {
 	d := newDispatchRig(t, nil)
 
-	if err := d.dispatcher.Handle(context.Background(), d.event, 1); err != nil {
+	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1); err != nil {
 		t.Fatalf("first Handle() error = %v", err)
 	}
-	if err := d.dispatcher.Handle(context.Background(), d.event, 2); err != nil {
+	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, 2); err != nil {
 		t.Fatalf("redelivery returned an error: %v", err)
 	}
 
@@ -154,7 +156,7 @@ func TestHandleRetriesATransientFailure(t *testing.T) {
 		o.sender.err = &shared.SendError{Permanent: false, Detail: "connection reset"}
 	})
 
-	err := d.dispatcher.Handle(context.Background(), d.event, 1)
+	err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1)
 	if err == nil {
 		t.Fatal("Handle() returned nil, want the event asked for again")
 	}
@@ -175,7 +177,7 @@ func TestHandleRecordsTheLastAttempt(t *testing.T) {
 		o.sender.err = &shared.SendError{Permanent: false, Detail: "connection reset"}
 	})
 
-	if err := d.dispatcher.Handle(context.Background(), d.event, maxAttempts); err != nil {
+	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, maxAttempts); err != nil {
 		t.Fatalf("Handle() error = %v, want the event acknowledged", err)
 	}
 
@@ -223,7 +225,7 @@ func TestHandleRecordsFailures(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			d := newDispatchRig(t, tt.tweak)
 
-			if err := d.dispatcher.Handle(context.Background(), d.event, 1); err != nil {
+			if err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1); err != nil {
 				t.Fatalf("Handle() error = %v, want the event acknowledged", err)
 			}
 
@@ -245,7 +247,7 @@ func TestHandleRetriesWhenTheRegistryItselfFails(t *testing.T) {
 		o.registry.err = errors.New("credential store unreachable")
 	})
 
-	if err := d.dispatcher.Handle(context.Background(), d.event, 1); err == nil {
+	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1); err == nil {
 		t.Fatal("Handle() returned nil, want the event asked for again")
 	}
 
@@ -257,13 +259,108 @@ func TestHandleRetriesWhenTheRegistryItselfFails(t *testing.T) {
 // An event naming a delivery that is not there cannot be fixed by trying again.
 func TestHandleAcknowledgesAnUnknownDelivery(t *testing.T) {
 	d := newDispatchRig(t, nil)
-	e := d.event
-	e.DeliveryID = shared.ID("01J8XQ2M4E7N9V3B5C6D7F8ZZZ")
+	unknown := shared.ID("01J8XQ2M4E7N9V3B5C6D7F8ZZZ")
 
-	if err := d.dispatcher.Handle(context.Background(), e, 1); err != nil {
+	if err := d.dispatcher.Handle(context.Background(), unknown, 1); err != nil {
 		t.Errorf("Handle() error = %v, want it acknowledged", err)
 	}
 	if d.sender.count() != 0 {
 		t.Error("something was sent for a delivery that does not exist")
+	}
+}
+
+// Recover finds a delivery the broker was never told about and sends it.
+func TestRecoverSendsAStrandedDelivery(t *testing.T) {
+	d := newDispatchRig(t, func(o *dispatchOpts) {
+		o.at = now.Add(10 * time.Minute) // older than reconcileAfter
+	})
+
+	if err := d.dispatcher.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+
+	if d.sender.count() == 0 {
+		t.Fatal("nothing was sent")
+	}
+	if got := d.reload(t); got.Status() != delivery.StatusSent {
+		t.Errorf("Status() = %v, want SENT", got.Status())
+	}
+}
+
+// A row that has not been waiting long enough is left to the broker.
+func TestRecoverLeavesFreshDeliveriesAlone(t *testing.T) {
+	d := newDispatchRig(t, func(o *dispatchOpts) {
+		o.at = now.Add(time.Minute) // younger than reconcileAfter
+	})
+
+	if err := d.dispatcher.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+
+	if d.sender.count() != 0 {
+		t.Error("a delivery still in the broker's hands was sent by recovery")
+	}
+}
+
+// Age is the retry counter. Below the give-up threshold a transient failure
+// writes nothing, so the row comes back older on the next run.
+func TestRecoverLeavesAYoungFailureAlone(t *testing.T) {
+	d := newDispatchRig(t, func(o *dispatchOpts) {
+		o.sender.err = &shared.SendError{Permanent: false, Detail: "connection reset"}
+		o.at = now.Add(10 * time.Minute)
+	})
+
+	if err := d.dispatcher.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover() error = %v, want one row's failure not to stop it", err)
+	}
+
+	got := d.reload(t)
+	if got.Status() != delivery.StatusPending {
+		t.Errorf("Status() = %v, want it left pending", got.Status())
+	}
+	if got.Attempts() != 0 {
+		t.Errorf("Attempts() = %d, want nothing written", got.Attempts())
+	}
+}
+
+// Past the give-up threshold the same failure is final, so the source gets an
+// answer instead of the row looping for ever.
+func TestRecoverGivesUpOnAnOldFailure(t *testing.T) {
+	d := newDispatchRig(t, func(o *dispatchOpts) {
+		o.sender.err = &shared.SendError{Permanent: false, Detail: "connection reset"}
+		o.at = now.Add(reconcileGiveUp + time.Minute)
+	})
+
+	if err := d.dispatcher.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+
+	got := d.reload(t)
+	if got.Status() != delivery.StatusFailed {
+		t.Errorf("Status() = %v, want FAILED", got.Status())
+	}
+	if got.FailureReason() != delivery.FailureMaxAttempts {
+		t.Errorf("FailureReason() = %v, want MAX_ATTEMPTS", got.FailureReason())
+	}
+}
+
+// Already settled rows are not the recovery's business.
+func TestRecoverIgnoresSettledDeliveries(t *testing.T) {
+	d := newDispatchRig(t, func(o *dispatchOpts) {
+		o.cmd.Routes = []source.Route{{Channel: shared.ChannelEmail}} // just the one
+		o.at = now.Add(time.Hour)
+	})
+
+	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	sentOnce := d.sender.count()
+
+	if err := d.dispatcher.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+
+	if d.sender.count() != sentOnce {
+		t.Error("recovery sent a delivery that was already settled")
 	}
 }

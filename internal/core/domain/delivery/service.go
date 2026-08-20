@@ -47,7 +47,7 @@ func (s *Service) ListForNotification(
 
 func (s *Service) ListStale(
 	ctx context.Context, olderThan time.Duration, limit int,
-) ([]shared.ID, error) {
+) ([]Delivery, error) {
 	return s.repo.ListStale(ctx, olderThan, limit)
 }
 

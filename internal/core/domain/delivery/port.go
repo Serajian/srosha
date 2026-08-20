@@ -16,8 +16,9 @@ type Repository interface {
 	) (shared.Pagination[Delivery], error)
 
 	// ListStale finds deliveries still pending past a cutoff: the ones whose
-	// publish never reached the broker.
-	ListStale(ctx context.Context, olderThan time.Duration, limit int) ([]shared.ID, error)
+	// publish never reached the broker. It returns the rows themselves, because
+	// the caller decides what to do from how long each has been waiting.
+	ListStale(ctx context.Context, olderThan time.Duration, limit int) ([]Delivery, error)
 
 	// Update writes one delivery. There is deliberately no whole-set save:
 	// several workers settle deliveries of the same message at the same time,

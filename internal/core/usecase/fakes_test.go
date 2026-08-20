@@ -98,6 +98,9 @@ type fakeDeliveries struct {
 	mu        sync.Mutex
 	byNotif   map[shared.ID][]delivery.Delivery
 	createErr error
+
+	// staleAt is "now" as far as ListStale is concerned.
+	staleAt time.Time
 }
 
 func newFakeDeliveries() *fakeDeliveries {
@@ -116,20 +119,35 @@ func (r *fakeDeliveries) CreateByList(_ context.Context, ds []delivery.Delivery)
 	return nil
 }
 
+// ReadByID hands back a COPY, like a real repository would. Returning a pointer
+// into the stored slice would make every change persist by accident, and a
+// broken Update would look like it worked.
 func (r *fakeDeliveries) ReadByID(_ context.Context, id shared.ID) (*delivery.Delivery, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, ds := range r.byNotif {
 		for i := range ds {
 			if ds[i].ID == id {
-				return &ds[i], nil
+				got := ds[i]
+				return &got, nil
 			}
 		}
 	}
 	return nil, nil
 }
 
-func (r *fakeDeliveries) Update(context.Context, *delivery.Delivery) error { return nil }
+func (r *fakeDeliveries) Update(_ context.Context, d *delivery.Delivery) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ds := r.byNotif[d.NotificationID]
+	for i := range ds {
+		if ds[i].ID == d.ID {
+			ds[i] = *d
+			return nil
+		}
+	}
+	return errs.NotFoundErr("delivery not found")
+}
 
 func (r *fakeDeliveries) PageByNotificationID(
 	_ context.Context, id shared.ID, c shared.Cursor,
@@ -160,8 +178,25 @@ func (r *fakeDeliveries) PageByNotificationID(
 	return page, nil
 }
 
-func (r *fakeDeliveries) ListStale(context.Context, time.Duration, int) ([]shared.ID, error) {
-	return nil, nil
+func (r *fakeDeliveries) ListStale(
+	_ context.Context, olderThan time.Duration, limit int,
+) ([]delivery.Delivery, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var out []delivery.Delivery
+	for _, ds := range r.byNotif {
+		for _, d := range ds {
+			if d.IsSettled() || r.staleAt.Sub(d.UpdatedAt()) < olderThan {
+				continue
+			}
+			out = append(out, d)
+			if len(out) == limit {
+				return out, nil
+			}
+		}
+	}
+	return out, nil
 }
 
 func (r *fakeDeliveries) all(id shared.ID) []delivery.Delivery {
