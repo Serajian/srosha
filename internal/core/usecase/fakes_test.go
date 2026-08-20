@@ -203,3 +203,45 @@ func (p *fakePublisher) count() int {
 	defer p.mu.Unlock()
 	return len(p.published)
 }
+
+type fakeSender struct {
+	channel    shared.Channel
+	providerID string
+	err        error
+
+	mu   sync.Mutex
+	sent []shared.Message
+}
+
+func (s *fakeSender) Channel() shared.Channel { return s.channel }
+
+func (s *fakeSender) Send(_ context.Context, m shared.Message) (string, error) {
+	s.mu.Lock()
+	s.sent = append(s.sent, m)
+	s.mu.Unlock()
+	if s.err != nil {
+		return "", s.err
+	}
+	return s.providerID, nil
+}
+
+func (s *fakeSender) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.sent)
+}
+
+// fakeRegistry hands back one sender for every channel, or refuses.
+type fakeRegistry struct {
+	sender *fakeSender
+	err    error
+}
+
+func (r fakeRegistry) For(
+	context.Context, string, shared.Channel, string,
+) (delivery.Sender, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r.sender, nil
+}
