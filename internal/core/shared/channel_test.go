@@ -33,7 +33,7 @@ func TestParseChannel(t *testing.T) {
 	}
 }
 
-// AllChannels must stay in sync with the constants, or ValidateTarget's
+// AllChannels must stay in sync with the constants, or ValidateAddress's
 // default branch is unreachable and a new channel would slip through untested.
 func TestAllChannelsCoversEveryConstant(t *testing.T) {
 	for _, c := range shared.AllChannels() {
@@ -55,7 +55,7 @@ func TestAllChannelsReturnsAFreshSlice(t *testing.T) {
 	}
 }
 
-func TestValidateTarget(t *testing.T) {
+func TestValidateAddress(t *testing.T) {
 	cases := []struct {
 		name    string
 		channel shared.Channel
@@ -64,32 +64,89 @@ func TestValidateTarget(t *testing.T) {
 	}{
 		{"email plain", shared.ChannelEmail, "ops@example.com", nil},
 		{"email with display name", shared.ChannelEmail, "Ops Team <ops@example.com>", nil},
-		{"email missing at", shared.ChannelEmail, "ops.example.com", shared.ErrInvalidTarget},
-		{"email is a phone number", shared.ChannelEmail, "+989121234567", shared.ErrInvalidTarget},
+		{"email missing at", shared.ChannelEmail, "ops.example.com", shared.ErrInvalidAddress},
+		{"email is a phone number", shared.ChannelEmail, "+989121234567", shared.ErrInvalidAddress},
+
+		{"telegram chat id", shared.ChannelTelegram, "123456789", nil},
+		{"telegram group id is negative", shared.ChannelTelegram, "-1001234567890", nil},
+		{
+			"telegram chat id too large for an int64", shared.ChannelTelegram,
+			"12345678901234567890123456", shared.ErrInvalidAddress,
+		},
+		{
+			"telegram chat id with a stray sign",
+			shared.ChannelTelegram,
+			"--100",
+			shared.ErrInvalidAddress,
+		},
+
+		{"telegram public channel name", shared.ChannelTelegram, "@acmenews", nil},
+		{"telegram name too short", shared.ChannelTelegram, "@abcd", shared.ErrInvalidAddress},
+		{
+			"telegram name too long", shared.ChannelTelegram,
+			"@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", shared.ErrInvalidAddress,
+		},
+		{
+			"telegram name starting with a digit",
+			shared.ChannelTelegram,
+			"@1acme",
+			shared.ErrInvalidAddress,
+		},
+		{
+			"telegram name starting with an underscore",
+			shared.ChannelTelegram,
+			"@_acme",
+			shared.ErrInvalidAddress,
+		},
+		{
+			"telegram name ending with an underscore",
+			shared.ChannelTelegram,
+			"@acme_",
+			shared.ErrInvalidAddress,
+		},
+		{
+			"telegram name with a dash",
+			shared.ChannelTelegram,
+			"@acme-news",
+			shared.ErrInvalidAddress,
+		},
+		{"telegram name with an underscore inside", shared.ChannelTelegram, "@acme_news", nil},
+		{"telegram bare at", shared.ChannelTelegram, "@", shared.ErrInvalidAddress},
+		{"bale follows the same rule", shared.ChannelBale, "@acmenews", nil},
 
 		{"telegram group id", shared.ChannelTelegram, "-1001234567890", nil},
 		{"telegram user id", shared.ChannelTelegram, "123456789", nil},
 		{"telegram username", shared.ChannelTelegram, "@ops_channel", nil},
-		{"telegram given an email", shared.ChannelTelegram, "ops@example.com", shared.ErrInvalidTarget},
-		{"telegram bare at", shared.ChannelTelegram, "@", shared.ErrInvalidTarget},
-		{"telegram lone minus", shared.ChannelTelegram, "-", shared.ErrInvalidTarget},
+		{
+			"telegram given an email",
+			shared.ChannelTelegram,
+			"ops@example.com",
+			shared.ErrInvalidAddress,
+		},
+		{"telegram bare at", shared.ChannelTelegram, "@", shared.ErrInvalidAddress},
+		{"telegram lone minus", shared.ChannelTelegram, "-", shared.ErrInvalidAddress},
 
 		{"bale numeric", shared.ChannelBale, "123456789", nil},
 		{"bale username", shared.ChannelBale, "@support", nil},
 
 		{"whatsapp e164", shared.ChannelWhatsApp, "+989121234567", nil},
-		{"whatsapp missing plus", shared.ChannelWhatsApp, "989121234567", shared.ErrInvalidTarget},
-		{"whatsapp too short", shared.ChannelWhatsApp, "+1234567", shared.ErrInvalidTarget},
-		{"whatsapp with spaces", shared.ChannelWhatsApp, "+98 912 123 4567", shared.ErrInvalidTarget},
+		{"whatsapp missing plus", shared.ChannelWhatsApp, "989121234567", shared.ErrInvalidAddress},
+		{"whatsapp too short", shared.ChannelWhatsApp, "+1234567", shared.ErrInvalidAddress},
+		{
+			"whatsapp with spaces",
+			shared.ChannelWhatsApp,
+			"+98 912 123 4567",
+			shared.ErrInvalidAddress,
+		},
 
-		{"whitespace only", shared.ChannelEmail, "   ", shared.ErrEmptyTarget},
-		{"empty", shared.ChannelTelegram, "", shared.ErrEmptyTarget},
+		{"whitespace only", shared.ChannelEmail, "   ", shared.ErrEmptyAddress},
+		{"empty", shared.ChannelTelegram, "", shared.ErrEmptyAddress},
 		{"unknown channel", shared.Channel("sms"), "123456789", shared.ErrUnknownChannel},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.channel.ValidateTarget(tc.target)
+			err := tc.channel.ValidateAddress(tc.target)
 
 			if tc.wantErr == nil {
 				if err != nil {
@@ -107,7 +164,7 @@ func TestValidateTarget(t *testing.T) {
 // The rejected value is useful in a log and dangerous in a response: it can be
 // someone's phone number or address, and it tells a caller how our formats work.
 func TestInvalidTargetMessageHidesTheValue(t *testing.T) {
-	err := shared.ChannelWhatsApp.ValidateTarget("989121234567")
+	err := shared.ChannelWhatsApp.ValidateAddress("989121234567")
 
 	ae, ok := errs.As(err)
 	if !ok {

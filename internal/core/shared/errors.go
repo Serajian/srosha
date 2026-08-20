@@ -6,12 +6,12 @@ import "errors"
 //
 // These carry IDENTITY, not presentation. A fresh errs.AppError has no
 // identity of its own -- every bad input is ErrInvalidInput, so errors.Is
-// cannot tell a malformed target from an empty body. Wrapping a sentinel with
+// cannot tell a malformed address from an empty body. Wrapping a sentinel with
 // WithErr restores that distinction:
 //
-//	errs.InvalidInputErr("invalid target").WithErr(ErrInvalidTarget)
+//	errs.InvalidInputErr("invalid address").WithErr(ErrInvalidAddress)
 //
-//	errors.Is(err, shared.ErrInvalidTarget)   // exact cause
+//	errors.Is(err, shared.ErrInvalidAddress)   // exact cause
 //	errs.IsType(err, errs.ErrInvalidInput)    // how to answer the client
 //
 // Only errors belonging to a type in this package live here. Aggregate errors
@@ -23,8 +23,8 @@ var (
 
 	// channel.go
 	ErrUnknownChannel = errors.New("unknown channel")
-	ErrEmptyTarget    = errors.New("delivery target is empty")
-	ErrInvalidTarget  = errors.New("delivery target has the wrong format")
+	ErrEmptyAddress   = errors.New("delivery address is empty")
+	ErrInvalidAddress = errors.New("delivery address has the wrong format")
 
 	// priority.go
 	ErrUnknownPriority = errors.New("unknown priority")

@@ -12,10 +12,10 @@ import (
 // the constants, every ceiling check inverts silently -- nothing else would
 // fail to compile.
 func TestPriorityOrdering(t *testing.T) {
-	if !(shared.PriorityNormal < shared.PriorityHigh) {
+	if shared.PriorityNormal >= shared.PriorityHigh {
 		t.Error("NORMAL must sort below HIGH")
 	}
-	if !(shared.PriorityHigh < shared.PriorityCritical) {
+	if shared.PriorityHigh >= shared.PriorityCritical {
 		t.Error("HIGH must sort below CRITICAL")
 	}
 }
@@ -30,8 +30,18 @@ func TestClamp(t *testing.T) {
 		{"below ceiling", shared.PriorityNormal, shared.PriorityHigh, shared.PriorityNormal},
 		{"at ceiling", shared.PriorityHigh, shared.PriorityHigh, shared.PriorityHigh},
 		{"one above ceiling", shared.PriorityCritical, shared.PriorityHigh, shared.PriorityHigh},
-		{"far above ceiling", shared.PriorityCritical, shared.PriorityNormal, shared.PriorityNormal},
-		{"ceiling is the maximum", shared.PriorityCritical, shared.PriorityCritical, shared.PriorityCritical},
+		{
+			"far above ceiling",
+			shared.PriorityCritical,
+			shared.PriorityNormal,
+			shared.PriorityNormal,
+		},
+		{
+			"ceiling is the maximum",
+			shared.PriorityCritical,
+			shared.PriorityCritical,
+			shared.PriorityCritical,
+		},
 	}
 
 	for _, tc := range cases {
@@ -50,7 +60,12 @@ func TestClampNeverRaises(t *testing.T) {
 		for _, ceiling := range all {
 			got := requested.Clamp(ceiling)
 			if got > requested {
-				t.Errorf("Clamp(%v, %v) = %v: a downgrade must never raise priority", requested, ceiling, got)
+				t.Errorf(
+					"Clamp(%v, %v) = %v: a downgrade must never raise priority",
+					requested,
+					ceiling,
+					got,
+				)
 			}
 			if got > ceiling {
 				t.Errorf("Clamp(%v, %v) = %v: result exceeds the ceiling", requested, ceiling, got)

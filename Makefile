@@ -313,6 +313,40 @@ lint-fix: format ## [Lint] Run format then golangci-lint --fix
 	@$(GOLANGCI_LINT) run --fix --timeout 2m ./...
 	@echo "$(COLOR_GREEN)✅ Lint autofix done.$(COLOR_RESET)"
 
+.PHONY: fmt-check
+fmt-check: ## [Lint] Fail if anything is unformatted. Read-only, unlike `format`.
+	@echo "$(COLOR_YELLOW)🔎 gofmt -l...$(COLOR_RESET)"
+	@unformatted=$$(gofmt -l ./cmd ./internal ./pkg 2>/dev/null || true); \
+	if [ -n "$$unformatted" ]; then \
+	   echo "$(COLOR_RED)❌ not formatted:$(COLOR_RESET)"; \
+	   echo "$$unformatted" | sed 's/^/   /'; \
+	   echo "   run: make format"; \
+	   exit 1; \
+	fi
+	@echo "$(COLOR_GREEN)✅ Formatting is clean.$(COLOR_RESET)"
+
+# buf comes from `make setup-dev`, and buf.yaml does not exist yet. A missing
+# tool or a missing config must not block a commit -- warn and carry on.
+.PHONY: proto-lint-if-present
+proto-lint-if-present: ## [Lint] Run buf lint if buf and its config are both present
+	@if ! command -v buf >/dev/null 2>&1; then \
+	   echo "$(COLOR_YELLOW)⚠  buf not installed — skipping proto lint. Run: make setup-dev$(COLOR_RESET)"; \
+	elif [ ! -f buf.yaml ] && [ ! -f buf.work.yaml ]; then \
+	   echo "$(COLOR_YELLOW)⚠  no buf.yaml — skipping proto lint. Run: buf config init$(COLOR_RESET)"; \
+	else \
+	   $(MAKE) --no-print-directory proto-lint; \
+	fi
+
+# golangci-lint comes from `make setup-dev`. A fresh clone has not run it yet, and
+# a missing tool must not block a push -- warn and carry on.
+.PHONY: lint-if-present
+lint-if-present: ## [Lint] Run golangci-lint if it is installed, warn if it is not
+	@if ! $(GOLANGCI_LINT) version >/dev/null 2>&1; then \
+	   echo "$(COLOR_YELLOW)⚠  golangci-lint not installed — skipping. Run: make setup-dev$(COLOR_RESET)"; \
+	else \
+	   $(MAKE) --no-print-directory lint; \
+	fi
+
 .PHONY: arch-check
 arch-check: ## [Lint] Fail if the domain layer imports anything it must not
 	@echo "$(COLOR_YELLOW)🏛  Checking domain layer dependencies...$(COLOR_RESET)"
@@ -342,12 +376,23 @@ vulncheck: ## [Lint] Scan for known vulnerabilities reachable from our code (gov
 	}
 	@echo "$(COLOR_GREEN)✅ No reachable vulnerabilities.$(COLOR_RESET)"
 
+# --- what the git hooks run --------------------------------------------------
+# These only CHECK. A hook that rewrote files would leave the rewrite unstaged,
+# so the unformatted version is what gets committed. Use `make fix` for that.
+
 .PHONY: precommit
-precommit: deps proto-lint format lint arch-check ## [Lint] Pre-commit pipeline (deps + proto lint + format + lint + arch)
+precommit: fmt-check govet arch-check proto-lint-if-present ## [Lint] What the pre-commit hook runs (~1s, read-only)
+	@echo "$(COLOR_GREEN)✅ Pre-commit checks passed.$(COLOR_RESET)"
 
 .PHONY: prepush
-prepush: deps golines-changed lint-fix lint arch-check test-race ## [Lint] Pre-push pipeline
+prepush: precommit lint-if-present test-race ## [Lint] What the pre-push hook runs (read-only)
 	@echo "$(COLOR_GREEN)✅ Pre-push checks passed.$(COLOR_RESET)"
+
+# --- run by hand -------------------------------------------------------------
+
+.PHONY: fix
+fix: deps format lint-fix ## [Lint] Tidy, format and autofix. WRITES FILES.
+	@echo "$(COLOR_GREEN)✅ Everything that can be fixed automatically, was.$(COLOR_RESET)"
 
 # ==================================================================================== #
 # GIT

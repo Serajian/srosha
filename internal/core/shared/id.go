@@ -16,11 +16,6 @@ import (
 // sequence so assertions stay deterministic.
 type ID string
 
-const (
-	idLength      = 26
-	crockfordBase = "0123456789ABCDEFGHJKMNPQRSTVWXYZ" // no I, L, O, U
-)
-
 // ParseID validates and normalises an untrusted string into an ID.
 //
 // Call it wherever a string arrives from outside: a gRPC request, a queue

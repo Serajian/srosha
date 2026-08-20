@@ -17,7 +17,12 @@ func TestParseID(t *testing.T) {
 		ok   bool
 	}{
 		{"valid", "01HQ8XJ9Z4K7M2N5P6R8S9T0VW", "01HQ8XJ9Z4K7M2N5P6R8S9T0VW", true},
-		{"lowercase is normalised", "01hq8xj9z4k7m2n5p6r8s9t0vw", "01HQ8XJ9Z4K7M2N5P6R8S9T0VW", true},
+		{
+			"lowercase is normalised",
+			"01hq8xj9z4k7m2n5p6r8s9t0vw",
+			"01HQ8XJ9Z4K7M2N5P6R8S9T0VW",
+			true,
+		},
 		{"too short", "01HQ8XJ9Z4", "", false},
 		{"too long", "01HQ8XJ9Z4K7M2N5P6R8S9T0VWXY", "", false},
 		{"empty", "", "", false},
