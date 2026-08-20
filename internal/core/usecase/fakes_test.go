@@ -10,6 +10,7 @@ import (
 	"github.com/Serajian/srosha/internal/core/domain/delivery"
 	"github.com/Serajian/srosha/internal/core/domain/notification"
 	"github.com/Serajian/srosha/internal/core/domain/source"
+	"github.com/Serajian/srosha/internal/core/domain/webhook"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/pkg/errs"
 )
@@ -279,4 +280,43 @@ func (r fakeRegistry) For(
 		return nil, r.err
 	}
 	return r.sender, nil
+}
+
+type fakeWebhooks struct {
+	mu       sync.Mutex
+	bySource map[string]*webhook.Webhook
+}
+
+func newFakeWebhooks() *fakeWebhooks {
+	return &fakeWebhooks{bySource: map[string]*webhook.Webhook{}}
+}
+
+func (r *fakeWebhooks) Create(_ context.Context, w *webhook.Webhook) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.bySource[w.SourceID] = w
+	return nil
+}
+
+// ReadBySourceID hands back a copy, so only Update makes a change stick.
+func (r *fakeWebhooks) ReadBySourceID(_ context.Context, id string) (*webhook.Webhook, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	w, ok := r.bySource[id]
+	if !ok {
+		return nil, nil
+	}
+	got := *w
+	return &got, nil
+}
+
+func (r *fakeWebhooks) Update(_ context.Context, w *webhook.Webhook) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.bySource[w.SourceID]; !ok {
+		return errs.NotFoundErr("webhook not found")
+	}
+	got := *w
+	r.bySource[w.SourceID] = &got
+	return nil
 }

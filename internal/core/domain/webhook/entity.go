@@ -43,18 +43,8 @@ func New(
 	if now.IsZero() {
 		return nil, errs.InternalErr("creation timestamp is missing").WithErr(shared.ErrInvalidID)
 	}
-	if err := validateURL(r.CallbackURL, p); err != nil {
+	if err := validate(r, p); err != nil {
 		return nil, err
-	}
-	if r.BatchInterval < 0 || r.BatchInterval > MaxBatchInterval {
-		return nil, errs.InvalidInputErr("batch interval is out of range").
-			WithErr(ErrBatchIntervalOutOfRange).
-			WithStr(fmt.Sprintf("got %s, max %s", r.BatchInterval, MaxBatchInterval))
-	}
-	if r.MaxBatchSize < 1 || r.MaxBatchSize > MaxBatchSize {
-		return nil, errs.InvalidInputErr("batch size is out of range").
-			WithErr(ErrBatchSizeOutOfRange).
-			WithStr(fmt.Sprintf("got %d, allowed 1..%d", r.MaxBatchSize, MaxBatchSize))
 	}
 
 	return &Webhook{
@@ -82,6 +72,23 @@ func Restore(s Snapshot) *Webhook {
 		isActive:            s.IsActive,
 		consecutiveFailures: s.ConsecutiveFailures,
 	}
+}
+
+// Redirect points an existing webhook somewhere else. It validates exactly as
+// New does -- an address that would be refused today must not slip in through
+// an update -- and clears the failure run, because a new address has not failed
+// at anything yet.
+func (w *Webhook) Redirect(r Registration, p URLPolicy, now time.Time) error {
+	if err := validate(r, p); err != nil {
+		return err
+	}
+	w.CallbackURL = r.CallbackURL
+	w.BatchInterval = r.BatchInterval
+	w.MaxBatchSize = r.MaxBatchSize
+	w.isActive = true
+	w.consecutiveFailures = 0
+	w.UpdatedAt = now
+	return nil
 }
 
 func (w *Webhook) IsActive() bool           { return w.isActive }
@@ -117,6 +124,23 @@ func (w *Webhook) Activate(now time.Time) {
 	w.isActive = true
 	w.consecutiveFailures = 0
 	w.UpdatedAt = now
+}
+
+func validate(r Registration, p URLPolicy) error {
+	if err := validateURL(r.CallbackURL, p); err != nil {
+		return err
+	}
+	if r.BatchInterval < 0 || r.BatchInterval > MaxBatchInterval {
+		return errs.InvalidInputErr("batch interval is out of range").
+			WithErr(ErrBatchIntervalOutOfRange).
+			WithStr(fmt.Sprintf("got %s, max %s", r.BatchInterval, MaxBatchInterval))
+	}
+	if r.MaxBatchSize < 1 || r.MaxBatchSize > MaxBatchSize {
+		return errs.InvalidInputErr("batch size is out of range").
+			WithErr(ErrBatchSizeOutOfRange).
+			WithStr(fmt.Sprintf("got %d, allowed 1..%d", r.MaxBatchSize, MaxBatchSize))
+	}
+	return nil
 }
 
 // validateURL is a security control, not a formatting check. A callback makes

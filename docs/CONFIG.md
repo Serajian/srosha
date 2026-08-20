@@ -142,6 +142,13 @@ connection URL. Generate with `openssl rand -hex 24`.
 | Group | Keys | gateway | dispatcher |
 | --- | --- | --- | --- |
 | reconcile | `NOTIF_RECONCILE_AFTER`, `NOTIF_RECONCILE_GIVE_UP` | — | ✅ |
+| webhook | `NOTIF_WEBHOOK_SECRETS` | — | ✅ |
+
+`NOTIF_WEBHOOK_SECRETS` holds one signing secret per source, keyed by source id.
+Each source gets its own: with a single shared secret, any source holding it
+could forge a signed callback to another. It is never stored in the database and
+never returned by the API — it is handed to the source out of band. Adding a
+source therefore needs a redeploy.
 
 `RECONCILE_AFTER` is how long a delivery may sit pending before the scheduler
 picks it up; `RECONCILE_GIVE_UP` is the age past which its next attempt is the
