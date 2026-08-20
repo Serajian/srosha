@@ -31,6 +31,7 @@ linters:
       enable-all: true
       disable:
         - fieldalignment # readability of a struct beats a few bytes of padding
+        - shadow # `if err := f(); err != nil` is the idiom, not a mistake
     revive:
       rules:
         - name: exported

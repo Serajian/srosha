@@ -6,9 +6,6 @@ import (
 	"github.com/Serajian/srosha/internal/core/shared"
 )
 
-// IDFunc is injected, so the domain generates no id of its own.
-type IDFunc func() shared.ID
-
 // Snapshot is a delivery flattened for storage, so Restore needs no ten-argument
 // signature and the guarded fields stay guarded everywhere else.
 type Snapshot struct {
