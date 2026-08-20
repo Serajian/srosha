@@ -11,8 +11,6 @@ import (
 	"github.com/Serajian/srosha/pkg/errs"
 )
 
-const maxNameLen = 32
-
 // Credential names one sending identity. It carries no secret and no provider
 // settings; the adapter resolves those by ID at send time.
 type Credential struct {
