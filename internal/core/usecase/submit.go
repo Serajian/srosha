@@ -123,7 +123,7 @@ func (s *Submitter) Submit(ctx context.Context, cmd SubmitCommand) (SubmitResult
 		if err != nil {
 			return err
 		}
-		ds, err = s.deliveries.Open(ctx, n.ID, recipients, cmd.Senders)
+		ds, err = s.deliveries.Create(ctx, n.ID, recipients, cmd.Senders)
 		return err
 	})
 	if err != nil {

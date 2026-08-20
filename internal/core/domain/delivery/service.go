@@ -18,8 +18,8 @@ func NewService(repo Repository, pub Publisher, newID shared.IDFunc, now shared.
 	return &Service{repo: repo, pub: pub, newID: newID, now: now}
 }
 
-// Open validates the recipient set and stores one delivery per entry.
-func (s *Service) Open(
+// Create validates the recipient set and stores one delivery per entry.
+func (s *Service) Create(
 	ctx context.Context,
 	notificationID shared.ID,
 	recipients []shared.Recipient,
@@ -51,8 +51,9 @@ func (s *Service) ListStale(
 	return s.repo.ListStale(ctx, olderThan, limit)
 }
 
-// Sent records that the provider accepted the message.
-func (s *Service) Sent(
+// RecordSent stores the outcome. The sending already happened; this only writes
+// down what it was.
+func (s *Service) RecordSent(
 	ctx context.Context, d *Delivery, providerMessageID string, attempts int,
 ) error {
 	if err := d.MarkSent(providerMessageID, attempts, s.now()); err != nil {
@@ -61,8 +62,9 @@ func (s *Service) Sent(
 	return s.repo.Update(ctx, d)
 }
 
-// Failed records a final failure. Transient failures are not recorded at all.
-func (s *Service) Failed(
+// RecordFailure stores a final failure. A transient one is not recorded at all:
+// the delivery stays pending and the broker retries it.
+func (s *Service) RecordFailure(
 	ctx context.Context, d *Delivery, reason FailureReason, detail string, attempts int,
 ) error {
 	if err := d.MarkFailed(reason, detail, attempts, s.now()); err != nil {
