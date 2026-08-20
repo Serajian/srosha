@@ -11,13 +11,9 @@ const (
 	StatusFailed  Status = "FAILED"
 )
 
-// transitions is the state machine as data. PENDING is the only state with
-// anywhere to go; both others are final.
-//
-// This is the duplicate guard: the broker may hand the same message to a worker
-// twice, and the second attempt is refused in memory with no extra query.
-// A transient failure is NOT a transition -- nothing is written, the message is
-// NAKed and the delivery stays PENDING.
+// transitions is the duplicate guard: the broker may deliver the same message
+// twice, and the second attempt is refused here. A transient failure is not a
+// transition at all -- nothing is written and the delivery stays PENDING.
 var transitions = map[Status][]Status{
 	StatusPending: {StatusSent, StatusFailed},
 	StatusSent:    {},
@@ -46,9 +42,8 @@ func (s Status) IsSettled() bool {
 	return s == StatusSent || s == StatusFailed
 }
 
-// FailureReason says why a FAILED delivery failed. It is a reason, not a state:
-// the program behaves the same for all of them, only the human reading it cares
-// about the difference. New reasons cost nothing but a constant.
+// FailureReason is a reason, not a state: the program behaves the same for all
+// of them, so a new one costs nothing but a constant.
 type FailureReason string
 
 const (

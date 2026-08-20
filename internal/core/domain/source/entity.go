@@ -1,79 +1,72 @@
-// Package source holds the caller identity: who is allowed to send what, at
-// which priority, and to whom.
+// Package source holds the caller identity: who may send what, at which
+// priority, and to whom.
 package source
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/pkg/errs"
 )
 
-// Source is the authenticated caller of the service.
-//
-// Its fields are exported, unlike the notification aggregate's. That is not an
-// inconsistency: a notification hides its fields because Status is DERIVED and
-// must never be assigned from outside. A Source has no derived state and no
-// lifecycle of its own -- it is configuration loaded from a row -- so there is
-// nothing for accessors to protect.
+// Source is the authenticated caller. Configuration loaded from a row, so
+// nothing here is derived and nothing needs an accessor.
 type Source struct {
-	ID   string
-	Name string
-
-	// MaxPriority is the ceiling this source may request. A request above it is
-	// clamped rather than rejected; see the notification aggregate.
+	ID          string
+	Name        string
 	MaxPriority shared.Priority
+	IsActive    bool
 
-	IsActive bool
+	// False bounds the damage of a leaked key: the source can then only reach
+	// the addresses configured below, never a stranger.
+	AllowCustomAddress bool
 
-	// AllowCustomTarget decides whether this source may address arbitrary
-	// recipients. Leave it false for system sources whose alerts should only
-	// ever reach the operators listed in DefaultTargets: a leaked API key then
-	// cannot be used to message strangers.
-	AllowCustomTarget bool
+	// One address per channel. Reaching several people is a group chat or a
+	// mailing list, which the customer manages.
+	DefaultAddresses map[shared.Channel]string
 
-	// DefaultTargets is the per-channel fallback destination, loaded from the
-	// source_channels table. A channel absent from this map can only be used by
-	// a source that is allowed to supply its own target.
-	DefaultTargets map[shared.Channel]string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
-// ResolveTarget decides where a channel should deliver to.
-//
-//	explicit target + allowed      -> use it, after validating its shape
-//	explicit target + not allowed  -> refuse
-//	no explicit target             -> fall back to the source's default
-//	no explicit target, no default -> refuse
-//
-// This lives in the domain rather than in a service because it answers a
-// business question -- who is this source permitted to reach -- not a
-// data-access one. Putting it here also means the rule is enforced wherever a
-// notification is built, not only on the path someone remembered to guard.
-func (s *Source) ResolveTarget(c shared.Channel, requested string) (string, error) {
-	if requested != "" {
-		if !s.AllowCustomTarget {
-			return "", errs.ForbiddenErr("custom delivery target not allowed").
-				WithErr(ErrCustomTargetNotAllowed).
+func (s *Source) EnsureActive() error {
+	if s.IsActive {
+		return nil
+	}
+	return errs.ForbiddenErr("source is not active").
+		WithErr(ErrSourceInactive).
+		WithStr(fmt.Sprintf("source %q", s.ID))
+}
+
+// Resolve turns one requested channel into the recipients to deliver to: the
+// given address if this source may name one, otherwise its configured default.
+// Returns a slice so that one channel can resolve to several later.
+func (s *Source) Resolve(c shared.Channel, address string) ([]shared.Recipient, error) {
+	if address != "" {
+		if !s.AllowCustomAddress {
+			return nil, errs.ForbiddenErr("custom delivery address not allowed").
+				WithErr(ErrCustomAddressNotAllowed).
 				WithStr(fmt.Sprintf("source %q, channel %q", s.ID, c))
 		}
-		if err := c.ValidateTarget(requested); err != nil {
-			return "", err
-		}
-		return requested, nil
+		return s.one(c, address)
 	}
 
-	fallback, ok := s.DefaultTargets[c]
+	fallback, ok := s.DefaultAddresses[c]
 	if !ok || fallback == "" {
-		return "", errs.InvalidInputErr("channel is not configured for this source").
-			WithErr(ErrNoTargetForChannel).
+		return nil, errs.InvalidInputErr("channel is not configured for this source").
+			WithErr(ErrNoAddressForChannel).
 			WithStr(fmt.Sprintf("source %q, channel %q", s.ID, c))
 	}
 
-	// Defaults are validated when they are written, but a row predating a rule
-	// change may never have passed through validation. Re-checking is cheap and
-	// turns a silent bad send into a clear failure.
-	if err := c.ValidateTarget(fallback); err != nil {
-		return "", err
+	// Re-checked: a default written before a rule tightened never passed it.
+	return s.one(c, fallback)
+}
+
+func (s *Source) one(c shared.Channel, address string) ([]shared.Recipient, error) {
+	r := shared.Recipient{Channel: c, Address: address}
+	if err := r.Validate(); err != nil {
+		return nil, err
 	}
-	return fallback, nil
+	return []shared.Recipient{r}, nil
 }

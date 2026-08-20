@@ -143,13 +143,13 @@ func TestNewSetRejectsBadInput(t *testing.T) {
 			name: "address shaped for another channel", notifID: notifID,
 			recipients: []shared.Recipient{telegram("ali@example.com")},
 			nextID:     seqIDs(), now: now,
-			sentinel: shared.ErrInvalidTarget, typ: errs.ErrInvalidInput,
+			sentinel: shared.ErrInvalidAddress, typ: errs.ErrInvalidInput,
 		},
 		{
 			name: "empty address", notifID: notifID,
 			recipients: []shared.Recipient{telegram("")},
 			nextID:     seqIDs(), now: now,
-			sentinel: shared.ErrEmptyTarget, typ: errs.ErrInvalidInput,
+			sentinel: shared.ErrEmptyAddress, typ: errs.ErrInvalidInput,
 		},
 		{
 			name: "missing notification id", notifID: "",

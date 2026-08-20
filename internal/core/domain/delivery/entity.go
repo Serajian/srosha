@@ -8,12 +8,9 @@ import (
 	"github.com/Serajian/srosha/pkg/errs"
 )
 
-// Delivery is one message to one recipient.
-//
-// The three exported fields are settled at construction and never change. The
-// rest move together, and only through MarkSent and MarkFailed -- writing one
-// of them alone would produce a row that contradicts itself, such as SENT with
-// a failure reason left over from an earlier attempt.
+// Delivery is one message to one recipient. The exported fields never change;
+// the rest move together through MarkSent and MarkFailed, because writing one
+// alone would produce a row that contradicts itself.
 type Delivery struct {
 	ID             shared.ID
 	NotificationID shared.ID
@@ -29,11 +26,8 @@ type Delivery struct {
 }
 
 // NewSet opens one delivery per recipient. It takes the whole set because both
-// rules it enforces are about the set: at least one, and no repeats.
-//
-// Duplicates are refused on the whole recipient. The same channel twice is
-// normal -- that is one message to several people -- but the same address on
-// the same channel twice is a mistake.
+// rules are about the set: at least one, and no repeats. Duplicates are refused
+// on the whole recipient, so one channel with two addresses stays valid.
 func NewSet(
 	notificationID shared.ID, recipients []shared.Recipient, nextID IDFunc, now time.Time,
 ) ([]Delivery, error) {
@@ -84,8 +78,8 @@ func NewSet(
 	return out, nil
 }
 
-// Restore rebuilds a delivery from storage WITHOUT validation: a row valid when
-// written must stay loadable when a rule tightens. Only the repository calls it.
+// Restore rebuilds from storage WITHOUT validation: a row valid when written
+// must stay loadable when a rule tightens. Repository only.
 func Restore(s Snapshot) *Delivery {
 	return &Delivery{
 		ID:                s.ID,
@@ -116,11 +110,8 @@ func (d *Delivery) IsSettled() bool { return d.status.IsSettled() }
 
 // --- state transitions -----------------------------------------------------
 
-// MarkSent records that the provider accepted the message. It does NOT mean the
-// recipient received it; srosha does not track that.
-//
-// attempts comes from the broker's own delivery count, so an attempt whose
-// process died mid-send is still counted.
+// MarkSent means the provider accepted it, not that anyone received it.
+// attempts comes from the broker, so an attempt that died mid-send still counts.
 func (d *Delivery) MarkSent(providerMessageID string, attempts int, now time.Time) error {
 	if err := d.moveTo(StatusSent, now); err != nil {
 		return err
@@ -132,8 +123,7 @@ func (d *Delivery) MarkSent(providerMessageID string, attempts int, now time.Tim
 	return nil
 }
 
-// MarkFailed records a final failure. Transient failures are not recorded at
-// all -- the delivery stays PENDING and the broker retries it.
+// MarkFailed is final. Transient failures are not recorded; the broker retries.
 func (d *Delivery) MarkFailed(
 	reason FailureReason, detail string, attempts int, now time.Time,
 ) error {
@@ -151,7 +141,6 @@ func (d *Delivery) MarkFailed(
 	return nil
 }
 
-// MarkNotified records that this outcome went out in a status callback.
 func (d *Delivery) MarkNotified(now time.Time) {
 	d.notifiedAt = &now
 }

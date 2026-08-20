@@ -6,13 +6,11 @@ import (
 	"github.com/Serajian/srosha/internal/core/shared"
 )
 
-// IDFunc supplies an id per delivery. Injected, so the domain generates nothing
-// itself and a test can hand it a fixed sequence.
+// IDFunc is injected, so the domain generates no id of its own.
 type IDFunc func() shared.ID
 
-// Snapshot is the whole state of a delivery, flat. It exists so a repository can
-// load and store one without a ten-argument function, and so the guarded fields
-// stay guarded everywhere else.
+// Snapshot is a delivery flattened for storage, so Restore needs no ten-argument
+// signature and the guarded fields stay guarded everywhere else.
 type Snapshot struct {
 	ID             shared.ID
 	NotificationID shared.ID
