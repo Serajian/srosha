@@ -8,6 +8,11 @@ const (
 	minUsernameLen = 5
 	maxUsernameLen = 32
 
+	// Page bounds. The ceiling is hard, so one request cannot pull a whole
+	// table into memory however large a limit it asks for.
+	DefaultPageSize = 50
+	MaxPageSize     = 500
+
 	// E.164 allows 8 to 15 digits after the "+".
 	minE164Digits = 8
 	maxE164Digits = 15

@@ -100,14 +100,17 @@ The format: see `docs/changes/TEMPLATE.md`.
 
 ## Hard rule — ports and their size
 
-- Every domain's `port.go` declares both directions and never merges them: `Driving` is what
-  the core **offers**, `Driven*` is what the core **needs**. A single mixed interface destroys
-  the pattern.
-- A port is declared by its **consumer**, in the core, in terms of what the core needs — never
-  derived from what an adapter happens to provide.
+- The two directions never live together. What the core **needs** is declared in
+  `internal/core/port`, which the service layer imports. What an adapter needs **of** the core
+  is declared in that adapter, next to the code that fakes it in a test.
+- The reason is the same rule in both cases: **a port is declared by its consumer**, in terms of
+  what the consumer needs — never derived from what the other side happens to provide. The core
+  consumes repositories and senders, so it declares them. A gRPC handler consumes a service, so
+  it declares the narrow interface it needs. An interface the core declares and never calls
+  belongs on the other side of the boundary.
 - Name a port method for the business operation, not for the query behind it. If the name only
   makes sense to someone who has seen the SQL, it is at the wrong altitude.
-- Keep ports small. A `Driven*` interface that grows one method per query has stopped being an
+- Keep ports small. An interface that grows one method per query has stopped being an
   abstraction and become a mirror of the database, and it can no longer be faked in a test.
 - The test for both: could a second, completely different adapter implement this interface
   without contortion? If not, the port is leaking.
