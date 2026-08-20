@@ -16,6 +16,11 @@ type Delivery struct {
 	NotificationID shared.ID
 	Recipient      shared.Recipient
 
+	// Which of the source's sending identities to use. Empty means its default
+	// for this channel. Stamped at construction, so changing the source's setup
+	// later cannot move a delivery that is already waiting.
+	SenderName string
+
 	status            Status
 	attempts          int
 	lastError         string
@@ -29,7 +34,8 @@ type Delivery struct {
 // rules are about the set: at least one, and no repeats. Duplicates are refused
 // on the whole recipient, so one channel with two addresses stays valid.
 func NewSet(
-	notificationID shared.ID, recipients []shared.Recipient, nextID IDFunc, now time.Time,
+	notificationID shared.ID, recipients []shared.Recipient,
+	senders map[shared.Channel]string, nextID IDFunc, now time.Time,
 ) ([]Delivery, error) {
 	if notificationID.IsZero() {
 		return nil, errs.InternalErr("notification id is missing").
@@ -71,6 +77,7 @@ func NewSet(
 			ID:             id,
 			NotificationID: notificationID,
 			Recipient:      r,
+			SenderName:     senders[r.Channel],
 			status:         StatusPending,
 			updatedAt:      now,
 		})
@@ -85,6 +92,7 @@ func Restore(s Snapshot) *Delivery {
 		ID:                s.ID,
 		NotificationID:    s.NotificationID,
 		Recipient:         s.Recipient,
+		SenderName:        s.SenderName,
 		status:            s.Status,
 		attempts:          s.Attempts,
 		lastError:         s.LastError,

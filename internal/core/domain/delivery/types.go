@@ -15,6 +15,7 @@ type Snapshot struct {
 	ID             shared.ID
 	NotificationID shared.ID
 	Recipient      shared.Recipient
+	SenderName     string
 
 	Status            Status
 	Attempts          int

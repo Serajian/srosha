@@ -36,11 +36,45 @@ func email(addr string) shared.Recipient {
 
 func newOne(t *testing.T) *delivery.Delivery {
 	t.Helper()
-	set, err := delivery.NewSet(notifID, []shared.Recipient{telegram("123456789")}, seqIDs(), now)
+	set, err := delivery.NewSet(notifID, []shared.Recipient{telegram("123456789")}, nil, seqIDs(), now)
 	if err != nil {
 		t.Fatalf("NewSet() error = %v", err)
 	}
 	return &set[0]
+}
+
+// The identity is stamped per channel, so two channels in one message can be
+// sent from two different senders, and a channel with none falls back to the
+// source's default.
+func TestNewSetStampsTheSenderPerChannel(t *testing.T) {
+	recipients := []shared.Recipient{
+		email("ali@example.com"),
+		telegram("123456789"),
+	}
+	senders := map[shared.Channel]string{shared.ChannelEmail: "marketing"}
+
+	set, err := delivery.NewSet(notifID, recipients, senders, seqIDs(), now)
+	if err != nil {
+		t.Fatalf("NewSet() error = %v", err)
+	}
+
+	if set[0].SenderName != "marketing" {
+		t.Errorf("email SenderName = %q, want marketing", set[0].SenderName)
+	}
+	if set[1].SenderName != "" {
+		t.Errorf("telegram SenderName = %q, want empty (the default)", set[1].SenderName)
+	}
+}
+
+func TestNewSetLeavesTheSenderEmptyWhenNoneIsGiven(t *testing.T) {
+	set, err := delivery.NewSet(
+		notifID, []shared.Recipient{telegram("123456789")}, nil, seqIDs(), now)
+	if err != nil {
+		t.Fatalf("NewSet() error = %v", err)
+	}
+	if set[0].SenderName != "" {
+		t.Errorf("SenderName = %q, want empty", set[0].SenderName)
+	}
 }
 
 func TestNewSetOpensOneDeliveryPerRecipient(t *testing.T) {
@@ -50,7 +84,7 @@ func TestNewSetOpensOneDeliveryPerRecipient(t *testing.T) {
 		{Channel: shared.ChannelWhatsApp, Address: "+989121234567"},
 	}
 
-	set, err := delivery.NewSet(notifID, recipients, seqIDs(), now)
+	set, err := delivery.NewSet(notifID, recipients, nil, seqIDs(), now)
 	if err != nil {
 		t.Fatalf("NewSet() error = %v", err)
 	}
@@ -101,7 +135,7 @@ func TestNewSetAllowsRepeatsThatAreNotDuplicates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			set, err := delivery.NewSet(notifID, tt.recipients, seqIDs(), now)
+			set, err := delivery.NewSet(notifID, tt.recipients, nil, seqIDs(), now)
 			if err != nil {
 				t.Fatalf("NewSet() error = %v", err)
 			}
@@ -173,7 +207,7 @@ func TestNewSetRejectsBadInput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			set, err := delivery.NewSet(tt.notifID, tt.recipients, tt.nextID, tt.now)
+			set, err := delivery.NewSet(tt.notifID, tt.recipients, nil, tt.nextID, tt.now)
 			if err == nil {
 				t.Fatalf("NewSet() = %+v, want an error", set)
 			}
@@ -308,6 +342,7 @@ func TestMarkSentClearsAnEarlierFailure(t *testing.T) {
 		ID:             shared.ID("01J8XQ2M4E7N9V3B5C6D7F8G01"),
 		NotificationID: notifID,
 		Recipient:      telegram("123456789"),
+		SenderName:     "marketing",
 		Status:         delivery.StatusPending,
 		Attempts:       3,
 		LastError:      "timeout",
@@ -332,6 +367,7 @@ func TestRestoreRoundTrip(t *testing.T) {
 		ID:                shared.ID("01J8XQ2M4E7N9V3B5C6D7F8G01"),
 		NotificationID:    notifID,
 		Recipient:         email("ali@example.com"),
+		SenderName:        "marketing",
 		Status:            delivery.StatusFailed,
 		Attempts:          5,
 		LastError:         "mailbox full",
@@ -345,6 +381,9 @@ func TestRestoreRoundTrip(t *testing.T) {
 
 	if d.ID != snap.ID || d.NotificationID != snap.NotificationID || d.Recipient != snap.Recipient {
 		t.Error("identity fields not carried through")
+	}
+	if d.SenderName != snap.SenderName {
+		t.Errorf("SenderName = %q, want %q", d.SenderName, snap.SenderName)
 	}
 	if d.Status() != snap.Status || d.Attempts() != snap.Attempts {
 		t.Error("state not carried through")
