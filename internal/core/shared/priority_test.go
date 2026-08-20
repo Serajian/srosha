@@ -1,6 +1,7 @@
 package shared_test
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -108,5 +109,63 @@ func TestValidAndStringForOutOfRange(t *testing.T) {
 	}
 	if got := rogue.String(); got != "Priority(7)" {
 		t.Errorf("String() = %q, want a debuggable form", got)
+	}
+}
+
+// On a wire the name is what a human reading a stuck message needs; the number
+// says nothing without the source in front of you.
+func TestPriorityMarshalsAsItsName(t *testing.T) {
+	for _, tt := range []struct {
+		p    shared.Priority
+		want string
+	}{
+		{shared.PriorityNormal, `"NORMAL"`},
+		{shared.PriorityHigh, `"HIGH"`},
+		{shared.PriorityCritical, `"CRITICAL"`},
+	} {
+		got, err := json.Marshal(tt.p)
+		if err != nil {
+			t.Fatalf("Marshal(%v) error = %v", tt.p, err)
+		}
+		if string(got) != tt.want {
+			t.Errorf("Marshal(%v) = %s, want %s", tt.p, got, tt.want)
+		}
+	}
+}
+
+// Written and read through the same map, so a value always survives the trip.
+func TestPriorityRoundTrips(t *testing.T) {
+	for _, want := range []shared.Priority{
+		shared.PriorityNormal, shared.PriorityHigh, shared.PriorityCritical,
+	} {
+		b, err := json.Marshal(want)
+		if err != nil {
+			t.Fatalf("Marshal() error = %v", err)
+		}
+
+		var got shared.Priority
+		if err := json.Unmarshal(b, &got); err != nil {
+			t.Fatalf("Unmarshal(%s) error = %v", b, err)
+		}
+		if got != want {
+			t.Errorf("round trip gave %v, want %v", got, want)
+		}
+	}
+}
+
+func TestPriorityUnmarshalRejects(t *testing.T) {
+	for _, in := range []string{`"URGENT"`, `""`, `"high"`, `1`, `null`} {
+		var p shared.Priority
+		if err := json.Unmarshal([]byte(in), &p); err == nil {
+			t.Errorf("Unmarshal(%s) was accepted as %v", in, p)
+		}
+	}
+}
+
+// A value outside the three constants must not be written at all: it would
+// arrive as something no reader can parse back.
+func TestPriorityMarshalRejectsAnUnknownValue(t *testing.T) {
+	if _, err := json.Marshal(shared.Priority(42)); err == nil {
+		t.Error("Marshal accepted a priority that is not one of the three")
 	}
 }
