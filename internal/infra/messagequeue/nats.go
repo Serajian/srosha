@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -73,6 +74,10 @@ type NATS struct {
 	// closed is shut by nats itself once draining has finished, which is the
 	// only way to wait for a Drain: it returns before the work is done.
 	closed chan struct{}
+
+	// lastErr is written from the library's callbacks and read by waitReady.
+	mu      sync.Mutex
+	lastErr error
 }
 
 // New checks the configuration and touches nothing. Connect does the I/O, so a
@@ -104,7 +109,16 @@ func (n *NATS) Connect(ctx context.Context) error {
 		nats.RetryOnFailedConnect(true),
 		nats.ClosedHandler(func(*nats.Conn) { close(closed) }),
 		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
+			// A drain disconnects on purpose and reports no error. Warning
+			// about it would put a line in every clean shutdown log.
+			if err == nil {
+				return
+			}
+			n.noteError(err)
 			n.log.WarnContext(ctx, "nats disconnected", "err", err)
+		}),
+		nats.ReconnectErrHandler(func(_ *nats.Conn, err error) {
+			n.noteError(err)
 		}),
 		nats.ReconnectHandler(func(c *nats.Conn) {
 			n.log.InfoContext(ctx, "nats reconnected", "url", c.ConnectedUrlRedacted())
@@ -205,19 +219,48 @@ func (n *NATS) waitReady(ctx context.Context) error {
 			return nil
 		}
 		if deadline.Err() != nil {
-			return fmt.Errorf("messagequeue: not reachable in %s: %w",
-				n.cfg.ConnectTimeout, last)
+			return n.unreachable(last)
 		}
 
-		n.log.WarnContext(ctx, "nats not ready yet", "err", last)
+		n.log.WarnContext(ctx, "nats not ready yet", "err", n.reason(last))
 
 		select {
 		case <-deadline.Done():
-			return fmt.Errorf("messagequeue: not reachable in %s: %w",
-				n.cfg.ConnectTimeout, last)
+			return n.unreachable(last)
 		case <-time.After(n.cfg.ReconnectWait):
 		}
 	}
+}
+
+func (n *NATS) unreachable(last error) error {
+	return fmt.Errorf("messagequeue: not reachable in %s: %w",
+		n.cfg.ConnectTimeout, n.reason(last))
+}
+
+// noteError keeps why an attempt failed. During the first connect,
+// RetryOnFailedConnect reports the reason through ReconnectErrHandler and
+// nowhere else -- not through LastError, not through the disconnect handler --
+// so without this the process only ever learns that a deadline expired.
+//
+// The callback runs on the library's own goroutine, hence the lock.
+func (n *NATS) noteError(err error) {
+	n.mu.Lock()
+	n.lastErr = err
+	n.mu.Unlock()
+}
+
+// reason prefers what an attempt actually said over the deadline that ran out
+// on it. It is the difference between "no servers available" and
+// "authorization violation", and only one of those tells an operator what to do.
+func (n *NATS) reason(fallback error) error {
+	n.mu.Lock()
+	last := n.lastErr
+	n.mu.Unlock()
+
+	if last != nil {
+		return n.redact(last)
+	}
+	return fallback
 }
 
 // redact keeps the url out of an error. The url carries the password, and an

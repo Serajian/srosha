@@ -70,14 +70,15 @@ func NewLogger(cfg Config, out io.Writer) (*slog.Logger, error) {
 
 	var handler slog.Handler
 	if cfg.Format == formatText {
+		opts.ReplaceAttr = forAPerson
 		handler = slog.NewTextHandler(out, opts)
 	} else {
 		handler = slog.NewJSONHandler(out, opts)
 	}
 
 	log := slog.New(handler).With(
-		slog.String("service", cfg.Service),
-		slog.String("binary", cfg.Binary),
+		slog.String(attrService, cfg.Service),
+		slog.String(attrBinary, cfg.Binary),
 	)
 
 	slog.SetDefault(log)
@@ -97,4 +98,20 @@ func parseLevel(name string) (slog.Level, bool) {
 	default:
 		return slog.LevelInfo, false
 	}
+}
+
+// forAPerson trims what only a machine needs. Someone watching a terminal knows
+// which binary they started and what day it is; service and binary exist so one
+// collector can tell two processes apart, and the collector reads json.
+//
+// The two formats therefore carry different fields on purpose. json is the
+// record; text is a view of it.
+func forAPerson(_ []string, a slog.Attr) slog.Attr {
+	switch a.Key {
+	case slog.TimeKey:
+		return slog.String(slog.TimeKey, a.Value.Time().Format(clockOnly))
+	case attrService, attrBinary:
+		return slog.Attr{}
+	}
+	return a
 }

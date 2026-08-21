@@ -1,0 +1,71 @@
+# Local development only.
+#
+# This is not the compose that gets deployed. That one is written on its own
+# branch, publishes no host port, and carries more than this: it is the file
+# docs/CONFIG.md describes. Here the binaries run on the host with `go run`, so
+# postgres has to be reachable from it.
+#
+# nats runs here too: the one on the server is not reachable from outside it.
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: srosha-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-srosha}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-srosha}
+      POSTGRES_DB: ${POSTGRES_DB:-srosha}
+    ports:
+      # Bound to loopback on purpose. The port exists so `go run` on this
+      # machine can reach it, and nothing beyond this machine has any business
+      # doing so. 7001 is BASE_PORT + 1, the scheme the Makefile already uses.
+      - "127.0.0.1:7001:5432"
+    volumes:
+      # /var/lib/postgresql, not /data -- see docs/CONFIG.md.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      # pg_isready proves the socket answers. It does not prove the role exists
+      # or that a query would succeed: a deployed cluster once reported healthy
+      # here while every connection failed with `role "srosha" does not exist`.
+      # It is enough to gate startup and no more -- the service's own /readyz
+      # runs a real query, which is the whole reason it does.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-srosha} -d ${POSTGRES_DB:-srosha}"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  nats:
+    # Pinned to the same tag as the server. A local broker on a different minor
+    # is a local broker that can disagree with production about something.
+    image: nats:2.14-alpine
+    container_name: srosha-nats-dev
+    restart: unless-stopped
+    # -js turns JetStream on. Without it the server still accepts connections
+    # and still answers a plain ping, but AccountInfo fails -- which is exactly
+    # what our readiness check asks, and exactly why it asks that and not a ping.
+    #
+    # No nats-server.conf here, so no accounts and no permissions: locally the
+    # url carries no credentials. The deployed broker runs one user per binary
+    # with its own permissions, so a permission mistake will NOT show up here.
+    command: ["-js", "-sd", "/data/jetstream", "-m", "8222"]
+    ports:
+      # Loopback only, same reasoning as postgres. 7002 is BASE_PORT + 2, the
+      # scheme the Makefile already uses.
+      - "127.0.0.1:7002:4222"
+      # 8222, the monitoring port, is deliberately NOT published: it is
+      # unauthenticated. See docs/CONFIG.md.
+    volumes:
+      - natsdata:/data/jetstream
+    healthcheck:
+      # /healthz reports JetStream readiness, not just that the process is up --
+      # the same check the deployed broker uses.
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  pgdata:
+  natsdata:

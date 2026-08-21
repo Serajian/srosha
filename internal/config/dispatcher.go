@@ -11,6 +11,7 @@ import (
 type Dispatcher struct {
 	App        settings.App
 	HTTP       settings.HTTP
+	HTTPServer settings.HTTPServer
 	HTTPClient settings.HTTPClient
 	DB         settings.DB
 	MQ         settings.MQ
@@ -27,13 +28,14 @@ func LoadDispatcher() (Dispatcher, error) {
 	c := Dispatcher{
 		App:        app,
 		HTTP:       settings.LoadHTTP(r),
+		HTTPServer: settings.LoadHTTPServer(r),
 		HTTPClient: settings.LoadHTTPClient(r),
 		DB:         settings.LoadDB(r),
 		MQ:         settings.LoadMQ(r),
 		Sender:     settings.LoadSender(r),
 		Webhook:    settings.LoadWebhook(r, app.IsProduction()),
 		Dispatch:   settings.LoadDispatch(r),
-		Telemetry:  settings.LoadTelemetry(r),
+		Telemetry:  settings.LoadTelemetry(r, app.IsProduction()),
 	}
 
 	if err := r.Err(); err != nil {

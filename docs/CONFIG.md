@@ -73,6 +73,27 @@ network; `ports:` is never used.
 Services address each other by **compose service name** — `postgres`, `nats` —
 never by Dokploy's suffixed container names.
 
+### Local development
+
+Not the deployed stack. `deployment/app/docker-compose.dev.yml` runs the
+dependencies only; the binaries run on the host with `make run-gateway`.
+
+| | |
+| --- | --- |
+| Compose file | `deployment/app/docker-compose.dev.yml` |
+| postgres | `127.0.0.1:7001` → 5432, image `postgres:18-alpine` |
+| nats | `127.0.0.1:7002` → 4222, image `nats:2.14-alpine`, JetStream on (`-js`) |
+| Targets | `make dev-up`, `dev-down`, `dev-del`, `dev-reset`, `dev-ps`, `dev-logs`, `dev-ready` |
+
+The ports follow the Makefile's `BASE_PORT` (7000) scheme and are published on
+**loopback only** — the one place `ports:` is used, and only because a binary
+running on this machine has to reach them. The deployed compose still publishes
+nothing.
+
+The local nats runs with **no accounts and no permissions**, while the deployed
+one runs one user per binary from `nats-server.conf`. A permission mistake will
+therefore not show up locally.
+
 ### PostgreSQL
 
 | | |
@@ -113,6 +134,7 @@ Every key, with its defaults and which binary needs it, is documented in
 | app | `NOTIF_APP_ENV`, `NOTIF_APP_SERVICE_NAME`, `NOTIF_APP_SHUTDOWN_TIMEOUT` | ✅ | ✅ |
 | grpc | `NOTIF_GRPC_ADDR`, `NOTIF_GRPC_HTTP_ADDR` | ✅ | — |
 | http | `NOTIF_HTTP_ADDR` | — | ✅ |
+| http server | `NOTIF_HTTP_SERVER_READ_HEADER_TIMEOUT`, `NOTIF_HTTP_SERVER_READ_TIMEOUT`, `NOTIF_HTTP_SERVER_WRITE_TIMEOUT`, `NOTIF_HTTP_SERVER_IDLE_TIMEOUT` | ✅ | ✅ |
 | http client | `NOTIF_HTTP_CLIENT_TIMEOUT`, `NOTIF_HTTP_CLIENT_DIAL_TIMEOUT`, `NOTIF_HTTP_CLIENT_TLS_TIMEOUT`, `NOTIF_HTTP_CLIENT_MAX_IDLE_CONNS`, `NOTIF_HTTP_CLIENT_MAX_IDLE_PER_HOST`, `NOTIF_HTTP_CLIENT_IDLE_CONN_TIMEOUT` | — | ✅ |
 | db | `NOTIF_DB_DSN`, `NOTIF_DB_MAX_CONNS`, `NOTIF_DB_MAX_CONN_LIFETIME`, `NOTIF_DB_MAX_CONN_IDLE_TIME`, `NOTIF_DB_HEALTH_CHECK_PERIOD`, `NOTIF_DB_CONNECT_TIMEOUT`, `NOTIF_DB_CONNECT_ATTEMPTS`, `NOTIF_DB_CONNECT_BACKOFF` | ✅ | ✅ |
 | mq | `NOTIF_MQ_URL`, `NOTIF_MQ_STREAM`, `NOTIF_MQ_DUPLICATE_WINDOW`, `NOTIF_MQ_CONNECT_TIMEOUT`, `NOTIF_MQ_MAX_RECONNECTS`, `NOTIF_MQ_RECONNECT_WAIT`, `NOTIF_MQ_DRAIN_TIMEOUT` | ✅ | ✅ |

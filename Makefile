@@ -26,6 +26,24 @@ endif
 DOCKER_DIR      := deployment/app
 DOCKER_COMPOSE  := $(DOCKER_DIR)/docker-compose.yml
 DOCKER_FILE     := $(DOCKER_DIR)/Dockerfile
+
+# The local dependencies only -- postgres and nats, each published on loopback
+# so a binary running here with `go run` can reach them. Deliberately a
+# different file from DOCKER_COMPOSE: that one is the deployed stack, publishes
+# no host port, and is written on its own branch.
+DOCKER_COMPOSE_DEV := $(DOCKER_DIR)/docker-compose.dev.yml
+
+# Where each binary answers /healthz and /readyz. Read from the per-binary env
+# file (":8080" -> "8080"); falls back to the documented default.
+GATEWAY_HEALTH_PORT ?= $(shell grep -sE '^NOTIF_GRPC_HTTP_ADDR=' .env.gateway .env | tail -1 | cut -d= -f2 | tr -d '[:space:]' | sed 's/.*://')
+ifeq ($(strip $(GATEWAY_HEALTH_PORT)),)
+GATEWAY_HEALTH_PORT := 8080
+endif
+
+DISPATCHER_HEALTH_PORT ?= $(shell grep -sE '^NOTIF_HTTP_ADDR=' .env.dispatcher .env | tail -1 | cut -d= -f2 | tr -d '[:space:]' | sed 's/.*://')
+ifeq ($(strip $(DISPATCHER_HEALTH_PORT)),)
+DISPATCHER_HEALTH_PORT := 8081
+endif
 DOCKER_IMAGE    := $(APP_NAME):latest
 DOCKER_ENV_FILE := .env
 
@@ -169,15 +187,18 @@ clean: ## [Build] Remove build artifacts and coverage output
 # ==================================================================================== #
 # RUN
 # ==================================================================================== #
+# Built and then run, rather than `go run`: go run returns non-zero when its
+# child takes a signal, so a clean Ctrl-C came out looking like a failed build.
+# Running the binary means the exit code is the service's own.
 .PHONY: run-gateway
-run-gateway: ## [Run] Run the gateway locally
+run-gateway: build-gateway ## [Run] Run the gateway locally
 	@echo "$(COLOR_YELLOW)🚀 Running gateway...$(COLOR_RESET)"
-	@go run $(CMD_DIR)/gateway
+	@$(BUILD_DIR)/gateway
 
 .PHONY: run-dispatcher
-run-dispatcher: ## [Run] Run the dispatcher locally
+run-dispatcher: build-dispatcher ## [Run] Run the dispatcher locally
 	@echo "$(COLOR_YELLOW)🚀 Running dispatcher...$(COLOR_RESET)"
-	@go run $(CMD_DIR)/dispatcher
+	@$(BUILD_DIR)/dispatcher
 
 .PHONY: free-port
 free-port: ## [Run] Free GRPC_PORT by stopping whatever is listening on it
@@ -499,6 +520,64 @@ docker-reset: docker-del docker-up ## [Docker] Reset docker environment (down -v
 .PHONY: docker-logs
 docker-logs: ## [Docker] Follow the compose logs
 	@docker compose --env-file $(DOCKER_ENV_FILE) -f $(DOCKER_COMPOSE) logs -f
+
+# ==================================================================================== #
+# LOCAL DEPENDENCIES
+# ==================================================================================== #
+# postgres and nats in containers, the binaries with `go run` on this machine.
+# Nothing here is the deployed stack: see DOCKER_COMPOSE_DEV above.
+
+.PHONY: dev-up
+dev-up: ## [Dev] Start postgres and nats locally, and wait until both are healthy
+	@echo "$(COLOR_YELLOW)🐳 Starting local dependencies...$(COLOR_RESET)"
+	@docker compose -f $(DOCKER_COMPOSE_DEV) up -d
+	@echo "$(COLOR_YELLOW)⏳ Waiting for them to report healthy...$(COLOR_RESET)"
+	@for i in $$(seq 1 40); do \
+	   unhealthy=$$(docker compose -f $(DOCKER_COMPOSE_DEV) ps --format '{{.Service}} {{.Health}}' \
+	      | grep -v ' healthy$$' || true); \
+	   if [ -z "$$unhealthy" ]; then \
+	      echo "$(COLOR_GREEN)✅ Local dependencies are up.$(COLOR_RESET)"; \
+	      exit 0; \
+	   fi; \
+	   sleep 2; \
+	done; \
+	echo "$(COLOR_RED)❌ Still not healthy after 80s:$(COLOR_RESET)"; \
+	docker compose -f $(DOCKER_COMPOSE_DEV) ps; \
+	exit 1
+
+.PHONY: dev-down
+dev-down: ## [Dev] Stop the local dependencies, keeping their data
+	@docker compose -f $(DOCKER_COMPOSE_DEV) down
+	@echo "$(COLOR_GREEN)✅ Local dependencies stopped.$(COLOR_RESET)"
+
+.PHONY: dev-del
+dev-del: ## [Dev] Stop them and delete their volumes
+	@docker compose -f $(DOCKER_COMPOSE_DEV) down -v
+	@echo "$(COLOR_GREEN)✅ Local dependencies and their data removed.$(COLOR_RESET)"
+
+.PHONY: dev-reset
+dev-reset: dev-del dev-up ## [Dev] Throw the local data away and start again
+
+.PHONY: dev-ps
+dev-ps: ## [Dev] Show what is running locally
+	@docker compose -f $(DOCKER_COMPOSE_DEV) ps
+
+.PHONY: dev-logs
+dev-logs: ## [Dev] Follow the local dependency logs
+	@docker compose -f $(DOCKER_COMPOSE_DEV) logs -f
+
+.PHONY: dev-ready
+dev-ready: ## [Dev] Ask each running binary whether it is ready
+	@for pair in "gateway $(GATEWAY_HEALTH_PORT)" "dispatcher $(DISPATCHER_HEALTH_PORT)"; do \
+	   set -- $$pair; \
+	   printf '%-11s ' "$$1"; \
+	   body=$$(curl -s --max-time 2 "localhost:$$2/readyz" 2>/dev/null); \
+	   if [ -z "$$body" ]; then \
+	      echo "$(COLOR_YELLOW)not running on :$$2$(COLOR_RESET)"; \
+	   else \
+	      echo "$$body"; \
+	   fi; \
+	done
 
 # ==================================================================================== #
 # MIGRATIONS (goose)

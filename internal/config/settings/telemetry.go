@@ -14,10 +14,18 @@ type Telemetry struct {
 	LogSource bool
 }
 
-func LoadTelemetry(r *env.Reader) Telemetry {
+// LoadTelemetry defaults the format to what the reader of the logs actually is:
+// a collector in production, a person at a terminal anywhere else. Setting
+// NOTIF_TELEMETRY_LOG_FORMAT still wins over both.
+func LoadTelemetry(r *env.Reader, production bool) Telemetry {
+	format := "text"
+	if production {
+		format = "json"
+	}
+
 	t := Telemetry{
 		LogLevel:  r.Str("TELEMETRY_LOG_LEVEL", "info"),
-		LogFormat: r.Str("TELEMETRY_LOG_FORMAT", "json"),
+		LogFormat: r.Str("TELEMETRY_LOG_FORMAT", format),
 		LogSource: r.Bool("TELEMETRY_LOG_SOURCE", false),
 	}
 

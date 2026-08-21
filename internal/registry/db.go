@@ -38,6 +38,7 @@ func Postgres(
 	}
 
 	res.add(step{
+		tier:  tierStore,
 		name:  "postgres",
 		ready: db.Ping,
 		close: func(context.Context) error { db.Close(); return nil },

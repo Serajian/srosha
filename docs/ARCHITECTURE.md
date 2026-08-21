@@ -87,3 +87,42 @@ when the service is under load.
 A row that keeps failing would otherwise be picked up on every run until the end
 of time, and never reported to the source. Giving up is what turns a silent loop
 into an answer: `FAILED`, with a reason, on a row the source can query.
+
+---
+
+## Shutdown order is declared, not inherited
+
+Dependencies close by **tier**, from the outside in: listeners, then outbound
+clients, then the broker, then the store. The tiers are named in
+`internal/registry/const.go`, each carrying the reason it sits where it does.
+
+### The alternative, and why not
+
+Closing in the reverse of the order things opened also works, and it has one
+property tiers do not: it maintains itself. Open something after what it depends
+on and its shutdown is automatically right.
+
+What it does not do is say anything. The order becomes a consequence of how
+`bootstrap` happens to be written, so moving two lines silently changes what
+happens on shutdown and nothing fails. Anyone reading `Close` sees a reversed
+loop, not a decision.
+
+A tier says what a dependency **is**, not where it was opened. Within one tier
+there is nothing to sort by, so those still unwind in the reverse of the order
+they were built -- the dispatcher holds two http clients at the same tier, so
+that case is real.
+
+The cost is accepted deliberately: a tier is a second source of truth, and a
+wrong one is a silent bug the reverse order could not have had.
+
+### Readiness has no tiers
+
+Closing has an order because it pulls something out from under someone. Asking a
+question does not, so `Ready` checks everything and no order is defined.
+
+It reports each dependency **separately** rather than as one joined error,
+because whoever asked has to know *which* one is down -- and the only other way
+to tell would be to read the error's message, which this repository forbids.
+The reason itself never leaves the process: it names our dependencies and the
+addresses they live at, so it goes to the log while the endpoint answers with
+names and a status.
