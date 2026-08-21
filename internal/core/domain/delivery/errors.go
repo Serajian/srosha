@@ -9,6 +9,9 @@ var (
 
 	ErrNotFound = errors.New("delivery not found")
 
+	ErrUnknownStatus        = errors.New("unknown delivery status")
+	ErrUnknownFailureReason = errors.New("unknown failure reason")
+
 	ErrMissingNotification  = errors.New("notification id is required")
 	ErrMissingIDFunc        = errors.New("delivery id generator is required")
 	ErrMissingFailureReason = errors.New("failure reason is required")

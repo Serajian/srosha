@@ -1,6 +1,7 @@
 package delivery_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/Serajian/srosha/internal/core/domain/delivery"
@@ -111,4 +112,75 @@ func TestEmptyFailureReasonIsRejected(t *testing.T) {
 	if zero.Valid() {
 		t.Error("the zero FailureReason must not be valid")
 	}
+}
+
+func TestStatusJSON(t *testing.T) {
+	all := []delivery.Status{
+		delivery.StatusPending, delivery.StatusSent, delivery.StatusFailed,
+	}
+
+	t.Run("round trip", func(t *testing.T) {
+		for _, want := range all {
+			b, err := json.Marshal(want)
+			if err != nil {
+				t.Fatalf("Marshal(%v) error = %v", want, err)
+			}
+
+			var got delivery.Status
+			if err := json.Unmarshal(b, &got); err != nil {
+				t.Fatalf("Unmarshal(%s) error = %v", b, err)
+			}
+			if got != want {
+				t.Errorf("round trip gave %q, want %q", got, want)
+			}
+		}
+	})
+
+	// A status outside the transition table has nowhere to go, so it must not
+	// arrive from a wire at all.
+	t.Run("refuses what it does not know", func(t *testing.T) {
+		for _, in := range []string{`"DELIVERED"`, `""`, `"sent"`, `1`, `null`} {
+			var s delivery.Status
+			if err := json.Unmarshal([]byte(in), &s); err == nil {
+				t.Errorf("Unmarshal(%s) was accepted as %q", in, s)
+			}
+		}
+	})
+
+	t.Run("refuses to write what it does not know", func(t *testing.T) {
+		if _, err := json.Marshal(delivery.Status("DELIVERED")); err == nil {
+			t.Error("Marshal accepted a status that is not in the table")
+		}
+	})
+}
+
+func TestFailureReasonJSON(t *testing.T) {
+	t.Run("round trip", func(t *testing.T) {
+		for _, want := range []delivery.FailureReason{
+			delivery.FailureExpired, delivery.FailureMaxAttempts,
+			delivery.FailurePermanent, delivery.FailureNoSender,
+		} {
+			b, err := json.Marshal(want)
+			if err != nil {
+				t.Fatalf("Marshal(%v) error = %v", want, err)
+			}
+
+			var got delivery.FailureReason
+			if err := json.Unmarshal(b, &got); err != nil {
+				t.Fatalf("Unmarshal(%s) error = %v", b, err)
+			}
+			if got != want {
+				t.Errorf("round trip gave %q, want %q", got, want)
+			}
+		}
+	})
+
+	t.Run("refuses what it does not know", func(t *testing.T) {
+		for _, in := range []string{`"BECAUSE"`, `""`, `"expired"`, `null`} {
+			var r delivery.FailureReason
+			if err := json.Unmarshal([]byte(in), &r); err == nil {
+				t.Errorf("Unmarshal(%s) was accepted as %q", in, r)
+			}
+		}
+	})
 }

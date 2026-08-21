@@ -2,6 +2,13 @@
 // that keeps a redelivered message from being sent twice.
 package delivery
 
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/Serajian/srosha/pkg/errs"
+)
+
 // Status is the state of one delivery.
 type Status string
 
@@ -63,3 +70,63 @@ func (r FailureReason) Valid() bool {
 }
 
 func (r FailureReason) String() string { return string(r) }
+
+// MarshalJSON and UnmarshalJSON keep an unknown status off a wire in either
+// direction. A Status that is not in the transition table has nowhere to go and
+// nothing downstream knows what to do with it.
+func (s Status) MarshalJSON() ([]byte, error) {
+	if !s.Valid() {
+		return nil, errs.InternalErr("unknown delivery status").
+			WithErr(ErrUnknownStatus).
+			WithStr(fmt.Sprintf("got %q", string(s)))
+	}
+	return json.Marshal(string(s))
+}
+
+func (s *Status) UnmarshalJSON(b []byte) error {
+	got, err := decode[Status](b, "unknown delivery status", ErrUnknownStatus)
+	if err != nil {
+		return err
+	}
+	*s = got
+	return nil
+}
+
+func (r FailureReason) MarshalJSON() ([]byte, error) {
+	if !r.Valid() {
+		return nil, errs.InternalErr("unknown failure reason").
+			WithErr(ErrUnknownFailureReason).
+			WithStr(fmt.Sprintf("got %q", string(r)))
+	}
+	return json.Marshal(string(r))
+}
+
+func (r *FailureReason) UnmarshalJSON(b []byte) error {
+	got, err := decode[FailureReason](b, "unknown failure reason", ErrUnknownFailureReason)
+	if err != nil {
+		return err
+	}
+	*r = got
+	return nil
+}
+
+// decode reads a name and refuses anything the type does not recognize.
+func decode[T interface {
+	~string
+	Valid() bool
+}](b []byte, msg string, sentinel error) (T, error) {
+	var name string
+	if err := json.Unmarshal(b, &name); err != nil {
+		return "", errs.InvalidInputErr(msg).
+			WithErr(sentinel).
+			WithStr(fmt.Sprintf("got %s", b))
+	}
+
+	got := T(name)
+	if !got.Valid() {
+		return "", errs.InvalidInputErr(msg).
+			WithErr(sentinel).
+			WithStr(fmt.Sprintf("got %q", name))
+	}
+	return got, nil
+}

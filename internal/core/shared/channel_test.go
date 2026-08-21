@@ -1,6 +1,7 @@
 package shared_test
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -179,4 +180,40 @@ func TestInvalidTargetMessageHidesTheValue(t *testing.T) {
 	if ae.Reason() == nil || !strings.Contains(ae.Reason().Error(), "989121234567") {
 		t.Errorf("reason should keep the value for debugging: %v", ae.Reason())
 	}
+}
+
+// An unknown channel must not cross a wire in either direction: decoded
+// quietly, it becomes a value every switch downstream has to guess at.
+func TestChannelJSON(t *testing.T) {
+	t.Run("round trip", func(t *testing.T) {
+		for _, want := range shared.AllChannels() {
+			b, err := json.Marshal(want)
+			if err != nil {
+				t.Fatalf("Marshal(%v) error = %v", want, err)
+			}
+
+			var got shared.Channel
+			if err := json.Unmarshal(b, &got); err != nil {
+				t.Fatalf("Unmarshal(%s) error = %v", b, err)
+			}
+			if got != want {
+				t.Errorf("round trip gave %q, want %q", got, want)
+			}
+		}
+	})
+
+	t.Run("refuses what it does not know", func(t *testing.T) {
+		for _, in := range []string{`"carrier-pigeon"`, `""`, `"EMAIL"`, `1`, `null`} {
+			var c shared.Channel
+			if err := json.Unmarshal([]byte(in), &c); err == nil {
+				t.Errorf("Unmarshal(%s) was accepted as %q", in, c)
+			}
+		}
+	})
+
+	t.Run("refuses to write what it does not know", func(t *testing.T) {
+		if _, err := json.Marshal(shared.Channel("carrier-pigeon")); err == nil {
+			t.Error("Marshal accepted a channel that is not one of the four")
+		}
+	})
 }
