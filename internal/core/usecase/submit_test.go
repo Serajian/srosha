@@ -233,7 +233,9 @@ func TestSubmitRefuses(t *testing.T) {
 			name:  "custom address from a source that may not name one",
 			tweak: func(r *rig, _ *options) { r.src.AllowCustomAddress = false },
 			mutate: func(c *usecase.SubmitCommand) {
-				c.Routes = []source.Route{{Channel: shared.ChannelEmail, Address: "someone@else.com"}}
+				c.Routes = []source.Route{
+					{Channel: shared.ChannelEmail, Address: "someone@else.com"},
+				}
 			},
 			sentinel: source.ErrCustomAddressNotAllowed, typ: errs.ErrForbidden,
 		},
