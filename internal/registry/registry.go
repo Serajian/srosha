@@ -39,26 +39,32 @@ func (r *Resources) add(s step) {
 	r.steps = append(r.steps, s)
 }
 
-// Ready is what a readiness endpoint calls: a process that cannot reach its
-// database is alive but not ready, and saying otherwise earns it traffic it
-// cannot serve.
+// Check is one dependency and what it answered. Err is nil when it is fine.
+type Check struct {
+	Name string
+	Err  error
+}
+
+// Ready asks everything that has health of its own and reports each answer
+// separately.
 //
-// It checks everything instead of stopping at the first failure, because an
-// operator reading the log wants every name, not the first one. Tiers do not
-// apply here: asking a question of something changes nothing, so there is no
-// order to get wrong.
-func (r *Resources) Ready(ctx context.Context) error {
-	var failures []error
+// Separately, rather than one joined error, because whoever asked needs to know
+// WHICH dependency is down, and the only other way to tell would be to read the
+// error's text -- which is exactly what this repository forbids.
+//
+// It asks all of them instead of stopping at the first failure: an operator
+// wants every name, not the first one. Tiers do not apply here -- asking a
+// question of something changes nothing, so there is no order to get wrong.
+func (r *Resources) Ready(ctx context.Context) []Check {
+	checks := make([]Check, 0, len(r.steps))
 
 	for _, s := range r.steps {
 		if s.ready == nil {
 			continue
 		}
-		if err := s.ready(ctx); err != nil {
-			failures = append(failures, fmt.Errorf("%s: %w", s.name, err))
-		}
+		checks = append(checks, Check{Name: s.name, Err: s.ready(ctx)})
 	}
-	return errors.Join(failures...)
+	return checks
 }
 
 // Close shuts everything down from the highest tier to the lowest, and within

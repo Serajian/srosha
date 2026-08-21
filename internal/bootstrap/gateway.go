@@ -26,11 +26,11 @@ func Gateway(ctx context.Context, cfg config.Gateway) (*App, error) {
 		return abandon(ctx, res, err)
 	}
 
-	server, err := healthServer(ctx, cfg.GRPC.HTTPAddr, cfg.HTTPServer, log, res)
+	server, err := httpServer(ctx, binaryGateway, cfg.GRPC.HTTPAddr, cfg.HTTPServer, log, res)
 	if err != nil {
 		return abandon(ctx, res, err)
 	}
 
-	log.InfoContext(ctx, "gateway started", "health", server.Addr())
+	log.InfoContext(ctx, "gateway started", "http", server.Addr())
 	return &App{log: log, resources: res, server: server}, nil
 }

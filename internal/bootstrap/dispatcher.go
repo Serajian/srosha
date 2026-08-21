@@ -35,11 +35,11 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 		return abandon(ctx, res, err)
 	}
 
-	server, err := healthServer(ctx, cfg.HTTP.Addr, cfg.HTTPServer, log, res)
+	server, err := httpServer(ctx, binaryDispatcher, cfg.HTTP.Addr, cfg.HTTPServer, log, res)
 	if err != nil {
 		return abandon(ctx, res, err)
 	}
 
-	log.InfoContext(ctx, "dispatcher started", "health", server.Addr())
+	log.InfoContext(ctx, "dispatcher started", "http", server.Addr())
 	return &App{log: log, resources: res, server: server}, nil
 }

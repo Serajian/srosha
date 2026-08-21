@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/Serajian/srosha/internal/adapter/api/health"
+	srhttp "github.com/Serajian/srosha/internal/adapter/api/http"
 	"github.com/Serajian/srosha/internal/config/settings"
 	"github.com/Serajian/srosha/internal/infra/httpserver"
 	"github.com/Serajian/srosha/internal/infra/telemetry"
@@ -61,18 +61,44 @@ func logger(t settings.Telemetry, service, binary string) (*slog.Logger, error) 
 	}, os.Stderr)
 }
 
-// healthServer registers at the top tier, so it stops accepting before
-// anything it was using goes away and a request in flight still finds
-// everything it needs underneath it.
-func healthServer(
+// httpServer registers at the top tier, so it stops accepting before anything
+// it was using goes away and a request in flight still finds everything it
+// needs underneath it.
+//
+// Today it serves only health. Every other http route this service grows is
+// mounted inside api/http, not opened as a second listener here.
+func httpServer(
 	ctx context.Context,
+	binary string,
 	addr string,
 	s settings.HTTPServer,
 	log *slog.Logger,
 	res *registry.Resources,
 ) (*httpserver.Server, error) {
-	return registry.HTTPServer(ctx, "health server", addr, s,
-		health.Handler(res.Ready, log), res)
+	handler, err := srhttp.New(srhttp.Deps{
+		Binary: binary,
+		Ready:  checks(res),
+		Log:    log,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return registry.HTTPServer(ctx, "http server", addr, s, handler, res)
+}
+
+// checks carries registry's answers across to the adapter's own type. The two
+// are deliberately separate: an adapter may not see registry, and bootstrap is
+// the one place that sees both.
+func checks(res *registry.Resources) func(context.Context) []srhttp.Check {
+	return func(ctx context.Context) []srhttp.Check {
+		got := res.Ready(ctx)
+
+		out := make([]srhttp.Check, 0, len(got))
+		for _, c := range got {
+			out = append(out, srhttp.Check{Name: c.Name, Err: c.Err})
+		}
+		return out
+	}
 }
 
 // abandon closes whatever already opened before giving up on the rest. Without

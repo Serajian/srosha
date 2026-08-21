@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"strings"
 	"testing"
 
 	"github.com/Serajian/srosha/internal/config/settings"
@@ -132,34 +131,63 @@ func TestCloseTwiceIsSafe(t *testing.T) {
 	}
 }
 
-func TestReadyNamesEveryDependencyThatIsDown(t *testing.T) {
+// Ready reports each dependency separately: whoever asked has to know WHICH one
+// is down, and reading it out of an error's text is exactly what is forbidden.
+func TestReadyReportsEachDependencySeparately(t *testing.T) {
 	res := New(discard())
 
-	res.add(step{name: "postgres", close: noop, ready: func(context.Context) error {
+	res.add(step{tier: tierStore, name: "postgres", close: noop, ready: func(context.Context) error {
 		return errors.New("connection refused")
 	}})
-	res.add(step{name: "nats", close: noop, ready: func(context.Context) error {
-		return errors.New("no servers available")
-	}})
+	res.add(step{tier: tierBroker, name: "nats", close: noop, ready: noop})
 
-	err := res.Ready(context.Background())
-	if err == nil {
-		t.Fatal("want both failures reported")
+	checks := res.Ready(context.Background())
+	if len(checks) != 2 {
+		t.Fatalf("got %d checks, want 2", len(checks))
 	}
-	for _, name := range []string{"postgres", "nats"} {
-		if !strings.Contains(err.Error(), name) {
-			t.Fatalf("%q does not name %s", err, name)
-		}
+
+	got := map[string]error{}
+	for _, c := range checks {
+		got[c.Name] = c.Err
+	}
+	if got["postgres"] == nil {
+		t.Error("postgres answered but is down")
+	}
+	if got["nats"] != nil {
+		t.Errorf("nats is up but reported %v", got["nats"])
 	}
 }
 
+// One failure must not hide the next: an operator wants every name.
+func TestReadyDoesNotStopAtTheFirstFailure(t *testing.T) {
+	res := New(discard())
+
+	for _, name := range []string{"postgres", "nats"} {
+		res.add(step{tier: tierStore, name: name, close: noop, ready: func(context.Context) error {
+			return errors.New("down")
+		}})
+	}
+
+	down := 0
+	for _, c := range res.Ready(context.Background()) {
+		if c.Err != nil {
+			down++
+		}
+	}
+	if down != 2 {
+		t.Errorf("%d reported down, want 2", down)
+	}
+}
+
+// Something with no health of its own is not asked, and does not appear as a
+// dependency that failed to answer.
 func TestReadyIgnoresWhatHasNoHealth(t *testing.T) {
 	res := New(discard())
 
-	res.add(step{name: "http client", close: noop})
+	res.add(step{tier: tierClient, name: "http client", close: noop})
 
-	if err := res.Ready(context.Background()); err != nil {
-		t.Fatalf("want ready, got %v", err)
+	if checks := res.Ready(context.Background()); len(checks) != 0 {
+		t.Fatalf("got %d checks, want none", len(checks))
 	}
 }
 
