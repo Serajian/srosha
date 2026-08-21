@@ -18,7 +18,7 @@ var (
 )
 
 // seqIDs hands out a fixed sequence, so a test can name the ids it expects.
-func seqIDs() delivery.IDFunc {
+func seqIDs() shared.IDFunc {
 	n := 0
 	return func() shared.ID {
 		n++
@@ -157,7 +157,7 @@ func TestNewSetRejectsBadInput(t *testing.T) {
 		name       string
 		notifID    shared.ID
 		recipients []shared.Recipient
-		nextID     delivery.IDFunc
+		nextID     shared.IDFunc
 		now        time.Time
 		sentinel   error
 		typ        errs.Type

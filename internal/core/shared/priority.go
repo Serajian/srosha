@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/Serajian/srosha/pkg/errs"
@@ -74,4 +75,35 @@ func ParsePriority(s string) (Priority, error) {
 	return 0, errs.InvalidInputErr("unknown priority").
 		WithErr(ErrUnknownPriority).
 		WithStr(fmt.Sprintf("got %q", s))
+}
+
+// MarshalJSON writes the name, not the number. In memory an ordered integer is
+// what the comparison rule needs; on a wire, "1" tells whoever is reading a
+// stuck message nothing at all.
+//
+// Both directions go through String and ParsePriority, which read the same map,
+// so what is written can always be read back.
+func (p Priority) MarshalJSON() ([]byte, error) {
+	if !p.Valid() {
+		return nil, errs.InternalErr("unknown priority").
+			WithErr(ErrUnknownPriority).
+			WithStr(fmt.Sprintf("got %d", int8(p)))
+	}
+	return json.Marshal(p.String())
+}
+
+func (p *Priority) UnmarshalJSON(b []byte) error {
+	var name string
+	if err := json.Unmarshal(b, &name); err != nil {
+		return errs.InvalidInputErr("unknown priority").
+			WithErr(ErrUnknownPriority).
+			WithStr(fmt.Sprintf("got %s", b))
+	}
+
+	parsed, err := ParsePriority(name)
+	if err != nil {
+		return err
+	}
+	*p = parsed
+	return nil
 }

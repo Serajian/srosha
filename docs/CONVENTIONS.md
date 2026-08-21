@@ -100,16 +100,25 @@ The format: see `docs/changes/TEMPLATE.md`.
 
 ## Hard rule — ports and their size
 
-- The two directions never live together. What the core **needs** is declared in
-  `internal/core/port`, which the service layer imports. What an adapter needs **of** the core
-  is declared in that adapter, next to the code that fakes it in a test.
-- The reason is the same rule in both cases: **a port is declared by its consumer**, in terms of
-  what the consumer needs — never derived from what the other side happens to provide. The core
-  consumes repositories and senders, so it declares them. A gRPC handler consumes a service, so
-  it declares the narrow interface it needs. An interface the core declares and never calls
-  belongs on the other side of the boundary.
-- Name a port method for the business operation, not for the query behind it. If the name only
-  makes sense to someone who has seen the SQL, it is at the wrong altitude.
+- **A port lives with the thing that owns it.** Each domain declares its own in
+  `domain/<name>/port.go`, and that file names nothing but what that one aggregate needs. What
+  belongs to no aggregate — the clock, the id generator, the rate limiter, the unit of work, the
+  sender registry — is declared in `core/usecase/port.go`, because that is the layer that uses
+  it. There is no package whose only job is to hold interfaces.
+- **A port is declared by its consumer**, in terms of what the consumer needs — never derived
+  from what the other side happens to provide. A gRPC handler consumes a use case, so it
+  declares the narrow interface it fakes in its own test. An interface the core declares and
+  never calls belongs on the other side of the boundary.
+- A repository interface that names two aggregates is a repository in the wrong package. Reading
+  both is the use case's job, not one repository's.
+- **A repository speaks CRUD**, because that is what it does: `Create`, `Read`, `List`, `Page`,
+  `Update`, `Delete`. `Read` returns one row, `List` returns many, `Page` returns one page of
+  many. What it filters on goes in a `By...` suffix — `ReadByID`, `PageByNotificationID`,
+  `ListBySourceAndChannel`.
+- **A service speaks the business**: `Open`, `Sent`, `Failed`, `Publish`. That is the layer where
+  a name must say what happened, not what was selected.
+- Keeping the two apart is the point. A business-sounding name on a plain lookup makes it harder
+  to find and no clearer to read; a CRUD name on a business operation throws the meaning away.
 - Keep ports small. An interface that grows one method per query has stopped being an
   abstraction and become a mirror of the database, and it can no longer be faked in a test.
 - The test for both: could a second, completely different adapter implement this interface
@@ -174,7 +183,8 @@ The format: see `docs/changes/TEMPLATE.md`.
 
 ## Hard rule — testing
 
-- A domain service is unit-tested with **fake ports and no infrastructure at all**. If a core
+- A domain service and a use case are unit-tested with **fake ports and no infrastructure
+  at all**. If a core
   test needs a container, the port is wrong, not the test.
 - Adapters are what integration tests are for: the repository against a real database, the
   consumer against a real broker.

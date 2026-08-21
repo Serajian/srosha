@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/mail"
 	"strconv"
@@ -161,4 +162,32 @@ func isE164(s string) bool {
 		}
 	}
 	return true
+}
+
+// MarshalJSON and UnmarshalJSON keep an unknown channel from crossing a wire in
+// either direction. Without them "carrier-pigeon" decodes quietly into a
+// Channel that every switch downstream has to guess at.
+func (c Channel) MarshalJSON() ([]byte, error) {
+	if !c.Valid() {
+		return nil, errs.InternalErr("unknown channel").
+			WithErr(ErrUnknownChannel).
+			WithStr(fmt.Sprintf("got %q", string(c)))
+	}
+	return json.Marshal(string(c))
+}
+
+func (c *Channel) UnmarshalJSON(b []byte) error {
+	var name string
+	if err := json.Unmarshal(b, &name); err != nil {
+		return errs.InvalidInputErr("unknown channel").
+			WithErr(ErrUnknownChannel).
+			WithStr(fmt.Sprintf("got %s", b))
+	}
+
+	parsed, err := ParseChannel(name)
+	if err != nil {
+		return err
+	}
+	*c = parsed
+	return nil
 }

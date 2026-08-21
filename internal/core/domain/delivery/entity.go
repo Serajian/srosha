@@ -35,7 +35,7 @@ type Delivery struct {
 // on the whole recipient, so one channel with two addresses stays valid.
 func NewSet(
 	notificationID shared.ID, recipients []shared.Recipient,
-	senders map[shared.Channel]string, nextID IDFunc, now time.Time,
+	senders map[shared.Channel]string, nextID shared.IDFunc, now time.Time,
 ) ([]Delivery, error) {
 	if notificationID.IsZero() {
 		return nil, errs.InternalErr("notification id is missing").

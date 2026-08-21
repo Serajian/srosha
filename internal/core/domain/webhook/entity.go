@@ -20,9 +20,7 @@ type Webhook struct {
 	ID       shared.ID
 	SourceID string
 
-	CallbackURL   string
-	BatchInterval time.Duration
-	MaxBatchSize  int
+	CallbackURL string
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -46,26 +44,14 @@ func New(
 	if err := validateURL(r.CallbackURL, p); err != nil {
 		return nil, err
 	}
-	if r.BatchInterval < 0 || r.BatchInterval > MaxBatchInterval {
-		return nil, errs.InvalidInputErr("batch interval is out of range").
-			WithErr(ErrBatchIntervalOutOfRange).
-			WithStr(fmt.Sprintf("got %s, max %s", r.BatchInterval, MaxBatchInterval))
-	}
-	if r.MaxBatchSize < 1 || r.MaxBatchSize > MaxBatchSize {
-		return nil, errs.InvalidInputErr("batch size is out of range").
-			WithErr(ErrBatchSizeOutOfRange).
-			WithStr(fmt.Sprintf("got %d, allowed 1..%d", r.MaxBatchSize, MaxBatchSize))
-	}
 
 	return &Webhook{
-		ID:            id,
-		SourceID:      sourceID,
-		CallbackURL:   r.CallbackURL,
-		BatchInterval: r.BatchInterval,
-		MaxBatchSize:  r.MaxBatchSize,
-		CreatedAt:     now,
-		UpdatedAt:     now,
-		isActive:      true,
+		ID:          id,
+		SourceID:    sourceID,
+		CallbackURL: r.CallbackURL,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		isActive:    true,
 	}, nil
 }
 
@@ -75,8 +61,6 @@ func Restore(s Snapshot) *Webhook {
 		ID:                  s.ID,
 		SourceID:            s.SourceID,
 		CallbackURL:         s.CallbackURL,
-		BatchInterval:       s.BatchInterval,
-		MaxBatchSize:        s.MaxBatchSize,
 		CreatedAt:           s.CreatedAt,
 		UpdatedAt:           s.UpdatedAt,
 		isActive:            s.IsActive,
@@ -84,9 +68,23 @@ func Restore(s Snapshot) *Webhook {
 	}
 }
 
+// Redirect points an existing webhook somewhere else. It validates exactly as
+// New does -- an address that would be refused today must not slip in through
+// an update -- and clears the failure run, because a new address has not failed
+// at anything yet.
+func (w *Webhook) Redirect(r Registration, p URLPolicy, now time.Time) error {
+	if err := validateURL(r.CallbackURL, p); err != nil {
+		return err
+	}
+	w.CallbackURL = r.CallbackURL
+	w.isActive = true
+	w.consecutiveFailures = 0
+	w.UpdatedAt = now
+	return nil
+}
+
 func (w *Webhook) IsActive() bool           { return w.isActive }
 func (w *Webhook) ConsecutiveFailures() int { return w.consecutiveFailures }
-func (w *Webhook) SendsImmediately() bool   { return w.BatchInterval == 0 }
 
 // RecordSuccess clears the failure run, so an endpoint that fails now and then
 // is never switched off.
