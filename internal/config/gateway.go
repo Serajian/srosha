@@ -26,14 +26,15 @@ type Gateway struct {
 func LoadGateway() (Gateway, error) {
 	r := reader("gateway")
 
+	app := settings.LoadApp(r)
 	c := Gateway{
-		App:        settings.LoadApp(r),
+		App:        app,
 		GRPC:       settings.LoadGRPC(r),
 		HTTPServer: settings.LoadHTTPServer(r),
 		DB:         settings.LoadDB(r),
 		MQ:         settings.LoadMQ(r),
 		RateLimit:  settings.LoadRateLimit(r),
-		Telemetry:  settings.LoadTelemetry(r),
+		Telemetry:  settings.LoadTelemetry(r, app.IsProduction()),
 	}
 
 	if err := r.Err(); err != nil {

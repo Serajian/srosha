@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"log/slog"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -96,8 +97,38 @@ func TestTextFormatIsNotJSON(t *testing.T) {
 	if strings.HasPrefix(strings.TrimSpace(out.String()), "{") {
 		t.Errorf("text format produced json: %s", out.String())
 	}
-	if !strings.Contains(out.String(), "binary=gateway") {
-		t.Errorf("text format dropped the attributes: %s", out.String())
+	// service and binary are left out on purpose: they are there so one
+	// collector can tell two processes apart, and a person at a terminal
+	// already knows which one they started.
+	for _, noise := range []string{"service=", "binary="} {
+		if strings.Contains(out.String(), noise) {
+			t.Errorf("text format still carries %q: %s", noise, out.String())
+		}
+	}
+	if !strings.Contains(out.String(), "started") {
+		t.Errorf("text format dropped the message: %s", out.String())
+	}
+}
+
+// The date and the offset belong in the record, not on a terminal.
+func TestTextFormatShowsTheClockOnly(t *testing.T) {
+	var out bytes.Buffer
+
+	cfg := sane()
+	cfg.Format = "text"
+
+	log, err := telemetry.NewLogger(cfg, &out)
+	if err != nil {
+		t.Fatalf("NewLogger() error = %v", err)
+	}
+	log.Info("started")
+
+	line := out.String()
+	if strings.Contains(line, "T") && strings.Contains(line, "+") {
+		t.Errorf("text format still carries the full timestamp: %s", line)
+	}
+	if !regexp.MustCompile(`time=\d{2}:\d{2}:\d{2}\.\d{3}`).MatchString(line) {
+		t.Errorf("time is not a plain clock: %s", line)
 	}
 }
 

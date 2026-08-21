@@ -35,7 +35,7 @@ func LoadDispatcher() (Dispatcher, error) {
 		Sender:     settings.LoadSender(r),
 		Webhook:    settings.LoadWebhook(r, app.IsProduction()),
 		Dispatch:   settings.LoadDispatch(r),
-		Telemetry:  settings.LoadTelemetry(r),
+		Telemetry:  settings.LoadTelemetry(r, app.IsProduction()),
 	}
 
 	if err := r.Err(); err != nil {
