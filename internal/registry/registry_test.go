@@ -18,26 +18,19 @@ func discard() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, ni
 
 func noop(context.Context) error { return nil }
 
-func TestClosesInReverseOfOpening(t *testing.T) {
-	res := New(discard())
-
-	var closed []string
-	record := func(name string) func(context.Context) error {
-		return func(context.Context) error {
-			closed = append(closed, name)
-			return nil
-		}
+func recorder(closed *[]string, name string) func(context.Context) error {
+	return func(context.Context) error {
+		*closed = append(*closed, name)
+		return nil
 	}
+}
 
-	res.add(step{name: "postgres", close: record("postgres")})
-	res.add(step{name: "nats", close: record("nats")})
-	res.add(step{name: "consumer", close: record("consumer")})
+func assertOrder(t *testing.T, closed, want []string) {
+	t.Helper()
 
-	if err := res.Close(context.Background()); err != nil {
-		t.Fatalf("close: %v", err)
+	if len(closed) != len(want) {
+		t.Fatalf("closed %v, want %v", closed, want)
 	}
-
-	want := []string{"consumer", "nats", "postgres"}
 	for i := range want {
 		if closed[i] != want[i] {
 			t.Fatalf("closed %v, want %v", closed, want)
@@ -45,15 +38,68 @@ func TestClosesInReverseOfOpening(t *testing.T) {
 	}
 }
 
+// The tier decides, not the order things were opened in. They go in here
+// deliberately scrambled: if insertion order still decided, this would come out
+// backwards.
+func TestClosesFromTheOutsideIn(t *testing.T) {
+	res := New(discard())
+
+	var closed []string
+	res.add(step{tier: tierClient, name: "http client", close: recorder(&closed, "http client")})
+	res.add(step{tier: tierServer, name: "server", close: recorder(&closed, "server")})
+	res.add(step{tier: tierStore, name: "postgres", close: recorder(&closed, "postgres")})
+	res.add(step{tier: tierBroker, name: "nats", close: recorder(&closed, "nats")})
+
+	if err := res.Close(context.Background()); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	assertOrder(t, closed, []string{"server", "http client", "nats", "postgres"})
+}
+
+// Within one tier there is nothing to sort by, so they still unwind the way
+// they were built.
+func TestOneTierClosesInReverseOfOpening(t *testing.T) {
+	res := New(discard())
+
+	var closed []string
+	res.add(step{tier: tierClient, name: "webhook", close: recorder(&closed, "webhook")})
+	res.add(step{tier: tierClient, name: "sender", close: recorder(&closed, "sender")})
+
+	if err := res.Close(context.Background()); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	assertOrder(t, closed, []string{"sender", "webhook"})
+}
+
+// Every tier has to be walked. A dependency at a tier Close skips would be left
+// open with nothing left to notice.
+func TestNoTierIsSkipped(t *testing.T) {
+	res := New(discard())
+
+	var closed []string
+	for tr := tierStore; tr <= tierHighest; tr++ {
+		res.add(step{tier: tr, name: "x", close: recorder(&closed, "x")})
+	}
+
+	if err := res.Close(context.Background()); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if want := int(tierHighest-tierStore) + 1; len(closed) != want {
+		t.Fatalf("closed %d of %d tiers", len(closed), want)
+	}
+}
+
 func TestCloseKeepsGoingPastAFailure(t *testing.T) {
 	res := New(discard())
 
 	poolClosed := false
-	res.add(step{name: "postgres", close: func(context.Context) error {
+	res.add(step{tier: tierStore, name: "postgres", close: func(context.Context) error {
 		poolClosed = true
 		return nil
 	}})
-	res.add(step{name: "nats", close: func(context.Context) error {
+	res.add(step{tier: tierBroker, name: "nats", close: func(context.Context) error {
 		return errors.New("drain timed out")
 	}})
 

@@ -35,6 +35,7 @@ func NATS(
 	}
 
 	res.add(step{
+		tier:  tierBroker,
 		name:  "nats",
 		ready: mq.Ping,
 		close: mq.Drain,

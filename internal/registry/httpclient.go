@@ -56,6 +56,7 @@ func openHTTPClient(name string, cfg httpclient.Config, res *Resources) (*http.C
 	}
 
 	res.add(step{
+		tier: tierClient,
 		name: name,
 		close: func(context.Context) error {
 			client.CloseIdleConnections()
