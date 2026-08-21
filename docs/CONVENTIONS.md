@@ -219,6 +219,19 @@ The format: see `docs/changes/TEMPLATE.md`.
   the package is named for an activity rather than for the thing it keeps.
 - Left unenforced, `entity.go` becomes where types go when nobody decided where they belong.
 
+## Hard rule — only bootstrap opens infrastructure
+
+- `internal/registry/` is the only package that opens a technology, and `internal/bootstrap/`
+  is the only package that may import it. Everything else receives what was opened.
+- Opening a dependency somewhere other than the one place that closes it is how a process ends
+  up holding a pool nobody shuts down.
+- `internal/registry/` holds **one file per technology**. A second technology is a second file,
+  never a second branch in an existing one.
+- `internal/infra/<tech>/` never imports `internal/config` or `internal/registry`. It declares
+  its own `Config` type, and translating the service's settings into it is registry's job. That
+  is what keeps an infra package copyable into a service that knows nothing about srosha.
+- `make arch-check` enforces both directions.
+
 ## Hard rule — where new code goes
 
 - `pkg/` — generic, zero domain knowledge. The test: could this package be copied into a
