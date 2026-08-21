@@ -322,8 +322,13 @@ The format: see `docs/changes/TEMPLATE.md`.
   `feat/postgres-notification-repo` is reported in
   `docs/changes/YYYY-MM-DD-postgres-notification-repo.md`. A branch whose slug has no matching
   report is a branch whose report was not written.
-- **One branch, one change.** If the slug needs an "and" in it, it is two branches. The naming
-  limit is deliberately also a size limit.
+- **One branch, one change** — where a change is what lands in one merge request. A branch that
+  carries several independent commits under one theme is allowed, provided **every commit still
+  brings its own report**. The slug then names the theme and the reports name the commits:
+  `feat/infra-layer` carrying `infra-messagequeue`, `infra-httpclient` and `infra-telemetry` is
+  one branch. `feat/nats-and-grpc` is two.
+- If the slug needs an "and" in it, it is still two branches. The naming limit is deliberately
+  also a size limit.
 - Every branch is cut from `master` and merged back into `master`, and is deleted after the merge.
 
 Examples:
