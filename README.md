@@ -6,6 +6,7 @@
   <a href="https://go.dev"><img alt="Go 1.26" src="https://img.shields.io/badge/Go-1.26-33A5DE?labelColor=0F172A"></a>
   <img alt="Status: in development" src="https://img.shields.io/badge/status-in%20development-4934A2?labelColor=0F172A">
   <img alt="Channels: 4" src="https://img.shields.io/badge/channels-Email%20%C2%B7%20Telegram%20%C2%B7%20Bale%20%C2%B7%20WhatsApp-3256AE?labelColor=0F172A">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-317DC6?labelColor=0F172A"></a>
 </p>
 
 **Srosha** is an asynchronous notification service written in Go. A client submits
@@ -89,3 +90,7 @@ HTML), no attachments, no scheduling, no templating.
 - [Conventions](docs/CONVENTIONS.md) — the rules every change follows
 - [Config](docs/CONFIG.md) — every address, port, path and key in one place
 - [Change reports](docs/changes/) — this project's memory, one file per change
+
+## License
+
+[MIT](LICENSE)
