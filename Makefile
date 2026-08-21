@@ -362,6 +362,23 @@ arch-check: ## [Lint] Fail if the domain layer imports anything it must not
 	   exit 1; \
 	fi
 	@echo "$(COLOR_GREEN)✅ Domain layer is clean.$(COLOR_RESET)"
+	@echo "$(COLOR_YELLOW)🏛  Checking who opens infrastructure...$(COLOR_RESET)"
+	@edges=$$(go list -f '{{$$p := .ImportPath}}{{range .Imports}}{{$$p}} {{.}}{{"\n"}}{{end}}' ./... 2>/dev/null); \
+	bad=$$(echo "$$edges" | grep " $(MODULE)/internal/registry$$" \
+	   | grep -vE '^$(MODULE)/internal/(registry|bootstrap) ' || true); \
+	if [ -n "$$bad" ]; then \
+	   echo "$(COLOR_RED)❌ only bootstrap may import internal/registry.$(COLOR_RESET)"; \
+	   echo "$$bad" | sed 's/^/     /'; \
+	   exit 1; \
+	fi; \
+	bad=$$(echo "$$edges" | grep -E '^$(MODULE)/internal/infra/' \
+	   | grep -E " $(MODULE)/internal/(config|registry)($$|/)" || true); \
+	if [ -n "$$bad" ]; then \
+	   echo "$(COLOR_RED)❌ internal/infra must not import config or registry.$(COLOR_RESET)"; \
+	   echo "$$bad" | sed 's/^/     /'; \
+	   exit 1; \
+	fi
+	@echo "$(COLOR_GREEN)✅ Infrastructure boundaries are clean.$(COLOR_RESET)"
 
 .PHONY: vulncheck
 vulncheck: ## [Lint] Scan for known vulnerabilities reachable from our code (govulncheck)
