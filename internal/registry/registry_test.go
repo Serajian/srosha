@@ -129,3 +129,16 @@ func TestPostgresRefusesAnEmptyDSN(t *testing.T) {
 		t.Fatal("a failed open must not leave a step behind")
 	}
 }
+
+// NATS is not reachable without a broker, so this holds the one thing that
+// fails before any I/O: a config the infra package refuses.
+func TestNATSRefusesAnEmptyURL(t *testing.T) {
+	res := New(discard())
+
+	if _, err := NATS(context.Background(), settings.MQ{}, res); err == nil {
+		t.Fatal("want an empty url refused")
+	}
+	if len(res.steps) != 0 {
+		t.Fatal("a failed open must not leave a step behind")
+	}
+}
