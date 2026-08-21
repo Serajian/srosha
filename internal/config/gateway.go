@@ -10,12 +10,13 @@ import (
 // shared config would make it refuse to start over a Telegram token it never
 // uses.
 type Gateway struct {
-	App       settings.App
-	GRPC      settings.GRPC
-	DB        settings.DB
-	MQ        settings.MQ
-	RateLimit settings.RateLimit
-	Telemetry settings.Telemetry
+	App        settings.App
+	GRPC       settings.GRPC
+	HTTPServer settings.HTTPServer
+	DB         settings.DB
+	MQ         settings.MQ
+	RateLimit  settings.RateLimit
+	Telemetry  settings.Telemetry
 }
 
 // LoadGateway reads the environment and reports everything wrong with it at
@@ -26,12 +27,13 @@ func LoadGateway() (Gateway, error) {
 	r := reader("gateway")
 
 	c := Gateway{
-		App:       settings.LoadApp(r),
-		GRPC:      settings.LoadGRPC(r),
-		DB:        settings.LoadDB(r),
-		MQ:        settings.LoadMQ(r),
-		RateLimit: settings.LoadRateLimit(r),
-		Telemetry: settings.LoadTelemetry(r),
+		App:        settings.LoadApp(r),
+		GRPC:       settings.LoadGRPC(r),
+		HTTPServer: settings.LoadHTTPServer(r),
+		DB:         settings.LoadDB(r),
+		MQ:         settings.LoadMQ(r),
+		RateLimit:  settings.LoadRateLimit(r),
+		Telemetry:  settings.LoadTelemetry(r),
 	}
 
 	if err := r.Err(); err != nil {
