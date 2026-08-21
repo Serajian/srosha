@@ -31,6 +31,9 @@ func Gateway(ctx context.Context, cfg config.Gateway) (*App, error) {
 		return abandon(ctx, res, err)
 	}
 
-	log.InfoContext(ctx, "gateway started", "http", server.Addr())
+	// service and binary are already on every line, so naming them again here
+	// would be a duplicate key in json and nothing at all in text, where the
+	// handler drops them. env is the one thing this line adds.
+	log.InfoContext(ctx, "gateway started", "env", cfg.App.Env, "http", server.Addr())
 	return &App{log: log, resources: res, server: server}, nil
 }

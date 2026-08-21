@@ -40,6 +40,11 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 		return abandon(ctx, res, err)
 	}
 
-	log.InfoContext(ctx, "dispatcher started", "http", server.Addr())
+	log.InfoContext(ctx,
+		"dispatcher started",
+		"service", cfg.App.ServiceName,
+		"env", cfg.App.Env,
+		"http", server.Addr(),
+	)
 	return &App{log: log, resources: res, server: server}, nil
 }
