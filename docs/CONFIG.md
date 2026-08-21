@@ -119,7 +119,7 @@ Every key, with its defaults and which binary needs it, is documented in
 | ratelimit | `NOTIF_RATELIMIT_PER_MINUTE` | ✅ | — |
 | sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN` | — | ✅ |
 | webhook | `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_ATTEMPTS` | — | ✅ |
-| telemetry | `NOTIF_TELEMETRY_LOG_LEVEL` | ✅ | ✅ |
+| telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ |
 
 `NOTIF_MQ_URL` carries a **different** NATS user per binary. Do not collapse them.
 
