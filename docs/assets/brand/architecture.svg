@@ -1,0 +1,71 @@
+<svg viewBox="0 0 1200 440" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img">
+  <title>Srosha architecture: client submits to the gateway, which persists to PostgreSQL and publishes to NATS JetStream; the dispatcher consumes, sends over Email, Telegram, Bale and WhatsApp, and fires a signed status webhook back to the client</title>
+  <rect x="0" y="0" width="1200" height="440" rx="16" fill="#0f172a"/>
+
+  <!-- client -->
+  <rect x="55" y="165" width="160" height="86" rx="10" fill="#1a2440" stroke="#33a5de" stroke-width="1.5"/>
+  <text x="135" y="202" text-anchor="middle" fill="#f2f5fa" font-size="22" font-weight="600">Client</text>
+  <text x="135" y="230" text-anchor="middle" fill="#8fa0bd" font-size="17">any service</text>
+
+  <!-- gateway -->
+  <rect x="320" y="150" width="205" height="116" rx="10" fill="#1a2440" stroke="#3256ae" stroke-width="1.5"/>
+  <text x="422" y="186" text-anchor="middle" fill="#f2f5fa" font-size="22" font-weight="600">gateway</text>
+  <text x="422" y="214" text-anchor="middle" fill="#8fa0bd" font-size="17">gRPC :50051</text>
+  <text x="422" y="238" text-anchor="middle" fill="#8fa0bd" font-size="17">REST :8080</text>
+
+  <!-- nats -->
+  <rect x="620" y="62" width="215" height="80" rx="10" fill="#1a2440" stroke="#4934a2" stroke-width="1.5"/>
+  <text x="727" y="96" text-anchor="middle" fill="#f2f5fa" font-size="21" font-weight="600">NATS JetStream</text>
+  <text x="727" y="122" text-anchor="middle" fill="#8fa0bd" font-size="17">work queue</text>
+
+  <!-- postgres -->
+  <rect x="620" y="296" width="215" height="80" rx="10" fill="#1a2440" stroke="#4934a2" stroke-width="1.5"/>
+  <text x="727" y="330" text-anchor="middle" fill="#f2f5fa" font-size="21" font-weight="600">PostgreSQL</text>
+  <text x="727" y="356" text-anchor="middle" fill="#8fa0bd" font-size="17">state of record</text>
+
+  <!-- dispatcher -->
+  <rect x="620" y="172" width="215" height="86" rx="10" fill="#1a2440" stroke="#3256ae" stroke-width="1.5"/>
+  <text x="727" y="208" text-anchor="middle" fill="#f2f5fa" font-size="22" font-weight="600">dispatcher</text>
+  <text x="727" y="236" text-anchor="middle" fill="#8fa0bd" font-size="17">consume · send · record</text>
+
+  <!-- channels -->
+  <rect x="990" y="58" width="150" height="58" rx="10" fill="#12305c" stroke="#33a5de" stroke-width="1.5"/>
+  <text x="1065" y="94" text-anchor="middle" fill="#e8f2fb" font-size="20" font-weight="600">Email</text>
+  <rect x="990" y="146" width="150" height="58" rx="10" fill="#12305c" stroke="#33a5de" stroke-width="1.5"/>
+  <text x="1065" y="182" text-anchor="middle" fill="#e8f2fb" font-size="20" font-weight="600">Telegram</text>
+  <rect x="990" y="234" width="150" height="58" rx="10" fill="#12305c" stroke="#33a5de" stroke-width="1.5"/>
+  <text x="1065" y="270" text-anchor="middle" fill="#e8f2fb" font-size="20" font-weight="600">Bale</text>
+  <rect x="990" y="322" width="150" height="58" rx="10" fill="#12305c" stroke="#33a5de" stroke-width="1.5"/>
+  <text x="1065" y="358" text-anchor="middle" fill="#e8f2fb" font-size="20" font-weight="600">WhatsApp</text>
+
+  <!-- arrows -->
+  <defs>
+    <marker id="arw" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0 0 L9 4 L0 8 Z" fill="#33a5de"/>
+    </marker>
+    <marker id="arwv" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0 0 L9 4 L0 8 Z" fill="#7a5fd0"/>
+    </marker>
+  </defs>
+
+  <line x1="215" y1="196" x2="312" y2="196" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
+  <text x="263" y="184" text-anchor="middle" fill="#33a5de" font-size="17">submit</text>
+  <line x1="312" y1="228" x2="220" y2="228" stroke="#8fa0bd" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arw)"/>
+  <text x="266" y="252" text-anchor="middle" fill="#8fa0bd" font-size="17">ack + id</text>
+
+  <line x1="525" y1="180" x2="612" y2="112" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
+  <text x="556" y="128" text-anchor="middle" fill="#9d8fe0" font-size="17">publish</text>
+  <line x1="525" y1="240" x2="612" y2="324" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
+  <text x="548" y="300" text-anchor="middle" fill="#9d8fe0" font-size="17">persist</text>
+
+  <line x1="727" y1="150" x2="727" y2="164" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
+  <line x1="727" y1="266" x2="727" y2="288" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
+
+  <line x1="843" y1="196" x2="982" y2="92" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="843" y1="210" x2="982" y2="176" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="843" y1="226" x2="982" y2="260" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="843" y1="240" x2="982" y2="344" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
+
+  <path d="M727 376 L727 408 L135 408 L135 259" stroke="#8fa0bd" stroke-width="2" fill="none" stroke-dasharray="6 5" marker-end="url(#arw)"/>
+  <text x="430" y="398" text-anchor="middle" fill="#8fa0bd" font-size="17">status webhook, signed with HMAC</text>
+</svg>
