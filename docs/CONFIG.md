@@ -153,6 +153,20 @@ connection URL. Generate with `openssl rand -hex 24`.
 
 ---
 
+## Brand assets
+
+| | |
+| --- | --- |
+| Directory | `docs/assets/brand/` |
+| Logo (vector, master) | `docs/assets/brand/srosha-logo.svg` |
+| Logo PNG | `docs/assets/brand/srosha-{16,32,64,256,512}.png` |
+| Monochrome | `docs/assets/brand/srosha-mono-512.png` (سرمه‌ای), `srosha-mono-white-512.png` (سفید) |
+| README hero | `docs/assets/brand/srosha-hero.png` — 1280×400 |
+| Palette | `#3256AE` royal · `#33A5DE` sky · `#4934A2` violet · `#317DC6` azure · `#10182B` ink |
+| Wordmark font | Onest (Google Fonts), weight 700 |
+
+---
+
 ## Migrations
 
 | | |
