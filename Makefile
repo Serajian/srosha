@@ -657,14 +657,13 @@ test-race: ## [Test] Run race-detector tests across all packages (used by prepus
 	@echo "$(COLOR_GREEN)✓ Race tests passed$(COLOR_RESET)"
 
 .PHONY: test-integration
-test-integration: ## [Test] Run integration tests (skipped until tests/integration exists)
-	@if [ ! -d $(INTEGRATION_DIR) ]; then \
-	   echo "$(COLOR_YELLOW)no $(INTEGRATION_DIR) yet — skipping.$(COLOR_RESET)"; \
-	else \
-	   echo "$(COLOR_BLUE)→ Running integration tests...$(COLOR_RESET)"; \
-	   go test -v -timeout=$(INTEGRATION_TEST_TIMEOUT) $(INTEGRATION_DIR)/... ; \
-	   echo "$(COLOR_GREEN)✓ Integration tests passed$(COLOR_RESET)"; \
+test-integration: ## [Test] Run tests that need a real database (needs: make dev-up)
+	@echo "$(COLOR_BLUE)→ Running integration tests...$(COLOR_RESET)"
+	@go test -tags integration -timeout=$(INTEGRATION_TEST_TIMEOUT) ./... 
+	@if [ -d $(INTEGRATION_DIR) ]; then \
+	   go test -tags integration -timeout=$(INTEGRATION_TEST_TIMEOUT) $(INTEGRATION_DIR)/...; \
 	fi
+	@echo "$(COLOR_GREEN)✓ Integration tests passed$(COLOR_RESET)"
 
 .PHONY: test-short
 test-short: ## [Test] Run only short tests
