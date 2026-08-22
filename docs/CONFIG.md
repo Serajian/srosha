@@ -145,6 +145,20 @@ Every key, with its defaults and which binary needs it, is documented in
 
 `NOTIF_MQ_URL` carries a **different** NATS user per binary. Do not collapse them.
 
+### Decided, not yet read by any code
+
+These are settled in `docs/ARCHITECTURE.md` and shape the `credentials` table, so
+they are recorded here before the code exists. They move into the table above and
+into `.env.example` in the same commit that first reads them.
+
+| Key | Purpose |
+| --- | --- |
+| `NOTIF_CRYPTO_KEYS` | JSON, key id → key. **Secret.** A set, not one value, so a key can be changed without an outage. Same shape as `NOTIF_WEBHOOK_SECRETS`. |
+| `NOTIF_CRYPTO_KEY_ID` | Which key in that set new values are encrypted with. Old values name their own. |
+
+Each key is 32 bytes for AES-256, base64 in the variable. Generate with
+`openssl rand -base64 32`.
+
 ### Password rule
 
 Letters, digits and hyphens only. `#` is truncated by Dokploy's `.env` parsing;
