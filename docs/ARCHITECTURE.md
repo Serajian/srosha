@@ -126,3 +126,60 @@ to tell would be to read the error's message, which this repository forbids.
 The reason itself never leaves the process: it names our dependencies and the
 addresses they live at, so it goes to the log while the endpoint answers with
 names and a status.
+
+---
+
+## A source's keys are rows, not a column
+
+Authentication is a lookup, not a comparison. There is no username to find the row by: the
+key is both the identifier and the secret, so the stored hash of it is what the row is found
+by. `api_keys.key_hash` is therefore indexed, and hashing is a plain SHA-256 — `bcrypt` and
+`argon2` are for low-entropy human passwords, and their per-row salt would make the lookup a
+full scan.
+
+The keys live in their own table rather than in a column on `sources`, so a source can hold
+**two at once**. Rotation is then: issue the second, let them move, revoke the first — with
+no window in which their messages are refused. One column would have made every rotation an
+outage for that customer.
+
+A revoked key is marked, never deleted. After an incident the first question is when the key
+was revoked and when it was last used, and a deleted row answers neither.
+
+---
+
+## An encrypted value says which key encrypted it
+
+A bot token has to be handed to Telegram, so it must come back out: it is encrypted, not
+hashed. The key for that lives in the environment and never in the database — a dump that
+carries both the ciphertext and the key protects nothing.
+
+The hard part is not encrypting. It is the day the key changes, which is a *when*, not an
+*if*. If the column holds only ciphertext, nothing in the row says which key produced it, so
+changing the key means stopping the service, decrypting everything with the old key and
+re-encrypting with the new — an outage that can fail halfway and leave two kinds of row that
+cannot be told apart.
+
+So the stored value describes itself:
+
+```
+v1.2.<nonce>.<ciphertext>
+   │
+   └─ which key encrypted this
+```
+
+and configuration holds a **set** of keys plus which one new writes use. Rotation is then:
+add the second key, point the current-key id at it, let old rows re-encrypt as they are
+touched, run a job for the ones nobody touches, and drop the first key when no row names it.
+No step stops the service.
+
+The version prefix is for the day the algorithm changes rather than the key.
+
+**AES-256-GCM**, so that a tampered ciphertext fails to open instead of opening to rubbish.
+The credential's own identity is bound in as authenticated data: without that, a writer who
+can reach the database can copy source A's encrypted token into source B's row and B sends as
+A — no key broken, just a value moved. With it, that copy fails to open.
+
+This is for anything we must be able to read back — bot tokens, the SMTP password. It is the
+opposite case from an API key, which is only ever compared and so is hashed. Two mechanisms
+for one thing is where one of them gets forgotten, so the rule is the question: *do we need
+the original back?*

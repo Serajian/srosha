@@ -1,0 +1,49 @@
+# sqlc turns hand-written SQL into typed Go. The point is not saving keystrokes:
+# it type-checks every query against the schema in migrations/, so a renamed
+# column fails `make sqlc` instead of failing at three in the morning.
+#
+# What it generates is NOT the domain. Those structs are the shape of a table;
+# the entities in internal/core/domain are the shape of the business. The
+# repository maps between them, and that mapping stays hand-written.
+version: "2"
+
+sql:
+  - engine: postgresql
+    schema: migrations
+    queries: internal/adapter/db/postgres/queries
+
+    gen:
+      go:
+        package: gen
+        out: internal/adapter/db/postgres/gen
+        sql_package: pgx/v5
+
+        # A nullable column becomes *T rather than a pgtype wrapper, because the
+        # domain snapshots already speak in *time.Time and plain strings.
+        emit_pointers_for_null_types: true
+
+        emit_empty_slices: true
+        emit_json_tags: false
+
+        overrides:
+          # Without this the ulid domain is unknown to sqlc and every id comes
+          # out as interface{} -- which throws away the type checking that is
+          # the whole reason for generating this code.
+          #
+          # A plain string, not shared.ID: Source.ID is still a string in the
+          # domain while the other ids are shared.ID, so the mapper has to
+          # convert either way, and generated code that names a core type would
+          # only hide that.
+          - db_type: "ulid"
+            go_type: "string"
+
+          # pgtype.Timestamptz is what pgx would hand back, but every domain
+          # snapshot speaks in time.Time, so the conversion would happen in
+          # every mapper instead of once here.
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
