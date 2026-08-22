@@ -145,6 +145,7 @@ setup-dev: ## [Setup] Install dev tools (gofumpt, gci, golangci-lint, goose, buf
 	@go install golang.org/x/vuln/cmd/govulncheck@latest
 	@go install github.com/pressly/goose/v3/cmd/goose@latest
 	@go install github.com/bufbuild/buf/cmd/buf@latest
+	@go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 	@echo "$(COLOR_GREEN)✅ Dev tools installed successfully.$(COLOR_RESET)"
 
 .PHONY: deps
@@ -419,7 +420,7 @@ vulncheck: ## [Lint] Scan for known vulnerabilities reachable from our code (gov
 # so the unformatted version is what gets committed. Use `make fix` for that.
 
 .PHONY: precommit
-precommit: fmt-check govet arch-check proto-lint-if-present ## [Lint] What the pre-commit hook runs (~1s, read-only)
+precommit: fmt-check govet arch-check sqlc-check proto-lint-if-present ## [Lint] What the pre-commit hook runs (~1s, read-only)
 	@echo "$(COLOR_GREEN)✅ Pre-commit checks passed.$(COLOR_RESET)"
 
 .PHONY: prepush
@@ -520,6 +521,29 @@ docker-reset: docker-del docker-up ## [Docker] Reset docker environment (down -v
 .PHONY: docker-logs
 docker-logs: ## [Docker] Follow the compose logs
 	@docker compose --env-file $(DOCKER_ENV_FILE) -f $(DOCKER_COMPOSE) logs -f
+
+# ==================================================================================== #
+# SQLC
+# ==================================================================================== #
+
+.PHONY: sqlc
+sqlc: ## [SQL] Regenerate the typed query code from migrations/ and queries/
+	@echo "$(COLOR_YELLOW)🧬 Generating query code...$(COLOR_RESET)"
+	@sqlc generate
+	@echo "$(COLOR_GREEN)✅ Query code generated.$(COLOR_RESET)"
+
+.PHONY: sqlc-check
+sqlc-check: ## [SQL] Fail if the generated query code is behind the schema
+	@command -v sqlc >/dev/null || { \
+	   echo "$(COLOR_YELLOW)⚠️  sqlc not installed — skipping. Run: make setup-dev$(COLOR_RESET)"; \
+	   exit 0; \
+	}
+	@sqlc vet 2>/dev/null || true
+	@sqlc diff >/dev/null 2>&1 || { \
+	   echo "$(COLOR_RED)❌ Generated query code is out of date. Run: make sqlc$(COLOR_RESET)"; \
+	   exit 1; \
+	}
+	@echo "$(COLOR_GREEN)✅ Query code matches the schema.$(COLOR_RESET)"
 
 # ==================================================================================== #
 # LOCAL DEPENDENCIES
