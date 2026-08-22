@@ -10,6 +10,7 @@ package postgres_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,7 +60,14 @@ func truncate(t *testing.T, pool *pgxpool.Pool) {
 
 // ulid is a deterministic id for a test: readable in a failure message, and
 // still a valid ULID as far as the database's domain is concerned.
+//
+// Crockford base32 leaves out I, L, O and U so that a written id cannot be read
+// two ways, and the domain enforces that -- it refused an earlier version of
+// this helper. They are mapped to their neighbors rather than dropped, so two
+// different suffixes stay two different ids.
 func ulid(suffix string) string {
 	const prefix = "01J8XKQ2R7M3NB4PZC5VD6"
-	return prefix + (suffix + "0000")[:4]
+	return prefix + crockford.Replace(strings.ToUpper(suffix + "0000")[:4])
 }
+
+var crockford = strings.NewReplacer("I", "J", "L", "M", "O", "P", "U", "V")

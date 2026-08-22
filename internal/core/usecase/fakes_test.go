@@ -61,6 +61,11 @@ func (r fakeCredentials) ListBySourceAndChannel(
 type fakeNotifications struct {
 	mu   sync.Mutex
 	byID map[shared.ID]*notification.Notification
+
+	// loseRaceTo stands in for another request that stored this key between our
+	// check and our write. Create refuses once and leaves the message behind,
+	// which is exactly what the database does.
+	loseRaceTo *notification.Notification
 }
 
 func newFakeNotifications() *fakeNotifications {
@@ -70,6 +75,13 @@ func newFakeNotifications() *fakeNotifications {
 func (r *fakeNotifications) Create(_ context.Context, n *notification.Notification) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if winner := r.loseRaceTo; winner != nil {
+		r.loseRaceTo = nil
+		r.byID[winner.ID] = winner
+		return notification.ErrDuplicateKey
+	}
+
 	r.byID[n.ID] = n
 	return nil
 }

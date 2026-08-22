@@ -163,7 +163,8 @@ func TestUpdatingASourceThatIsNotThere(t *testing.T) {
 	pool := connect(t)
 	truncate(t, pool)
 
-	err := postgres.NewSourceRepository(pool).Update(context.Background(), aSource(ulid("ZZ")), time.Now())
+	err := postgres.NewSourceRepository(pool).
+		Update(context.Background(), aSource(ulid("ZZ")), time.Now())
 	if !errors.Is(err, source.ErrNotFound) {
 		t.Fatalf("error = %v, want source.ErrNotFound", err)
 	}

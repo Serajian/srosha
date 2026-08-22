@@ -11,6 +11,11 @@ var (
 
 	ErrNotFound = errors.New("notification not found")
 
+	// ErrDuplicateKey says this idempotency key was stored by somebody else
+	// between our check and our write. It is not a failure: the caller reads
+	// the original back and answers as it would have if the check had caught it.
+	ErrDuplicateKey = errors.New("idempotency key already used")
+
 	ErrEmptyBody      = errors.New("body is required")
 	ErrAlreadyExpired = errors.New("expiry is not in the future")
 )

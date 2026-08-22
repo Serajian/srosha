@@ -5,6 +5,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -92,12 +93,7 @@ func (s *Submitter) Submit(ctx context.Context, cmd SubmitCommand) (SubmitResult
 			return SubmitResult{}, err
 		}
 		if existing != nil {
-			return SubmitResult{
-				ID:                existing.ID,
-				EffectivePriority: existing.EffectivePriority,
-				Downgraded:        existing.WasDowngraded(),
-				Duplicate:         true,
-			}, nil
+			return duplicateOf(existing), nil
 		}
 	}
 
@@ -126,6 +122,13 @@ func (s *Submitter) Submit(ctx context.Context, cmd SubmitCommand) (SubmitResult
 		ds, err = s.deliveries.Create(ctx, n.ID, recipients, cmd.Senders)
 		return err
 	})
+	// The check above is not enough on its own. A client that timed out and
+	// retried puts two requests either side of it, and the second one only finds
+	// out at the write. Its transaction rolled back, so nothing of ours was
+	// stored: read theirs and answer exactly as the check would have.
+	if errors.Is(err, notification.ErrDuplicateKey) {
+		return s.raced(ctx, cmd, err)
+	}
 	if err != nil {
 		return SubmitResult{}, err
 	}
@@ -137,6 +140,30 @@ func (s *Submitter) Submit(ctx context.Context, cmd SubmitCommand) (SubmitResult
 		EffectivePriority: n.EffectivePriority,
 		Downgraded:        n.WasDowngraded(),
 	}, nil
+}
+
+// raced answers a key that was taken while we were writing. If the message it
+// lost to cannot be read back, the original error is returned rather than a
+// guess: something stranger than a race is going on.
+func (s *Submitter) raced(
+	ctx context.Context, cmd SubmitCommand, cause error,
+) (SubmitResult, error) {
+	existing, err := s.notifs.GetByIdempotencyKey(ctx, cmd.SourceID, cmd.IdempotencyKey)
+	if err != nil || existing == nil {
+		return SubmitResult{}, cause
+	}
+	return duplicateOf(existing), nil
+}
+
+// duplicateOf is built in one place so the answer given before the write and the
+// answer given after losing the race can never drift apart.
+func duplicateOf(n *notification.Notification) SubmitResult {
+	return SubmitResult{
+		ID:                n.ID,
+		EffectivePriority: n.EffectivePriority,
+		Downgraded:        n.WasDowngraded(),
+		Duplicate:         true,
+	}
 }
 
 // checkSenders refuses an unknown identity here rather than at send time. A

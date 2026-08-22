@@ -1,3 +1,16 @@
+-- exec, not one: the ports return only an error and nothing here is computed by
+-- the database -- no trigger, no default we rely on -- so a returned row would
+-- be read by nobody.
+--
+-- name: CreateCredential :exec
+INSERT INTO credentials (
+    id, source_id, channel, name, config, secret,
+    is_default, is_active, created_at, updated_at
+) VALUES (
+    @id, @source_id, @channel, @name, @config, @secret,
+    @is_default, TRUE, @created_at, @created_at
+);
+
 -- The core asks for the whole set on a channel and picks from it itself, so that
 -- "which one is the default" stays a rule about the set rather than a query.
 --
@@ -26,19 +39,6 @@ ORDER BY id;
 SELECT config, secret
 FROM credentials
 WHERE id = @id AND is_active;
-
--- exec, not one: the ports return only an error and nothing here is computed by
--- the database -- no trigger, no default we rely on -- so a returned row would
--- be read by nobody.
---
--- name: CreateCredential :exec
-INSERT INTO credentials (
-    id, source_id, channel, name, config, secret,
-    is_default, is_active, created_at, updated_at
-) VALUES (
-    @id, @source_id, @channel, @name, @config, @secret,
-    @is_default, TRUE, @created_at, @created_at
-);
 
 -- ClearDefaultCredential is half of moving the default, and must run in the same
 -- transaction as the other half. The partial unique index refuses two defaults,

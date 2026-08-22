@@ -310,3 +310,43 @@ func TestSubmitStampsAKnownSenderName(t *testing.T) {
 			ds[0].SenderName, ds[1].SenderName)
 	}
 }
+
+// A client that timed out and retried puts two requests either side of the
+// idempotency check, so the second one only learns the key is taken when it
+// writes. That must come back as the original message, not as an error.
+func TestSubmitLosingTheIdempotencyRace(t *testing.T) {
+	winner, err := notification.New(
+		shared.ID("01J8XKQ2R7M3NB4PZC5VD6WHW1"),
+		notification.Origin{
+			ID:          "acme",
+			Name:        "Acme Payments",
+			MaxPriority: shared.PriorityCritical,
+		},
+		notification.Request{
+			IdempotencyKey: "order-42",
+			Title:          "t",
+			Body:           "b",
+			Priority:       shared.PriorityHigh,
+		},
+		now,
+	)
+	if err != nil {
+		t.Fatalf("building the winner: %v", err)
+	}
+
+	r := newRig(t, func(r *rig, _ *options) { r.notifs.loseRaceTo = winner })
+
+	c := cmd()
+	c.IdempotencyKey = "order-42"
+
+	got, err := r.submitter.Submit(context.Background(), c)
+	if err != nil {
+		t.Fatalf("Submit() = %v, want the original message", err)
+	}
+	if !got.Duplicate {
+		t.Error("Duplicate = false, want true")
+	}
+	if got.ID != winner.ID {
+		t.Errorf("ID = %q, want the winner's %q", got.ID, winner.ID)
+	}
+}

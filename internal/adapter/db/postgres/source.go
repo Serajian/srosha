@@ -2,13 +2,15 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Serajian/srosha/internal/adapter/db/postgres/gen"
 	"github.com/Serajian/srosha/internal/core/domain/source"
+	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/pkg/errs"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // SourceRepository implements source.Repository.
@@ -16,20 +18,6 @@ type SourceRepository struct{ base }
 
 func NewSourceRepository(pool *pgxpool.Pool) *SourceRepository {
 	return &SourceRepository{base{pool: pool}}
-}
-
-// ReadByID returns a suspended source like any other. Refusing it here would
-// report "no such source" for an id that is perfectly correct; the domain's
-// EnsureActive says what is actually wrong.
-func (r *SourceRepository) ReadByID(ctx context.Context, id string) (*source.Source, error) {
-	row, err := r.q(ctx).ReadSource(ctx, id)
-	switch {
-	case noRows(err):
-		return nil, errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
-	case err != nil:
-		return nil, failed("read source", err)
-	}
-	return toSource(row)
 }
 
 // Create registers a source. is_active is not passed: a new source is switched
@@ -55,6 +43,20 @@ func (r *SourceRepository) Create(ctx context.Context, s *source.Source) error {
 		return failed("create source", err)
 	}
 	return nil
+}
+
+// ReadByID returns a suspended source like any other. Refusing it here would
+// report "no such source" for an id that is perfectly correct; the domain's
+// EnsureActive says what is actually wrong.
+func (r *SourceRepository) ReadByID(ctx context.Context, id string) (*source.Source, error) {
+	row, err := r.q(ctx).ReadSource(ctx, id)
+	switch {
+	case noRows(err):
+		return nil, errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
+	case err != nil:
+		return nil, failed("read source", err)
+	}
+	return toSource(row)
 }
 
 // Update writes what changes over a customer's life. Switching a source off is
@@ -103,4 +105,54 @@ func changed(rows int64, err error, op string) error {
 		return errs.NotFoundErr("nothing to change").WithStr(op)
 	}
 	return nil
+}
+
+// --- mapping -----------------------------------------------------------------
+
+func toSource(row gen.Source) (*source.Source, error) {
+	priority, err := shared.ParsePriority(row.MaxPriority)
+	if err != nil {
+		return nil, badRow("source", row.ID, "max_priority", err)
+	}
+
+	addresses, err := toAddresses(row.DefaultAddresses)
+	if err != nil {
+		return nil, badRow("source", row.ID, "default_addresses", err)
+	}
+
+	return &source.Source{
+		ID:                 row.ID,
+		Name:               row.Name,
+		MaxPriority:        priority,
+		IsActive:           row.IsActive,
+		AllowCustomAddress: row.AllowCustomAddress,
+		DefaultAddresses:   addresses,
+		CreatedAt:          row.CreatedAt,
+		UpdatedAt:          row.UpdatedAt,
+	}, nil
+}
+
+// toAddresses reads the jsonb map. A null or absent value is an empty map and
+// not an error: a source with no defaults configured is ordinary, and Resolve
+// already refuses a channel it finds nothing for.
+func toAddresses(raw []byte) (map[shared.Channel]string, error) {
+	if len(raw) == 0 {
+		return map[shared.Channel]string{}, nil
+	}
+
+	var addresses map[shared.Channel]string
+	if err := json.Unmarshal(raw, &addresses); err != nil {
+		return nil, err
+	}
+	if addresses == nil {
+		addresses = map[shared.Channel]string{}
+	}
+	return addresses, nil
+}
+
+func fromAddresses(addresses map[shared.Channel]string) ([]byte, error) {
+	if addresses == nil {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(addresses)
 }
