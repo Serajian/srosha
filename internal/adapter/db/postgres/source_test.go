@@ -138,6 +138,17 @@ func TestUpdateLeavesTheActiveFlagAlone(t *testing.T) {
 	}
 }
 
+func TestUpdatingASourceThatIsNotThere(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	err := postgres.NewSourceRepository(pool).
+		Update(context.Background(), aSource(ulid("ZZ")), time.Now())
+	if !errors.Is(err, source.ErrNotFound) {
+		t.Fatalf("error = %v, want source.ErrNotFound", err)
+	}
+}
+
 func TestChangingToTheStateItIsAlreadyIn(t *testing.T) {
 	pool := connect(t)
 	truncate(t, pool)
@@ -156,16 +167,5 @@ func TestChangingToTheStateItIsAlreadyIn(t *testing.T) {
 	}
 	if err := repo.Deactivate(ctx, s.ID, now); !errs.IsType(err, errs.ErrNotFound) {
 		t.Errorf("second Deactivate = %v, want a not-found", err)
-	}
-}
-
-func TestUpdatingASourceThatIsNotThere(t *testing.T) {
-	pool := connect(t)
-	truncate(t, pool)
-
-	err := postgres.NewSourceRepository(pool).
-		Update(context.Background(), aSource(ulid("ZZ")), time.Now())
-	if !errors.Is(err, source.ErrNotFound) {
-		t.Fatalf("error = %v, want source.ErrNotFound", err)
 	}
 }

@@ -89,54 +89,6 @@ func TestDeliveriesRoundTrip(t *testing.T) {
 	}
 }
 
-// The race at-least-once actually produces: two workers each hold a pending
-// copy, both send, and both write the result.
-func TestTheSecondWorkerIsToldItLost(t *testing.T) {
-	repo, n, now := fixture(t, "B")
-	ctx := context.Background()
-
-	ds := makeDeliveries(t, n, "a@acme.com")
-	if err := repo.CreateByList(ctx, ds); err != nil {
-		t.Fatalf("CreateByList: %v", err)
-	}
-
-	first, err := repo.ReadByID(ctx, ds[0].ID)
-	if err != nil {
-		t.Fatalf("ReadByID: %v", err)
-	}
-	second, err := repo.ReadByID(ctx, ds[0].ID)
-	if err != nil {
-		t.Fatalf("ReadByID: %v", err)
-	}
-
-	if err := first.MarkSent("provider-1", 1, now()); err != nil {
-		t.Fatalf("MarkSent: %v", err)
-	}
-	if err := repo.Update(ctx, first); err != nil {
-		t.Fatalf("first Update: %v", err)
-	}
-
-	// The second copy is still pending in memory, so the domain lets it move.
-	if err := second.MarkFailed(delivery.FailurePermanent, "boom", 1, now()); err != nil {
-		t.Fatalf("MarkFailed: %v", err)
-	}
-	err = repo.Update(ctx, second)
-	if !errors.Is(err, delivery.ErrAlreadySettled) {
-		t.Fatalf("second Update = %v, want ErrAlreadySettled", err)
-	}
-
-	stored, err := repo.ReadByID(ctx, ds[0].ID)
-	if err != nil {
-		t.Fatalf("ReadByID: %v", err)
-	}
-	if stored.Status() != delivery.StatusSent {
-		t.Errorf("stored status = %v, want the first writer's SENT", stored.Status())
-	}
-	if stored.ProviderMessageID() != "provider-1" {
-		t.Errorf("ProviderMessageID = %q", stored.ProviderMessageID())
-	}
-}
-
 // Recovery looks for rows that have been waiting too long. A fresh one must not
 // be picked up, and a settled one must never be.
 func TestListStaleFindsOnlyOldPendingRows(t *testing.T) {
@@ -251,5 +203,53 @@ func TestMissingDeliveryIsNotFound(t *testing.T) {
 	_, err := repo.ReadByID(context.Background(), shared.ID(ulid("ZZ")))
 	if !errors.Is(err, delivery.ErrNotFound) {
 		t.Fatalf("error = %v, want delivery.ErrNotFound", err)
+	}
+}
+
+// The race at-least-once actually produces: two workers each hold a pending
+// copy, both send, and both write the result.
+func TestTheSecondWorkerIsToldItLost(t *testing.T) {
+	repo, n, now := fixture(t, "B")
+	ctx := context.Background()
+
+	ds := makeDeliveries(t, n, "a@acme.com")
+	if err := repo.CreateByList(ctx, ds); err != nil {
+		t.Fatalf("CreateByList: %v", err)
+	}
+
+	first, err := repo.ReadByID(ctx, ds[0].ID)
+	if err != nil {
+		t.Fatalf("ReadByID: %v", err)
+	}
+	second, err := repo.ReadByID(ctx, ds[0].ID)
+	if err != nil {
+		t.Fatalf("ReadByID: %v", err)
+	}
+
+	if err := first.MarkSent("provider-1", 1, now()); err != nil {
+		t.Fatalf("MarkSent: %v", err)
+	}
+	if err := repo.Update(ctx, first); err != nil {
+		t.Fatalf("first Update: %v", err)
+	}
+
+	// The second copy is still pending in memory, so the domain lets it move.
+	if err := second.MarkFailed(delivery.FailurePermanent, "boom", 1, now()); err != nil {
+		t.Fatalf("MarkFailed: %v", err)
+	}
+	err = repo.Update(ctx, second)
+	if !errors.Is(err, delivery.ErrAlreadySettled) {
+		t.Fatalf("second Update = %v, want ErrAlreadySettled", err)
+	}
+
+	stored, err := repo.ReadByID(ctx, ds[0].ID)
+	if err != nil {
+		t.Fatalf("ReadByID: %v", err)
+	}
+	if stored.Status() != delivery.StatusSent {
+		t.Errorf("stored status = %v, want the first writer's SENT", stored.Status())
+	}
+	if stored.ProviderMessageID() != "provider-1" {
+		t.Errorf("ProviderMessageID = %q", stored.ProviderMessageID())
 	}
 }
