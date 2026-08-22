@@ -56,3 +56,12 @@ func (r *Registrar) Deactivate(ctx context.Context, sourceID string) error {
 	}
 	return r.webhooks.Deactivate(ctx, w)
 }
+
+// Activate is that way back.
+func (r *Registrar) Activate(ctx context.Context, sourceID string) error {
+	w, err := r.Get(ctx, sourceID)
+	if err != nil {
+		return err
+	}
+	return r.webhooks.Activate(ctx, w)
+}

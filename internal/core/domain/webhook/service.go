@@ -45,7 +45,7 @@ func (s *Service) Register(
 	if err := existing.Redirect(r, s.policy, s.now()); err != nil {
 		return nil, err
 	}
-	if err := s.repo.Update(ctx, existing); err != nil {
+	if err := s.repo.Redirect(ctx, existing); err != nil {
 		return nil, err
 	}
 	return existing, nil
@@ -57,15 +57,37 @@ func (s *Service) Get(ctx context.Context, sourceID string) (*Webhook, error) {
 
 func (s *Service) RecordSuccess(ctx context.Context, w *Webhook) error {
 	w.RecordSuccess(s.now())
-	return s.repo.Update(ctx, w)
+	return s.repo.RecordSuccess(ctx, w)
 }
 
+// RecordFailure counts first and judges second: storage owns the number,
+// because callbacks for one source settle at once and each holds its own copy
+// of this entity, and the limit stays here, because it is a rule with tests.
+//
+// The second write happens only on the run that switches the webhook off.
 func (s *Service) RecordFailure(ctx context.Context, w *Webhook, maxFailures int) error {
-	w.RecordFailure(maxFailures, s.now())
-	return s.repo.Update(ctx, w)
+	count, err := s.repo.RecordFailure(ctx, w)
+	if err != nil {
+		return err
+	}
+
+	wasActive := w.IsActive()
+	w.RecordFailure(count, maxFailures, s.now())
+	if wasActive && !w.IsActive() {
+		return s.repo.Deactivate(ctx, w)
+	}
+	return nil
 }
 
 func (s *Service) Deactivate(ctx context.Context, w *Webhook) error {
 	w.Deactivate(s.now())
-	return s.repo.Update(ctx, w)
+	return s.repo.Deactivate(ctx, w)
+}
+
+// Activate is the way back from Deactivate, and clears the failure run so a
+// callback switched off for being dead is not switched off again by the first
+// hiccup after it was fixed.
+func (s *Service) Activate(ctx context.Context, w *Webhook) error {
+	w.Activate(s.now())
+	return s.repo.Activate(ctx, w)
 }

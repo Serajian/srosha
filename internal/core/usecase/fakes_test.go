@@ -332,7 +332,43 @@ func (r *fakeWebhooks) ReadBySourceID(_ context.Context, id string) (*webhook.We
 	return &got, nil
 }
 
-func (r *fakeWebhooks) Update(_ context.Context, w *webhook.Webhook) error {
+func (r *fakeWebhooks) Redirect(_ context.Context, w *webhook.Webhook) error {
+	return r.save(w)
+}
+
+func (r *fakeWebhooks) RecordSuccess(_ context.Context, w *webhook.Webhook) error {
+	return r.save(w)
+}
+
+// RecordFailure counts here rather than taking the caller's number, exactly as
+// the database does. Nothing else would exercise the path that reads it back.
+func (r *fakeWebhooks) RecordFailure(_ context.Context, w *webhook.Webhook) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	stored, ok := r.bySource[w.SourceID]
+	if !ok {
+		return 0, errs.NotFoundErr("webhook not found")
+	}
+
+	count := stored.ConsecutiveFailures() + 1
+	r.bySource[w.SourceID] = webhook.Restore(webhook.Snapshot{
+		ID: stored.ID, SourceID: stored.SourceID, CallbackURL: stored.CallbackURL,
+		IsActive: stored.IsActive(), ConsecutiveFailures: count,
+		CreatedAt: stored.CreatedAt, UpdatedAt: stored.UpdatedAt,
+	})
+	return count, nil
+}
+
+func (r *fakeWebhooks) Deactivate(_ context.Context, w *webhook.Webhook) error {
+	return r.save(w)
+}
+
+func (r *fakeWebhooks) Activate(_ context.Context, w *webhook.Webhook) error {
+	return r.save(w)
+}
+
+func (r *fakeWebhooks) save(w *webhook.Webhook) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.bySource[w.SourceID]; !ok {

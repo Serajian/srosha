@@ -147,8 +147,8 @@ func TestPolicyRelaxesTheRuleForDevelopment(t *testing.T) {
 func TestFailureRunSwitchesTheWebhookOff(t *testing.T) {
 	w := newHook(t)
 
-	for i := 0; i < 4; i++ {
-		w.RecordFailure(5, later)
+	for count := 1; count <= 4; count++ {
+		w.RecordFailure(count, 5, later)
 	}
 	if !w.IsActive() {
 		t.Fatal("switched off too early")
@@ -159,8 +159,8 @@ func TestFailureRunSwitchesTheWebhookOff(t *testing.T) {
 		t.Errorf("ConsecutiveFailures() = %d, want the run cleared", w.ConsecutiveFailures())
 	}
 
-	for i := 0; i < 5; i++ {
-		w.RecordFailure(5, later)
+	for count := 1; count <= 5; count++ {
+		w.RecordFailure(count, 5, later)
 	}
 	if w.IsActive() {
 		t.Error("still active after the limit was reached")
