@@ -671,7 +671,7 @@ test-race: ## [Test] Run race-detector tests across all packages (used by prepus
 	@echo "$(COLOR_GREEN)✓ Race tests passed$(COLOR_RESET)"
 
 .PHONY: test-integration
-test-integration: ## [Test] Run tests that need a real database (needs: make dev-up)
+test-integration: ## [Test] Run tests that need a real database and broker (needs: make dev-up)
 	@echo "$(COLOR_BLUE)→ Running integration tests...$(COLOR_RESET)"
 	@go test -tags integration -timeout=$(INTEGRATION_TEST_TIMEOUT) ./... 
 	@if [ -d $(INTEGRATION_DIR) ]; then \
