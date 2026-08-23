@@ -12,6 +12,7 @@ import (
 type Gateway struct {
 	App        settings.App
 	GRPC       settings.GRPC
+	Auth       settings.Auth
 	HTTPServer settings.HTTPServer
 	DB         settings.DB
 	MQ         settings.MQ
@@ -30,6 +31,7 @@ func LoadGateway() (Gateway, error) {
 	c := Gateway{
 		App:        app,
 		GRPC:       settings.LoadGRPC(r),
+		Auth:       settings.LoadAuth(r),
 		HTTPServer: settings.LoadHTTPServer(r),
 		DB:         settings.LoadDB(r),
 		MQ:         settings.LoadMQ(r),

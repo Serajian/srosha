@@ -39,6 +39,63 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) erro
 	return err
 }
 
+const listAPIKeysBySource = `-- name: ListAPIKeysBySource :many
+SELECT id, source_id, label, created_at, last_used_at, expires_at, revoked_at
+FROM api_keys
+WHERE source_id = $1
+ORDER BY id
+`
+
+type ListAPIKeysBySourceRow struct {
+	ID         string
+	SourceID   string
+	Label      string
+	CreatedAt  time.Time
+	LastUsedAt *time.Time
+	ExpiresAt  *time.Time
+	RevokedAt  *time.Time
+}
+
+// ListAPIKeysBySource is what makes rotation possible at all. The rule is
+// "issue the second, let them move, revoke the first" -- and to revoke the
+// first, the customer has to be able to tell which is which: by label, by when
+// it was made, by when it was last used.
+//
+// key_hash is NOT selected. Nothing on this path compares anything, and a hash
+// that leaves the service is the one thing somebody holding a found string
+// needs in order to learn whether it is ours.
+//
+// Revoked keys are returned too. After an incident the first questions are when
+// a key was revoked and when it was last used, and filtering here would hide
+// exactly the row being asked about.
+func (q *Queries) ListAPIKeysBySource(ctx context.Context, sourceID string) ([]ListAPIKeysBySourceRow, error) {
+	rows, err := q.db.Query(ctx, listAPIKeysBySource, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAPIKeysBySourceRow{}
+	for rows.Next() {
+		var i ListAPIKeysBySourceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceID,
+			&i.Label,
+			&i.CreatedAt,
+			&i.LastUsedAt,
+			&i.ExpiresAt,
+			&i.RevokedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readSourceByKeyHash = `-- name: ReadSourceByKeyHash :one
 SELECT s.id, s.name, s.max_priority, s.is_active, s.allow_custom_address, s.default_addresses, s.created_at, s.updated_at, k.id AS api_key_id
 FROM api_keys k

@@ -471,12 +471,26 @@ sync: ## [Git] Go to master, sync it with the remote, drop local branches alread
 	@echo "$(COLOR_YELLOW)⬇️  Pulling master...$(COLOR_RESET)"
 	@git pull --ff-only
 	@echo "$(COLOR_YELLOW)🗑️  Deleting local branches already merged into origin/master...$(COLOR_RESET)"
-	@merged=$$(git branch --merged origin/master --format='%(refname:short)' \
+	@held=$$(git worktree list --porcelain | sed -n 's|^branch refs/heads/||p'); \
+	merged=$$(git branch --merged origin/master --format='%(refname:short)' \
 	   | grep -vE '^(main|master)$$' || true); \
-	if [ -z "$$merged" ]; then \
+	deletable=$$(echo "$$merged" | grep -vxF "$$held" || true); \
+	if [ -z "$$deletable" ]; then \
 	   echo "   nothing to delete"; \
 	else \
-	   echo "$$merged" | xargs -n1 git branch -d; \
+	   echo "$$deletable" | xargs -n1 git branch -d; \
+	fi; \
+	inuse=$$(echo "$$merged" | grep -xF "$$held" || true); \
+	if [ -n "$$inuse" ]; then \
+	   echo "$(COLOR_YELLOW)⚠️  Merged, but a worktree has them checked out, so git cannot delete them:$(COLOR_RESET)"; \
+	   echo "$$inuse" | sed 's/^/     /'; \
+	   echo "$(COLOR_YELLOW)   Drop the worktree first, then run make sync again:$(COLOR_RESET)"; \
+	   here=$$(git rev-parse --show-toplevel); \
+	   for b in $$inuse; do \
+	      p=$$(git worktree list --porcelain \
+	         | awk -v b="$$b" '/^worktree /{p=$$2} $$0=="branch refs/heads/"b{print p}'); \
+	      [ "$$p" = "$$here" ] || echo "   git worktree remove $$p"; \
+	   done; \
 	fi
 	@stale=$$(git branch -vv | grep ': gone\]' | sed -E 's/^\*? *([^ ]+).*/\1/' \
 	   | grep -vE '^(main|master)$$' || true); \

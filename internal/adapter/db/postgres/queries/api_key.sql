@@ -33,6 +33,25 @@ WHERE k.key_hash = @key_hash
   -- assumed nullable and comes out as *time.Time.
   AND (k.expires_at IS NULL OR k.expires_at > @now::timestamptz);
 
+-- ListAPIKeysBySource is what makes rotation possible at all. The rule is
+-- "issue the second, let them move, revoke the first" -- and to revoke the
+-- first, the customer has to be able to tell which is which: by label, by when
+-- it was made, by when it was last used.
+--
+-- key_hash is NOT selected. Nothing on this path compares anything, and a hash
+-- that leaves the service is the one thing somebody holding a found string
+-- needs in order to learn whether it is ours.
+--
+-- Revoked keys are returned too. After an incident the first questions are when
+-- a key was revoked and when it was last used, and filtering here would hide
+-- exactly the row being asked about.
+--
+-- name: ListAPIKeysBySource :many
+SELECT id, source_id, label, created_at, last_used_at, expires_at, revoked_at
+FROM api_keys
+WHERE source_id = @source_id
+ORDER BY id;
+
 -- TouchAPIKey records that a key is in use, at most once per stale_before
 -- window. Writing on every request would put an UPDATE on the hottest path;
 -- never writing at all would leave last_used_at permanently null and the
