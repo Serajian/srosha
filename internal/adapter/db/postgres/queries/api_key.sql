@@ -1,3 +1,11 @@
+-- exec, not one: the ports return only an error and nothing here is computed by
+-- the database -- no trigger, no default we rely on -- so a returned row would
+-- be read by nobody.
+--
+-- name: CreateAPIKey :exec
+INSERT INTO api_keys (id, source_id, key_hash, label, created_at, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6);
+
 -- ReadSourceByKeyHash is the whole of authentication: the key is both the
 -- identifier and the secret, so its hash is what the row is found by.
 --
@@ -24,14 +32,6 @@ WHERE k.key_hash = @key_hash
   -- Cast so sqlc knows the parameter is a non-null timestamp; a bare @now is
   -- assumed nullable and comes out as *time.Time.
   AND (k.expires_at IS NULL OR k.expires_at > @now::timestamptz);
-
--- exec, not one: the ports return only an error and nothing here is computed by
--- the database -- no trigger, no default we rely on -- so a returned row would
--- be read by nobody.
---
--- name: CreateAPIKey :exec
-INSERT INTO api_keys (id, source_id, key_hash, label, created_at, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6);
 
 -- TouchAPIKey records that a key is in use, at most once per stale_before
 -- window. Writing on every request would put an UPDATE on the hottest path;

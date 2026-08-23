@@ -1,12 +1,12 @@
--- name: ReadWebhookBySourceID :one
-SELECT * FROM webhooks WHERE source_id = @source_id;
-
 -- is_active and consecutive_failures are not given: a new callback is switched
 -- on and has failed at nothing, and the column defaults say so.
 --
 -- name: CreateWebhook :exec
 INSERT INTO webhooks (id, source_id, callback_url, created_at, updated_at)
 VALUES (@id, @source_id, @callback_url, @created_at, @created_at);
+
+-- name: ReadWebhookBySourceID :one
+SELECT * FROM webhooks WHERE source_id = @source_id;
 
 -- There is no single UpdateWebhook, on purpose. Two very different callers write
 -- this row -- the dispatcher after every callback, and the source through the

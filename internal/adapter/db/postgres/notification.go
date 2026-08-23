@@ -1,1 +1,144 @@
 package postgres
+
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/Serajian/srosha/internal/adapter/db/postgres/gen"
+	"github.com/Serajian/srosha/internal/core/domain/notification"
+	"github.com/Serajian/srosha/internal/core/shared"
+	"github.com/Serajian/srosha/pkg/errs"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// NotificationRepository implements notification.Repository.
+type NotificationRepository struct{ base }
+
+func NewNotificationRepository(pool *pgxpool.Pool) *NotificationRepository {
+	return &NotificationRepository{base{pool: pool}}
+}
+
+// Create stores the message, and reports the one case the caller has to handle
+// differently: somebody stored the same idempotency key first.
+//
+// The use case checks for the key before building anything, but a client that
+// timed out and retried is exactly what puts two requests between that check and
+// this write. The statement takes the conflict rather than raising it, so zero
+// rows means "theirs won" -- an outcome, not a fault.
+func (r *NotificationRepository) Create(ctx context.Context, n *notification.Notification) error {
+	metadata, err := fromMetadata(n.Metadata())
+	if err != nil {
+		return badRow("notification", n.ID.String(), "metadata", err)
+	}
+
+	rows, err := r.q(ctx).CreateNotification(ctx, gen.CreateNotificationParams{
+		ID:                n.ID.String(),
+		SourceID:          n.SourceID,
+		IdempotencyKey:    optional(n.IdempotencyKey),
+		SourceName:        n.SourceName,
+		Title:             n.Title,
+		Body:              n.Body,
+		RequestedPriority: n.RequestedPriority.String(),
+		EffectivePriority: n.EffectivePriority.String(),
+		ExpireAt:          n.ExpireAt,
+		Metadata:          metadata,
+		CreatedAt:         n.CreatedAt,
+	})
+	if err != nil {
+		return failed("create notification", err)
+	}
+	if rows == 0 {
+		return errs.DuplicateErr("this request has already been accepted").
+			WithErr(notification.ErrDuplicateKey).
+			WithStr(n.IdempotencyKey)
+	}
+	return nil
+}
+
+func (r *NotificationRepository) ReadByID(
+	ctx context.Context, id shared.ID,
+) (*notification.Notification, error) {
+	row, err := r.q(ctx).ReadNotification(ctx, id.String())
+	switch {
+	case noRows(err):
+		return nil, errs.NotFoundErr("notification not found").WithErr(notification.ErrNotFound)
+	case err != nil:
+		return nil, failed("read notification", err)
+	}
+	return toNotification(row)
+}
+
+// ReadByIdempotencyKey answers with a nil entity when the key is unused. That is
+// the port's contract and it matters: "never seen" and "could not look" have to
+// stay distinguishable, and an error for the first would make the caller treat a
+// perfectly ordinary first request as a failure.
+func (r *NotificationRepository) ReadByIdempotencyKey(
+	ctx context.Context, sourceID, key string,
+) (*notification.Notification, error) {
+	row, err := r.q(ctx).ReadNotificationByIdempotencyKey(
+		ctx, gen.ReadNotificationByIdempotencyKeyParams{
+			SourceID:       sourceID,
+			IdempotencyKey: optional(key),
+		})
+	switch {
+	case noRows(err):
+		return nil, nil
+	case err != nil:
+		return nil, failed("read notification by idempotency key", err)
+	}
+	return toNotification(row)
+}
+
+// --- mapping -----------------------------------------------------------------
+
+func toNotification(row gen.Notification) (*notification.Notification, error) {
+	requested, err := shared.ParsePriority(row.RequestedPriority)
+	if err != nil {
+		return nil, badRow("notification", row.ID, "requested_priority", err)
+	}
+
+	effective, err := shared.ParsePriority(row.EffectivePriority)
+	if err != nil {
+		return nil, badRow("notification", row.ID, "effective_priority", err)
+	}
+
+	metadata, err := toMetadata(row.Metadata)
+	if err != nil {
+		return nil, badRow("notification", row.ID, "metadata", err)
+	}
+
+	// Restore takes the entity plus the map it keeps private, so the mapper
+	// hands over a value rather than reaching into unexported state.
+	return notification.Restore(notification.Notification{
+		ID:                shared.ID(row.ID),
+		SourceID:          row.SourceID,
+		IdempotencyKey:    deref(row.IdempotencyKey),
+		SourceName:        row.SourceName,
+		Title:             row.Title,
+		Body:              row.Body,
+		RequestedPriority: requested,
+		EffectivePriority: effective,
+		ExpireAt:          row.ExpireAt,
+		CreatedAt:         row.CreatedAt,
+	}, metadata), nil
+}
+
+func toMetadata(raw []byte) (map[string]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+
+	var metadata map[string]string
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		return nil, err
+	}
+	return metadata, nil
+}
+
+func fromMetadata(metadata map[string]string) ([]byte, error) {
+	if metadata == nil {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(metadata)
+}

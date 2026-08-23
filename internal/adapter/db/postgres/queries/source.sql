@@ -1,11 +1,3 @@
--- ReadSource deliberately does not filter on is_active. A suspended source must
--- come back as a row so the domain's EnsureActive can say "source is not
--- active"; filtering here would turn that into "no such source" and send the
--- customer looking for a typo in an id that is perfectly correct.
---
--- name: ReadSource :one
-SELECT * FROM sources WHERE id = @id;
-
 -- is_active is not given: a source is created switched on, and the column
 -- default says so. allow_custom_address is a parameter because it genuinely is a
 -- per-customer decision taken at registration -- with it off, a leaked key can
@@ -22,6 +14,14 @@ INSERT INTO sources (
     @id, @name, @max_priority, @allow_custom_address,
     @default_addresses, @created_at, @created_at
 );
+
+-- ReadSource deliberately does not filter on is_active. A suspended source must
+-- come back as a row so the domain's EnsureActive can say "source is not
+-- active"; filtering here would turn that into "no such source" and send the
+-- customer looking for a typo in an id that is perfectly correct.
+--
+-- name: ReadSource :one
+SELECT * FROM sources WHERE id = @id;
 
 -- UpdateSource writes what changes over a customer's life. is_active is not
 -- among them: switching a source off is its own act, and folding it in here

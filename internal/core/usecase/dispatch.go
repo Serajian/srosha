@@ -204,8 +204,14 @@ func (d *Dispatcher) fail(
 
 // settled turns "this delivery already moved" into success. Another worker got
 // there first, which is the expected end of a redelivered event, not a failure.
+//
+// Two sentinels, because the same conclusion is reached two ways: from the copy
+// we hold, which was already terminal when we loaded it, or from the row, when
+// both of us held a pending copy and both sent. The second is what at-least-once
+// actually produces, and only the database can see it.
 func settled(err error) error {
-	if errors.Is(err, delivery.ErrInvalidTransition) {
+	if errors.Is(err, delivery.ErrInvalidTransition) ||
+		errors.Is(err, delivery.ErrAlreadySettled) {
 		return nil
 	}
 	return err

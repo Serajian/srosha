@@ -96,10 +96,15 @@ func (w *Webhook) RecordSuccess(now time.Time) {
 // RecordFailure switches the webhook off once the run reaches maxFailures, so a
 // dead endpoint is not hammered forever. The limit is operational, so it comes
 // from config rather than living here.
-func (w *Webhook) RecordFailure(maxFailures int, now time.Time) {
-	w.consecutiveFailures++
+//
+// The count is given rather than incremented here. Several callbacks for one
+// source settle at once, and each holds its own copy of this entity; counting
+// in memory would lose every increment but the last. Storage does the counting
+// and this applies the rule to what it says.
+func (w *Webhook) RecordFailure(count, maxFailures int, now time.Time) {
+	w.consecutiveFailures = count
 	w.UpdatedAt = now
-	if maxFailures > 0 && w.consecutiveFailures >= maxFailures {
+	if maxFailures > 0 && count >= maxFailures {
 		w.isActive = false
 	}
 }

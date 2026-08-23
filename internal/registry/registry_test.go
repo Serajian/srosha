@@ -136,9 +136,11 @@ func TestCloseTwiceIsSafe(t *testing.T) {
 func TestReadyReportsEachDependencySeparately(t *testing.T) {
 	res := New(discard())
 
-	res.add(step{tier: tierStore, name: "postgres", close: noop, ready: func(context.Context) error {
-		return errors.New("connection refused")
-	}})
+	res.add(
+		step{tier: tierStore, name: "postgres", close: noop, ready: func(context.Context) error {
+			return errors.New("connection refused")
+		}},
+	)
 	res.add(step{tier: tierBroker, name: "nats", close: noop, ready: noop})
 
 	checks := res.Ready(context.Background())

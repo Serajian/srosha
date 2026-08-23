@@ -9,6 +9,12 @@ var (
 
 	ErrNotFound = errors.New("delivery not found")
 
+	// ErrAlreadySettled says the row had already moved when we tried to write.
+	// ErrInvalidTransition is the same conclusion reached from the copy we
+	// hold; this one is reached from the row itself, when two workers each held
+	// a pending copy and both sent.
+	ErrAlreadySettled = errors.New("delivery was already settled by somebody else")
+
 	ErrUnknownStatus        = errors.New("unknown delivery status")
 	ErrUnknownFailureReason = errors.New("unknown failure reason")
 
