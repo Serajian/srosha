@@ -88,11 +88,20 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 	//
 	// UTC, so a schedule means the same moment wherever this runs and does not
 	// happen twice on the day a zone puts its clocks back.
-	_, err = registry.Scheduler(ctx, "scheduler", time.UTC, cfg.App.ShutdownTimeout, []registry.Job{{
-		Name:     "recovery",
-		Schedule: cfg.Dispatch.ReconcileSchedule,
-		Run:      core.dispatcher.Recover,
-	}}, res)
+	_, err = registry.Scheduler(ctx, "scheduler", time.UTC, cfg.App.ShutdownTimeout, []registry.Job{
+		{
+			Name:     "recovery",
+			Schedule: cfg.Dispatch.ReconcileSchedule,
+			Run:      core.dispatcher.Recover,
+		},
+		{
+			// srosha is not an archive. Nightly rather than on an interval,
+			// because a heavy sweep should run at an hour somebody chose.
+			Name:     "retention",
+			Schedule: cfg.Retention.Schedule,
+			Run:      core.retention.Purge,
+		},
+	}, res)
 	if err != nil {
 		return abandon(ctx, res, err)
 	}
@@ -116,6 +125,7 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 // consumer is created on.
 type dispatcherCore struct {
 	dispatcher *usecase.Dispatcher
+	retention  *usecase.Retention
 	stream     nats.Stream
 }
 
@@ -208,7 +218,8 @@ func buildDispatcherCore(
 	}
 
 	return dispatcherCore{
-		stream: stream,
+		stream:    stream,
+		retention: usecase.NewRetention(notifications, log, cfg.Retention.Age, cfg.Retention.Batch),
 		dispatcher: usecase.NewDispatcher(
 			notifications, deliveries, webhooks, senders, callback,
 			ids.Generate, now, log,

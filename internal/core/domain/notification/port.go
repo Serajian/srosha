@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"time"
 
 	"github.com/Serajian/srosha/internal/core/shared"
 )
@@ -20,4 +21,11 @@ type Repository interface {
 	PageBySource(
 		ctx context.Context, sourceID string, w Window, c shared.Cursor,
 	) (shared.Pagination[Notification], error)
+
+	// DeleteOlderThan drops one batch of messages written before a moment and
+	// reports how many went. Their deliveries follow, by the foreign key.
+	//
+	// One batch rather than all of them, so a table that has been collecting for
+	// a year is not cleared inside a single transaction holding locks on it.
+	DeleteOlderThan(ctx context.Context, before time.Time, limit int) (int, error)
 }

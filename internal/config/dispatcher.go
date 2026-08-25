@@ -19,6 +19,7 @@ type Dispatcher struct {
 	Crypto     settings.Crypto
 	Webhook    settings.Webhook
 	Dispatch   settings.Dispatch
+	Retention  settings.Retention
 	Telemetry  settings.Telemetry
 }
 
@@ -26,6 +27,8 @@ func LoadDispatcher() (Dispatcher, error) {
 	r := reader("dispatcher")
 
 	app := settings.LoadApp(r)
+	dispatch := settings.LoadDispatch(r)
+
 	c := Dispatcher{
 		App:        app,
 		HTTP:       settings.LoadHTTP(r),
@@ -36,7 +39,8 @@ func LoadDispatcher() (Dispatcher, error) {
 		Sender:     settings.LoadSender(r),
 		Crypto:     settings.LoadCrypto(r),
 		Webhook:    settings.LoadWebhook(r, app.IsProduction()),
-		Dispatch:   settings.LoadDispatch(r),
+		Dispatch:   dispatch,
+		Retention:  settings.LoadRetention(r, dispatch),
 		Telemetry:  settings.LoadTelemetry(r, app.IsProduction()),
 	}
 

@@ -224,6 +224,7 @@ cannot share a wire.
 | Group | Keys | gateway | dispatcher |
 | --- | --- | --- | --- |
 | reconcile | `NOTIF_RECONCILE_AFTER`, `NOTIF_RECONCILE_GIVE_UP`, `NOTIF_RECONCILE_SCHEDULE`, `NOTIF_RECONCILE_BATCH`, `NOTIF_RECONCILE_LEASE` | — | ✅ |
+| retention | `NOTIF_RETENTION_AGE`, `NOTIF_RETENTION_SCHEDULE`, `NOTIF_RETENTION_BATCH` | — | ✅ |
 
 `NOTIF_WEBHOOK_SECRETS` holds one signing secret per source, keyed by source id.
 Each source gets its own: with a single shared secret, any source holding it
@@ -244,6 +245,14 @@ wherever it runs. One second is the finest interval.
 it. It covers a dispatcher that died holding a row — a send that merely failed
 gives the row back — so it is set from the slowest send there could be, and
 loading refuses a value at or below `NOTIF_DISPATCH_ACK_WAIT`.
+
+`RETENTION_AGE` is how long a message is kept; its deliveries go with it, by the
+foreign key, so there is one number and not two that could disagree. The sweep
+deletes by **age alone** — it does not check that the deliveries settled — which
+holds only while a delivery gives up long before a message is dropped: it gives
+up in minutes, so one still pending a month later is a row recovery never saw
+rather than work waiting to happen. Loading refuses an age under 24×
+`NOTIF_RECONCILE_GIVE_UP`, so that reasoning cannot quietly stop being true.
 
 ---
 

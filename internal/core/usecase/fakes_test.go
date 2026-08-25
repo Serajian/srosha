@@ -247,6 +247,46 @@ func (r *fakeNotifications) PageBySource(
 	return shared.Pagination[notification.Notification]{Items: all, NextCursor: next}, nil
 }
 
+// put and count let a test write a message aged by hand and see what survived.
+func (r *fakeNotifications) put(n *notification.Notification) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.byID[n.ID] = n
+}
+
+func (r *fakeNotifications) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.byID)
+}
+
+// DeleteOlderThan deletes one batch, oldest first, and reports how many went.
+// Batching is the behavior the use case depends on -- it keeps going until a
+// batch comes back short -- so a fake that ignored the limit would let a purge
+// that never loops pass.
+func (r *fakeNotifications) DeleteOlderThan(
+	_ context.Context, before time.Time, limit int,
+) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var old []shared.ID
+	for id, n := range r.byID {
+		if n.CreatedAt.Before(before) {
+			old = append(old, id)
+		}
+	}
+	slices.Sort(old)
+
+	if len(old) > limit {
+		old = old[:limit]
+	}
+	for _, id := range old {
+		delete(r.byID, id)
+	}
+	return len(old), nil
+}
+
 // forget deletes a message while its deliveries are still around, which is what
 // a retention job or a manual clean-up does.
 func (r *fakeNotifications) forget(id shared.ID) {

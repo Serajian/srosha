@@ -274,3 +274,111 @@ func TestPageBySourceShowsOnlyOneSourcesMessages(t *testing.T) {
 		t.Errorf("listed %+v", got.Items)
 	}
 }
+
+// The deliveries go with the message, by the foreign key. That is the whole
+// reason there is one statement here and not two to keep in step.
+func TestDeletingAMessageTakesItsDeliveries(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+	ctx := context.Background()
+
+	src := aSource(ulid("DR"))
+	if err := postgres.NewSourceRepository(pool).Create(ctx, src); err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+
+	repo := postgres.NewNotificationRepository(pool)
+	n := aMessage(t, ulid("DR1"), src.ID, "")
+	if err := repo.Create(ctx, n); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	deliveries := postgres.NewDeliveryRepository(pool, func() time.Time { return time.Now().UTC() })
+	if err := deliveries.CreateByList(ctx, makeDeliveries(t, n, "a@acme.com", "b@acme.com")); err != nil {
+		t.Fatalf("CreateByList: %v", err)
+	}
+
+	// Everything written a moment ago is older than "a moment from now".
+	got, err := repo.DeleteOlderThan(ctx, time.Now().UTC().Add(time.Hour), 10)
+	if err != nil {
+		t.Fatalf("DeleteOlderThan: %v", err)
+	}
+	if got != 1 {
+		t.Fatalf("deleted %d messages, want 1", got)
+	}
+
+	left, err := deliveries.ListByNotificationID(ctx, n.ID)
+	if err != nil {
+		t.Fatalf("ListByNotificationID: %v", err)
+	}
+	if len(left) != 0 {
+		t.Errorf("%d deliveries outlived their message", len(left))
+	}
+}
+
+// One batch, not all of them: an unbounded DELETE over a table collecting for a
+// year is a single transaction holding locks on all of it.
+func TestDeleteOlderThanTakesOneBatch(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+	ctx := context.Background()
+
+	src := aSource(ulid("DB"))
+	if err := postgres.NewSourceRepository(pool).Create(ctx, src); err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+	repo := postgres.NewNotificationRepository(pool)
+
+	for i := range 5 {
+		if err := repo.Create(ctx, aMessage(t, ulid(fmt.Sprintf("B%02d", i)), src.ID, "")); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+	}
+
+	cutoff := time.Now().UTC().Add(time.Hour)
+
+	first, err := repo.DeleteOlderThan(ctx, cutoff, 2)
+	if err != nil || first != 2 {
+		t.Fatalf("DeleteOlderThan = %d, %v; want one batch of 2", first, err)
+	}
+
+	// And the run keeps going until a batch comes back short.
+	var total int
+	for {
+		n, err := repo.DeleteOlderThan(ctx, cutoff, 2)
+		if err != nil {
+			t.Fatalf("DeleteOlderThan: %v", err)
+		}
+		total += n
+		if n < 2 {
+			break
+		}
+	}
+	if first+total != 5 {
+		t.Errorf("deleted %d in total, want 5", first+total)
+	}
+}
+
+// A message inside the window is not the sweep's business.
+func TestDeleteOlderThanLeavesTheRecentAlone(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+	ctx := context.Background()
+
+	src := aSource(ulid("DK"))
+	if err := postgres.NewSourceRepository(pool).Create(ctx, src); err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+	repo := postgres.NewNotificationRepository(pool)
+	if err := repo.Create(ctx, aMessage(t, ulid("DK1"), src.ID, "")); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := repo.DeleteOlderThan(ctx, time.Now().UTC().Add(-time.Hour), 10)
+	if err != nil {
+		t.Fatalf("DeleteOlderThan: %v", err)
+	}
+	if got != 0 {
+		t.Errorf("deleted %d messages that were inside the window", got)
+	}
+}

@@ -70,6 +70,42 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 	return result.RowsAffected(), nil
 }
 
+const deleteNotificationsBefore = `-- name: DeleteNotificationsBefore :execrows
+DELETE FROM notifications
+WHERE id IN (
+    SELECT id FROM notifications
+    WHERE created_at < $1::timestamptz
+    ORDER BY id
+    LIMIT $2
+)
+`
+
+type DeleteNotificationsBeforeParams struct {
+	Before   time.Time
+	RowLimit int32
+}
+
+// DeleteNotificationsBefore drops what nobody is going to ask about again.
+//
+// Deliveries go with them: the foreign key is ON DELETE CASCADE, so this one
+// statement clears both and there is no second one to keep in step with it.
+//
+// In batches, because an unbounded DELETE over a table that has been collecting
+// for a year is one transaction holding locks on all of it. The caller runs this
+// until it stops finding rows.
+//
+// Age alone, deliberately -- no check that the deliveries settled. A delivery
+// gives up at RECONCILE_GIVE_UP, which is minutes, so one still PENDING a month
+// later is not work waiting to happen: it is a row recovery never saw. Config
+// refuses a retention age close enough to give-up for that reasoning to fail.
+func (q *Queries) DeleteNotificationsBefore(ctx context.Context, arg DeleteNotificationsBeforeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteNotificationsBefore, arg.Before, arg.RowLimit)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const pageNotificationsBySource = `-- name: PageNotificationsBySource :many
 SELECT id, source_id, idempotency_key, source_name, title, body, requested_priority, effective_priority, expire_at, metadata, created_at FROM notifications
 WHERE source_id = $1

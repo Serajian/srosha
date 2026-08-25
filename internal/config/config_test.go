@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Serajian/srosha/internal/config"
 )
@@ -188,5 +189,36 @@ func TestTheKeyringDoesNotPrint(t *testing.T) {
 	}
 	if printed := fmt.Sprintf("%v", c.Crypto); strings.Contains(printed, testKey) {
 		t.Errorf("the keyring printed its key material: %s", printed)
+	}
+}
+
+// Retention deletes by age alone, with no check that the deliveries settled, and
+// that only holds while a delivery gives up long before a message is dropped.
+func TestRetentionMustOutliveGivingUp(t *testing.T) {
+	setMinimum(t)
+	t.Setenv("NOTIF_RECONCILE_GIVE_UP", "30m")
+	t.Setenv("NOTIF_RETENTION_AGE", "1h")
+
+	_, err := config.LoadDispatcher()
+	if err == nil {
+		t.Fatal("LoadDispatcher() accepted a retention age next to give-up")
+	}
+	if !strings.Contains(err.Error(), "NOTIF_RETENTION_AGE") {
+		t.Errorf("error = %v, want it to name the key", err)
+	}
+}
+
+func TestRetentionDefaultsAreFarApart(t *testing.T) {
+	setMinimum(t)
+
+	c, err := config.LoadDispatcher()
+	if err != nil {
+		t.Fatalf("LoadDispatcher() error = %v", err)
+	}
+	if c.Retention.Age != 30*24*time.Hour {
+		t.Errorf("Age = %v, want a month", c.Retention.Age)
+	}
+	if c.Retention.Schedule != "0 3 * * *" {
+		t.Errorf("Schedule = %q, want an hour somebody chose", c.Retention.Schedule)
 	}
 }
