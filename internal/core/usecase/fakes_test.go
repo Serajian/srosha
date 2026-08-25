@@ -91,7 +91,20 @@ func (r *fakeNotifications) ReadByID(
 ) (*notification.Notification, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.byID[id], nil
+
+	n, ok := r.byID[id]
+	if !ok {
+		return nil, errs.NotFoundErr("notification not found").WithErr(notification.ErrNotFound)
+	}
+	return n, nil
+}
+
+// forget deletes a message while its deliveries are still around, which is what
+// a retention job or a manual clean-up does.
+func (r *fakeNotifications) forget(id shared.ID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.byID, id)
 }
 
 func (r *fakeNotifications) ReadByIdempotencyKey(
@@ -146,7 +159,9 @@ func (r *fakeDeliveries) ReadByID(_ context.Context, id shared.ID) (*delivery.De
 			}
 		}
 	}
-	return nil, nil
+	// What postgres answers. A fake that returned (nil, nil) here would let the
+	// use case take a branch no deployment ever reaches.
+	return nil, errs.NotFoundErr("delivery not found").WithErr(delivery.ErrNotFound)
 }
 
 func (r *fakeDeliveries) Update(_ context.Context, d *delivery.Delivery) error {

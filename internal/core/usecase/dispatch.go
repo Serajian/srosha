@@ -77,10 +77,12 @@ func NewDispatcher(
 func (d *Dispatcher) Handle(ctx context.Context, id shared.ID, attempt int) error {
 	del, err := d.deliveries.Get(ctx, id)
 	if err != nil {
-		return err
-	}
-	if del == nil {
-		// Nothing to send and nothing to fix by trying again.
+		if !errors.Is(err, delivery.ErrNotFound) {
+			return err
+		}
+		// Nothing to send, and nothing another attempt would find. Returning
+		// the error instead would ask the broker for it again, once per backoff
+		// step, for a row that is gone.
 		d.log.ErrorContext(ctx, "event for a delivery that does not exist", "delivery_id", id)
 		return nil
 	}
@@ -132,9 +134,12 @@ func (d *Dispatcher) deliver(
 ) error {
 	n, err := d.notifs.Get(ctx, del.NotificationID)
 	if err != nil {
-		return err
-	}
-	if n == nil {
+		if !errors.Is(err, notification.ErrNotFound) {
+			return err
+		}
+		// The outcome is written down rather than retried. Without this the row
+		// stays pending for ever: every attempt reads the same absence, and
+		// nothing is ever recorded against the delivery.
 		d.log.ErrorContext(ctx, "delivery without a message",
 			"delivery_id", del.ID, "notification_id", del.NotificationID)
 		return d.fail(ctx, del, nil, delivery.FailurePermanent, "message is gone")

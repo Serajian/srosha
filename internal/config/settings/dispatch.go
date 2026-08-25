@@ -17,7 +17,11 @@ type Dispatch struct {
 	ReconcileAfter  time.Duration
 	ReconcileGiveUp time.Duration
 	ReconcileBatch  int
-	ReconcileEvery  time.Duration
+	// ReconcileSchedule is when recovery sweeps, as a cron spec or an interval
+	// descriptor: "@every 5m", "*/5 * * * *", "0 3 * * *". A string rather than
+	// a duration because one parser reads all three, so a deployment that
+	// outgrows an interval needs no new setting.
+	ReconcileSchedule string
 
 	// AckWait is how long the broker waits for an acknowledgement before it
 	// decides nobody handled the message and gives it to somebody else. It has
@@ -33,17 +37,19 @@ type Dispatch struct {
 
 func LoadDispatch(r *env.Reader) Dispatch {
 	d := Dispatch{
-		MaxAttempts:     r.Int("DISPATCH_MAX_ATTEMPTS", 5),
-		ReconcileAfter:  r.Duration("RECONCILE_AFTER", 5*time.Minute),
-		ReconcileGiveUp: r.Duration("RECONCILE_GIVE_UP", 30*time.Minute),
-		ReconcileBatch:  r.Int("RECONCILE_BATCH", 100),
-		ReconcileEvery:  r.Duration("RECONCILE_EVERY", 5*time.Minute),
-		AckWait:         r.Duration("DISPATCH_ACK_WAIT", time.Minute),
-		MaxInFlight:     r.Int("DISPATCH_MAX_IN_FLIGHT", 50),
+		MaxAttempts:       r.Int("DISPATCH_MAX_ATTEMPTS", 5),
+		ReconcileAfter:    r.Duration("RECONCILE_AFTER", 5*time.Minute),
+		ReconcileGiveUp:   r.Duration("RECONCILE_GIVE_UP", 30*time.Minute),
+		ReconcileBatch:    r.Int("RECONCILE_BATCH", 100),
+		ReconcileSchedule: r.Str("RECONCILE_SCHEDULE", "@every 5m"),
+		AckWait:           r.Duration("DISPATCH_ACK_WAIT", time.Minute),
+		MaxInFlight:       r.Int("DISPATCH_MAX_IN_FLIGHT", 50),
 	}
 
 	r.Check(d.MaxAttempts > 0, "NOTIF_DISPATCH_MAX_ATTEMPTS must be above zero")
 	r.Check(d.ReconcileBatch > 0, "NOTIF_RECONCILE_BATCH must be above zero")
+	// The spec itself is checked by the scheduler, which owns the parser.
+	r.Check(d.ReconcileSchedule != "", "NOTIF_RECONCILE_SCHEDULE must not be empty")
 	r.Check(d.MaxInFlight > 0, "NOTIF_DISPATCH_MAX_IN_FLIGHT must be above zero")
 
 	// Zero would leave the broker's own default in place, which is a number
