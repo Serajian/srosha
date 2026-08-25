@@ -92,9 +92,32 @@ SIGTERM   http server(3) → grpc server(3) → nats(1) → postgres(0)
 آن ترتیب آخر دقیقاً همان tierهاست: **اول از پذیرفتن می‌ایستد، آخر استخر دیتابیس
 بسته می‌شود.** دادهٔ تستی بعدش پاک شد.
 
+## reflection: همه‌جا جز production
+
+`grpcurl` مجبور بود فایل‌های proto را بگیرد، چون سرور reflection ثبت نشده بود.
+ثبتش یک خط است، ولی یک تلهٔ واقعی دارد:
+
+```
+Submit / Get / Register  →  unary   →  از Auth رد می‌شود  ✓
+ServerReflectionInfo     →  stream  →  از Auth رد نمی‌شود ✗
+```
+
+interceptorهای ما unary اند و reflection یک متد streaming است. یعنی با آن روشن،
+**هرکسی که به پورت برسد کل سطح API را می‌خواند** — هر سرویس، هر متد، هر پیام، هر
+فیلد — بدون کلید و بدون اینکه در لاگ چیزی شبیه یک درخواست بگذارد.
+
+پس `Deps.Reflection` است و `Gateway()` آن را از `!cfg.App.IsProduction()` می‌دهد.
+همان الگویی که `LoadWebhookPolicy` دارد: بیرون از production راحت، روی production
+سخت‌گیرانه.
+
+روی سرویس زنده آزموده شد: بدون هیچ فایل proto ای `list` و `describe` کار کردند، و
+`Submit` بدون کلید همچنان `Unauthenticated` گرفت.
+
 # Files Changed
 
 - `internal/bootstrap/gateway.go` *(داستان + `buildGatewayCore` + `gatewayGRPC`)*
+- `internal/adapter/api/grpcsrv/register.go` *(`Deps.Reflection`)*
+- `internal/adapter/api/grpcsrv/errors_test.go` *(تست reflection)*
 - `internal/bootstrap/app.go` *(`failed` به‌جای `server`، و `watch`)*
 - `internal/bootstrap/dispatcher.go` *(`App` تازه)*
 - `internal/core/domain/delivery/service.go` *(فقط پذیرش و انتشار)*
@@ -114,9 +137,6 @@ SIGTERM   http server(3) → grpc server(3) → nats(1) → postgres(0)
 
 # Follow-ups / Risks
 
-- سرور reflection ثبت نشده، پس `grpcurl` باید فایل‌های proto را بگیرد. ثبتش
-  راحت است ولی سطح API را بدون احراز هویت نشان می‌دهد (reflection یک متد
-  streaming است و interceptorهای unary روی آن اجرا نمی‌شوند). تصمیمش جداست.
 - `dispatcher.go` هنوز سیم‌کشی نشده. `Tracker` برایش آماده است، ولی senderها،
   notifier و consumer هنوز stub اند.
 - تست خودکاری برای خودِ سیم‌کشی نیست. آنچه شد دستی بود؛ یک تست یکپارچگی که

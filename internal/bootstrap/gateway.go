@@ -194,6 +194,11 @@ func gatewayGRPC(
 		Authn:         core.authn,
 		Scheme:        auth.NewScheme(),
 		Log:           log,
+
+		// Everywhere but production, so grpcurl and Postman need no proto
+		// files. On a real deployment it would publish the whole API surface
+		// to anyone who reached the port, unauthenticated -- see Deps.
+		Reflection: !cfg.App.IsProduction(),
 	})
 	if err != nil {
 		return nil, err
