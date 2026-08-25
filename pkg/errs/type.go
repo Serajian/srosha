@@ -5,7 +5,7 @@ package errs
 // It carries no HTTP status and no gRPC code on purpose: this package is
 // imported by internal/core, and core must not know which protocol is in
 // front of it. Each adapter owns its own mapping -- see
-// adapter/api/grpc/errors.go for Type -> codes.Code.
+// adapter/api/grpcsrv/errors.go for Type -> codes.Code.
 type Type int
 
 const (

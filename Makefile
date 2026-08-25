@@ -399,6 +399,15 @@ arch-check: ## [Lint] Fail if the domain layer imports anything it must not
 	   echo "$(COLOR_RED)❌ internal/infra must not import config or registry.$(COLOR_RESET)"; \
 	   echo "$$bad" | sed 's/^/     /'; \
 	   exit 1; \
+	fi; \
+	bad=$$(echo "$$edges" | awk -v a="$(MODULE)/internal/adapter/" \
+	   '$$1 ~ "^" a && $$2 ~ "^" a && $$2 != $$1 && index($$2, $$1 "/") != 1' || true); \
+	if [ -n "$$bad" ]; then \
+	   echo "$(COLOR_RED)❌ one adapter must not import another. Declare the interface"; \
+	   echo "   you need in the package that calls it; bootstrap passes the"; \
+	   echo "   implementation in.$(COLOR_RESET)"; \
+	   echo "$$bad" | sed 's/^/     /'; \
+	   exit 1; \
 	fi
 	@echo "$(COLOR_GREEN)✅ Infrastructure boundaries are clean.$(COLOR_RESET)"
 

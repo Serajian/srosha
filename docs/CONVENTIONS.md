@@ -232,6 +232,27 @@ The format: see `docs/changes/TEMPLATE.md`.
   is what keeps an infra package copyable into a service that knows nothing about srosha.
 - `make arch-check` enforces both directions.
 
+## Hard rule — one adapter never imports another
+
+- An adapter may import `internal/core`, `pkg/`, generated code and its own subpackages. It may
+  **not** import a sibling under `internal/adapter/`.
+- When one adapter needs something another one does, **declare the interface in the package that
+  calls it** and let bootstrap pass the implementation in. That is Go's own convention — an
+  interface belongs to the consumer, not the producer — and here it also keeps the boundary:
+
+  ```go
+  // internal/adapter/api/grpcsrv — needs a key turned into a hash
+  type KeyScheme interface {
+      Parse(presented string) (string, error)
+  }
+  ```
+
+  `internal/adapter/auth` satisfies it without knowing that gRPC exists.
+- Two adapters that import each other are two adapters that ship together, get tested together
+  and eventually cycle. The whole point of the layer is that each one can be replaced on its own.
+- A subpackage of the same adapter is fine: `db/postgres` may import `db/postgres/gen`.
+- `make arch-check` enforces it.
+
 ## Hard rule — where new code goes
 
 - `pkg/` — generic, zero domain knowledge. The test: could this package be copied into a

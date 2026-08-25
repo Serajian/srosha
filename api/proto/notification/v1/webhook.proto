@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package notification.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/Serajian/srosha/gen/notification/v1;notificationv1";
+
+// WebhookService manages where a source wants delivery outcomes pushed to.
+//
+// The callback is a convenience on top of NotificationService.Get, not a
+// replacement for it: it is sent once and never retried, so a source that must
+// not miss an outcome asks for it.
+//
+// As in NotificationService, no request carries a source id. One source has one
+// callback, and which source is the caller comes from their key.
+service WebhookService {
+  // Register sets the callback. Registering again moves the existing one rather
+  // than adding a second, and gives the new address a clean start -- switched
+  // on, failure count cleared. If we had switched the old one off for being
+  // dead, that says nothing about the new one.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  rpc Get(WebhookServiceGetRequest) returns (WebhookServiceGetResponse);
+
+  // Deactivate stops the callbacks without forgetting the address, so turning
+  // them back on is not a re-registration.
+  rpc Deactivate(DeactivateRequest) returns (DeactivateResponse);
+
+  // Activate is the way back, and clears the failure count: a callback that was
+  // switched off for being dead must not be switched off again by the first
+  // hiccup after it was fixed.
+  rpc Activate(ActivateRequest) returns (ActivateResponse);
+}
+
+message RegisterRequest {
+  // Where to POST outcomes. https, and not an address inside our own network:
+  // a callback makes US call somewhere THEY chose, so without that check a
+  // source could reach anything we can.
+  string callback_url = 1;
+}
+
+// Empty, and each rpc still gets its own. They would be one message today and
+// four the first time any of them needs a field; sharing one now would make
+// that day a breaking change for all four.
+//
+// Get's name is the service's own because both services here have a Get, and
+// one proto package cannot hold two GetRequests.
+message WebhookServiceGetRequest {}
+
+message DeactivateRequest {}
+
+message ActivateRequest {}
+
+// The responses wrap the webhook rather than being it. An rpc that answers with
+// a bare resource has nowhere to put a second field, and the first time one is
+// needed every client breaks.
+message RegisterResponse {
+  Webhook webhook = 1;
+}
+
+message WebhookServiceGetResponse {
+  Webhook webhook = 1;
+}
+
+message DeactivateResponse {
+  Webhook webhook = 1;
+}
+
+message ActivateResponse {
+  Webhook webhook = 1;
+}
+
+message Webhook {
+  string id = 1;
+  string callback_url = 2;
+
+  bool is_active = 3;
+
+  // How many callbacks in a row have failed. Any success clears it; reaching
+  // the configured limit switches the callback off, so a dead endpoint is not
+  // called once per message forever.
+  int32 consecutive_failures = 4;
+
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
