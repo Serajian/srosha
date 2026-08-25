@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/Serajian/srosha/internal/adapter/db/postgres/gen"
 	"github.com/Serajian/srosha/internal/core/domain/notification"
@@ -73,6 +74,28 @@ func (r *NotificationRepository) ReadByID(
 // the port's contract and it matters: "never seen" and "could not look" have to
 // stay distinguishable, and an error for the first would make the caller treat a
 // perfectly ordinary first request as a failure.
+// DeleteOlderThan drops one batch of messages written before a moment, and says
+// how many went.
+//
+// Their deliveries go with them: the foreign key is ON DELETE CASCADE, so there
+// is no second statement to keep in step with this one.
+//
+// One batch, not all of them. An unbounded DELETE over a table that has been
+// collecting for a year is a single transaction holding locks on the whole of
+// it; the caller decides how many batches a run is worth.
+func (r *NotificationRepository) DeleteOlderThan(
+	ctx context.Context, before time.Time, limit int,
+) (int, error) {
+	rows, err := r.q(ctx).DeleteNotificationsBefore(ctx, gen.DeleteNotificationsBeforeParams{
+		Before:   before,
+		RowLimit: int32(limit), //nolint:gosec // a batch size, bounded by config
+	})
+	if err != nil {
+		return 0, failed("delete old notifications", err)
+	}
+	return int(rows), nil
+}
+
 // PageBySource answers "what did I send", newest first.
 //
 // Newest first, unlike every other listing here: a source asking this wants what

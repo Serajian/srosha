@@ -59,3 +59,26 @@ WHERE source_id = @source_id
   AND (sqlc.narg('until')::timestamptz IS NULL OR created_at < sqlc.narg('until')::timestamptz)
 ORDER BY id DESC
 LIMIT @row_limit;
+
+-- DeleteNotificationsBefore drops what nobody is going to ask about again.
+--
+-- Deliveries go with them: the foreign key is ON DELETE CASCADE, so this one
+-- statement clears both and there is no second one to keep in step with it.
+--
+-- In batches, because an unbounded DELETE over a table that has been collecting
+-- for a year is one transaction holding locks on all of it. The caller runs this
+-- until it stops finding rows.
+--
+-- Age alone, deliberately -- no check that the deliveries settled. A delivery
+-- gives up at RECONCILE_GIVE_UP, which is minutes, so one still PENDING a month
+-- later is not work waiting to happen: it is a row recovery never saw. Config
+-- refuses a retention age close enough to give-up for that reasoning to fail.
+--
+-- name: DeleteNotificationsBefore :execrows
+DELETE FROM notifications
+WHERE id IN (
+    SELECT id FROM notifications
+    WHERE created_at < @before::timestamptz
+    ORDER BY id
+    LIMIT @row_limit
+);

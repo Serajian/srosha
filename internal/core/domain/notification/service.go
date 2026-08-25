@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"time"
 
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/pkg/errs"
@@ -52,4 +53,17 @@ func (s *Service) GetByIdempotencyKey(
 	ctx context.Context, sourceID, key string,
 ) (*Notification, error) {
 	return s.repo.ReadByIdempotencyKey(ctx, sourceID, key)
+}
+
+// DeleteOlderThan drops one batch of messages older than an age, and says how
+// many went. The caller repeats until it stops finding any.
+//
+// Age alone, and nothing about whether the deliveries settled. A delivery gives
+// up at RECONCILE_GIVE_UP, which is minutes; one still pending a month later is
+// not work waiting to happen but a row recovery never saw. Config refuses a
+// retention age close enough to give-up for that to stop being true.
+func (s *Service) DeleteOlderThan(
+	ctx context.Context, olderThan time.Duration, batch int,
+) (int, error) {
+	return s.repo.DeleteOlderThan(ctx, s.now().Add(-olderThan), batch)
 }
