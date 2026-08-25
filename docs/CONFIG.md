@@ -132,7 +132,7 @@ Every key, with its defaults and which binary needs it, is documented in
 | Group | Keys | gateway | dispatcher |
 | --- | --- | --- | --- |
 | app | `NOTIF_APP_ENV`, `NOTIF_APP_SERVICE_NAME`, `NOTIF_APP_SHUTDOWN_TIMEOUT` | ✅ | ✅ |
-| grpc | `NOTIF_GRPC_ADDR`, `NOTIF_GRPC_HTTP_ADDR` | ✅ | — |
+| grpc | `NOTIF_GRPC_ADDR`, `NOTIF_GRPC_HTTP_ADDR`, `NOTIF_GRPC_STOP_TIMEOUT` | ✅ | — |
 | auth | `NOTIF_AUTH_KEY_TOUCH_AFTER` | ✅ | — |
 | http | `NOTIF_HTTP_ADDR` | — | ✅ |
 | http server | `NOTIF_HTTP_SERVER_READ_HEADER_TIMEOUT`, `NOTIF_HTTP_SERVER_READ_TIMEOUT`, `NOTIF_HTTP_SERVER_WRITE_TIMEOUT`, `NOTIF_HTTP_SERVER_IDLE_TIMEOUT` | ✅ | ✅ |
@@ -180,6 +180,28 @@ connection URL. Generate with `openssl rand -hex 24`.
 | Architecture diagram | `docs/assets/brand/architecture.svg` — used in `README.md` |
 | Palette | `#3256AE` royal · `#33A5DE` sky · `#4934A2` violet · `#317DC6` azure · `#10182B` ink |
 | Wordmark font | Onest (Google Fonts), weight 700 |
+
+---
+
+## Protobuf
+
+| | |
+| --- | --- |
+| Tool | buf, `buf.yaml` and `buf.gen.yaml` at the repository root |
+| Definitions | `api/proto/notification/v1/` |
+| Proto package | `notification.v1` |
+| Generated code | `gen/notification/v1/`, **committed** |
+| Go import path | `github.com/Serajian/srosha/gen/notification/v1` |
+| Plugins | `protoc-gen-go`, `protoc-gen-go-grpc` |
+| Build target | `make proto` |
+
+`gen/` is committed so a fresh clone builds with no protoc, no buf and no plugin
+installed. It is generated output and never hand-edited; `make proto` rewrites
+it and `buf lint` runs in the pre-commit hook.
+
+The version is in the proto **package** and not only the directory, because the
+package is what travels: two versions of a message with one fully qualified name
+cannot share a wire.
 
 ---
 

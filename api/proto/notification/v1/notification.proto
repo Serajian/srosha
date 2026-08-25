@@ -1,0 +1,139 @@
+syntax = "proto3";
+
+package notification.v1;
+
+import "google/protobuf/timestamp.proto";
+import "notification/v1/common.proto";
+
+option go_package = "github.com/Serajian/srosha/gen/notification/v1;notificationv1";
+
+// NotificationService is how a source sends, and how it learns what happened.
+//
+// No request carries a source id. The caller is the source, and which source
+// that is comes from the key they authenticated with -- read from a request
+// body it could be anything they typed, and one customer could send as another.
+service NotificationService {
+  // Submit accepts a message and returns as soon as it is stored. Sending
+  // happens afterwards, so this answers in the time it takes to write a row
+  // rather than the time a provider takes to accept it.
+  rpc Submit(SubmitRequest) returns (SubmitResponse);
+
+  // Get answers "what happened to my message".
+  rpc Get(NotificationServiceGetRequest) returns (NotificationServiceGetResponse);
+}
+
+// Route is one channel to send on.
+message Route {
+  Channel channel = 1;
+
+  // Empty means this source's configured default for the channel. A source may
+  // be configured to refuse custom addresses entirely, which bounds what a
+  // leaked key can reach: its own recipients, never a stranger.
+  string address = 2;
+
+  // Which of this source's sending identities to send from -- "marketing",
+  // "alerts". Empty means the default for the channel.
+  string sender = 3;
+}
+
+message SubmitRequest {
+  // idempotency_key makes retrying safe. A client that times out and sends the
+  // same request again gets the original message back rather than a second one.
+  //
+  // Optional, and unique per source rather than globally: two customers picking
+  // "order-42" on the same day are not talking about the same thing.
+  string idempotency_key = 1;
+
+  string title = 2;
+  string body = 3;
+
+  // Above this source's ceiling is accepted and lowered, not refused. The
+  // answer says so.
+  Priority priority = 4;
+
+  // After this, the message is not worth sending. Unset means it never expires.
+  google.protobuf.Timestamp expire_at = 5;
+
+  // Whatever the source wants to carry through: an order number, a trace id.
+  // It is stored and returned, never interpreted.
+  map<string, string> metadata = 6;
+
+  // At least one. Each is a separate delivery with its own outcome.
+  repeated Route routes = 7;
+}
+
+message SubmitResponse {
+  // The message's id. On a duplicate idempotency key this is the original's.
+  string id = 1;
+
+  // What the message will actually be sent at.
+  Priority effective_priority = 2;
+
+  // The requested priority was above this source's ceiling and was lowered.
+  // Reported rather than hidden, so a customer can see their limit.
+  bool downgraded = 3;
+
+  // This idempotency key had been used and nothing new was created.
+  bool duplicate = 4;
+}
+
+// The name is the service's own because both services here have a Get, and one
+// proto package cannot hold two GetRequests. Every rpc gets a request and a
+// response of its own even when they would be identical: sharing one means the
+// day either rpc needs a field, both change.
+message NotificationServiceGetRequest {
+  string id = 1;
+
+  // Where the deliveries listing carries on from. A message to four recipients
+  // fits in one page; one to a mailing list does not.
+  Page page = 2;
+}
+
+// Delivery is one recipient's outcome.
+message Delivery {
+  string id = 1;
+  Channel channel = 2;
+  string address = 3;
+
+  // Which sending identity this went out from.
+  string sender = 4;
+
+  DeliveryStatus status = 5;
+
+  // Set only when status is FAILED.
+  FailureReason failure_reason = 6;
+
+  // The provider's own id for the message. We do not track delivery ourselves,
+  // so this is the handle a source needs to do it.
+  string provider_message_id = 7;
+
+  // When this delivery last moved. There is no created_at: a delivery is
+  // created with its message and never on its own, so the message's is the one
+  // that means anything.
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message Notification {
+  string id = 1;
+  string idempotency_key = 2;
+  string title = 3;
+  string body = 4;
+
+  // Both, because they can differ: requested is what was asked for, effective
+  // is what the source's ceiling allowed.
+  Priority requested_priority = 5;
+  Priority effective_priority = 6;
+
+  google.protobuf.Timestamp expire_at = 7;
+  map<string, string> metadata = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+message NotificationServiceGetResponse {
+  Notification notification = 1;
+
+  repeated Delivery deliveries = 2;
+
+  // Empty when this was the last page. Pass it back as Page.after for the next.
+  string next_page_token = 3;
+}

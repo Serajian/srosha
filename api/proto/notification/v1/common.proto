@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+// Package notification.v1 is srosha's public contract. Everything a customer
+// can say to this service, and everything it says back, is defined here and
+// nowhere else.
+//
+// v1 is in the package name rather than only in the directory, because the
+// package is what travels: two versions of a message with the same fully
+// qualified name cannot coexist on one wire.
+package notification.v1;
+
+option go_package = "github.com/Serajian/srosha/gen/notification/v1;notificationv1";
+
+// Priority is how far ahead of other traffic a message goes.
+//
+// UNSPECIFIED is the zero value and means "the source did not say", which the
+// service reads as NORMAL. proto3 cannot tell an unset field from one set to
+// its zero value, so a meaningful zero would make "I did not choose" and "I
+// chose the lowest" the same request.
+//
+// Each source has a ceiling. Asking above it is not an error: the request is
+// accepted at the ceiling and the answer says the priority was lowered, so a
+// customer learns about their limit rather than losing the message to it.
+enum Priority {
+  PRIORITY_UNSPECIFIED = 0;
+  PRIORITY_NORMAL = 1;
+  PRIORITY_HIGH = 2;
+  PRIORITY_CRITICAL = 3;
+}
+
+// Channel is how a message travels.
+enum Channel {
+  CHANNEL_UNSPECIFIED = 0;
+  CHANNEL_EMAIL = 1;
+  CHANNEL_TELEGRAM = 2;
+  CHANNEL_BALE = 3;
+  CHANNEL_WHATSAPP = 4;
+}
+
+// DeliveryStatus is what happened to one recipient.
+//
+// There is no RETRYING. A delivery that failed transiently stays PENDING and is
+// tried again; only an outcome that will not change is written down. A status
+// that changed back and forth would tell a customer nothing they could act on.
+enum DeliveryStatus {
+  DELIVERY_STATUS_UNSPECIFIED = 0;
+  DELIVERY_STATUS_PENDING = 1;
+  DELIVERY_STATUS_SENT = 2;
+  DELIVERY_STATUS_FAILED = 3;
+}
+
+// FailureReason says why a delivery will not be retried.
+//
+// It is a fixed set rather than the provider's own error text. That text is
+// written for operators and can name hosts, limits and internals; this says
+// what happened with none of it.
+enum FailureReason {
+  FAILURE_REASON_UNSPECIFIED = 0;
+
+  // The message outlived its expiry before its turn came.
+  FAILURE_REASON_EXPIRED = 1;
+
+  // Attempts ran out while the failures were still the kind that might have
+  // passed later.
+  FAILURE_REASON_MAX_ATTEMPTS = 2;
+
+  // The provider refused in a way that repeating will not fix: a bad address,
+  // a blocked recipient, a message it will never accept.
+  FAILURE_REASON_PERMANENT = 3;
+
+  // The source has no sending identity configured for that channel. A
+  // configuration answer, not a provider one -- it will read the same on every
+  // retry until somebody changes the setup.
+  FAILURE_REASON_NO_SENDER = 4;
+}
+
+// Page is where a listing carries on from.
+//
+// after is an id, not an offset. An offset makes the database count and throw
+// away every row before the page, and it skips or repeats rows when the set
+// changes underneath; an id does neither.
+message Page {
+  // Empty for the first page. Otherwise the next_page_token of the last answer.
+  string after = 1;
+
+  // Zero means the service's default. Above its ceiling is clamped rather than
+  // refused -- asking for too much is not a mistake worth failing a request for.
+  int32 limit = 2;
+}

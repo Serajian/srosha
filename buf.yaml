@@ -1,0 +1,20 @@
+version: v2
+
+# The proto files are the public contract, so they live apart from the Go that
+# happens to implement them.
+modules:
+  - path: api/proto
+
+lint:
+  use:
+    - STANDARD
+  # STANDARD wants a file's package to match its directory. Ours is
+  # notification/v1 under api/proto, which it is -- the module path above is
+  # what makes that true.
+
+breaking:
+  use:
+    - FILE
+  # FILE, not PACKAGE: a customer's generated code is per file, and moving a
+  # message between files of one package breaks them even though the wire is
+  # unchanged.

@@ -1,0 +1,18 @@
+version: v2
+
+# gen/ is committed. A fresh clone builds without protoc, buf or any plugin
+# installed, and the generated code is reviewed like anything else that ships.
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/Serajian/srosha/gen
+
+plugins:
+  - local: protoc-gen-go
+    out: gen
+    opt: paths=source_relative
+
+  - local: protoc-gen-go-grpc
+    out: gen
+    opt: paths=source_relative
