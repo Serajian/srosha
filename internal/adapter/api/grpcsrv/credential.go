@@ -4,6 +4,8 @@ import (
 	"context"
 
 	pb "github.com/Serajian/srosha/gen/notification/v1"
+	"github.com/Serajian/srosha/internal/core/domain/credential"
+	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/pkg/errs"
 )
@@ -44,4 +46,90 @@ func (s *CredentialServer) Register(
 		return nil, err
 	}
 	return &pb.CredentialServiceRegisterResponse{Credential: fromCredential(c)}, nil
+}
+
+func (s *CredentialServer) List(
+	ctx context.Context, req *pb.CredentialServiceListRequest,
+) (*pb.CredentialServiceListResponse, error) {
+	src, ok := SourceFrom(ctx)
+	if !ok {
+		return nil, errUnidentified()
+	}
+
+	got, err := s.credentials.List(ctx, src.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filtered here rather than in a second query: a source has a handful of
+	// identities, and the alternative is a statement that exists only to save
+	// a loop over four rows.
+	if req.GetChannel() != pb.Channel_CHANNEL_UNSPECIFIED {
+		channel, err := toChannel(req.GetChannel())
+		if err != nil {
+			return nil, err
+		}
+		got = onChannel(got, channel)
+	}
+
+	return &pb.CredentialServiceListResponse{Credentials: fromCredentials(got)}, nil
+}
+
+func (s *CredentialServer) Deactivate(
+	ctx context.Context, req *pb.CredentialServiceDeactivateRequest,
+) (*pb.CredentialServiceDeactivateResponse, error) {
+	c, err := s.act(ctx, req.GetId(), s.credentials.Deactivate)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.CredentialServiceDeactivateResponse{Credential: fromCredential(c)}, nil
+}
+
+func (s *CredentialServer) Activate(
+	ctx context.Context, req *pb.CredentialServiceActivateRequest,
+) (*pb.CredentialServiceActivateResponse, error) {
+	c, err := s.act(ctx, req.GetId(), s.credentials.Activate)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.CredentialServiceActivateResponse{Credential: fromCredential(c)}, nil
+}
+
+func (s *CredentialServer) SetDefault(
+	ctx context.Context, req *pb.CredentialServiceSetDefaultRequest,
+) (*pb.CredentialServiceSetDefaultResponse, error) {
+	c, err := s.act(ctx, req.GetId(), s.credentials.SetDefault)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.CredentialServiceSetDefaultResponse{Credential: fromCredential(c)}, nil
+}
+
+func (s *CredentialServer) Rotate(
+	ctx context.Context, req *pb.CredentialServiceRotateRequest,
+) (*pb.CredentialServiceRotateResponse, error) {
+	src, ok := SourceFrom(ctx)
+	if !ok {
+		return nil, errUnidentified()
+	}
+
+	c, err := s.credentials.Rotate(ctx, src.ID, shared.ID(req.GetId()), req.GetSecret())
+	if err != nil {
+		return nil, err
+	}
+	return &pb.CredentialServiceRotateResponse{Credential: fromCredential(c)}, nil
+}
+
+// act is the shape the three flag rpcs share: identify the caller, hand the id
+// to the use case scoped by them, answer with the identity as it now stands.
+func (s *CredentialServer) act(
+	ctx context.Context,
+	id string,
+	do func(context.Context, string, shared.ID) (*credential.Credential, error),
+) (*credential.Credential, error) {
+	src, ok := SourceFrom(ctx)
+	if !ok {
+		return nil, errUnidentified()
+	}
+	return do(ctx, src.ID, shared.ID(id))
 }

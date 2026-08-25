@@ -163,7 +163,7 @@ func buildGatewayCore(
 
 	// --- the rules over them ------------------------------------------------
 	sources := source.NewService(sourceRows, limiter)
-	credentials := credential.NewService(credentialRows)
+	credentials := credential.NewService(credentialRows, now)
 
 	// The rows never see a secret in the clear and the core never sees one
 	// sealed. This is the only place both are true at once.
@@ -183,7 +183,7 @@ func buildGatewayCore(
 		submitter: usecase.NewSubmitter(sources, credentials, notifications, deliveries, uow, log),
 		querier:   usecase.NewQuerier(notifications, deliveries),
 		registrar: usecase.NewRegistrar(sources, webhooks),
-		creds:     usecase.NewCredentials(sources, secrets, credentialRows, uow, ids.Generate, now),
+		creds:     usecase.NewCredentials(sources, credentials, secrets, credentialRows, uow, ids.Generate, now),
 		authn:     source.NewAuthenticator(keyRows, now, cfg.Auth.KeyTouchAfter),
 	}, nil
 }

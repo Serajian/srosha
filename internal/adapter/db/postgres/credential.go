@@ -143,6 +143,128 @@ func (r *CredentialRepository) Reseal(
 	return rows > 0, nil
 }
 
+// ListBySourceID hands over everything one source has registered, on every
+// channel, switched-off ones included: the answer to "what do I have" must
+// include the one somebody disabled, or nobody can turn it back on.
+func (r *CredentialRepository) ListBySourceID(
+	ctx context.Context, sourceID string,
+) ([]credential.Credential, error) {
+	rows, err := r.q(ctx).ListCredentialsBySource(ctx, sourceID)
+	if err != nil {
+		return nil, failed("list credentials", err)
+	}
+
+	out := make([]credential.Credential, 0, len(rows))
+	for _, row := range rows {
+		cred, err := toCredential(gen.ListCredentialsBySourceAndChannelRow(row))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, cred)
+	}
+	return out, nil
+}
+
+// ReadByID finds one, scoped to its source.
+//
+// The source is part of the lookup rather than checked afterwards. The id
+// arrives in a request body, so the difference is whether a guessed id finds
+// somebody else's credential or finds nothing.
+func (r *CredentialRepository) ReadByID(
+	ctx context.Context, sourceID string, id shared.ID,
+) (*credential.Credential, error) {
+	row, err := r.q(ctx).ReadCredential(ctx, gen.ReadCredentialParams{
+		ID:       id.String(),
+		SourceID: sourceID,
+	})
+	switch {
+	case noRows(err):
+		return nil, errs.NotFoundErr("no credential with that id").
+			WithErr(credential.ErrNotFound).
+			WithStr(id.String())
+	case err != nil:
+		return nil, failed("read credential", err)
+	}
+
+	cred, err := toCredential(gen.ListCredentialsBySourceAndChannelRow(row))
+	if err != nil {
+		return nil, err
+	}
+	return &cred, nil
+}
+
+// Deactivate and Activate write the flag alone. A credential already in the
+// asked-for state is not an error: two requests crossing arrive here together
+// and only one of them changes anything.
+func (r *CredentialRepository) Deactivate(ctx context.Context, c *credential.Credential) error {
+	return r.setActive(ctx, c, false)
+}
+
+func (r *CredentialRepository) Activate(ctx context.Context, c *credential.Credential) error {
+	return r.setActive(ctx, c, true)
+}
+
+func (r *CredentialRepository) setActive(
+	ctx context.Context, c *credential.Credential, active bool,
+) error {
+	_, err := r.q(ctx).SetCredentialActive(ctx, gen.SetCredentialActiveParams{
+		ID:        c.ID.String(),
+		SourceID:  c.SourceID,
+		IsActive:  active,
+		UpdatedAt: c.UpdatedAt,
+	})
+	if err != nil {
+		return failed("set credential active", err)
+	}
+	return nil
+}
+
+// SetDefault takes the flag over. It only ever makes sense next to ClearDefault
+// and both have to be in one transaction -- alone, the index refuses it because
+// the channel still has its old default.
+//
+// Finding no row means the credential was switched off between the read and
+// this write, which is exactly the state the statement refuses to create.
+func (r *CredentialRepository) SetDefault(ctx context.Context, c *credential.Credential) error {
+	rows, err := r.q(ctx).SetCredentialDefault(ctx, gen.SetCredentialDefaultParams{
+		ID:        c.ID.String(),
+		SourceID:  c.SourceID,
+		UpdatedAt: c.UpdatedAt,
+	})
+	if err != nil {
+		return failed("set default credential", err)
+	}
+	if rows == 0 {
+		return errs.InvalidInputErr("an inactive credential cannot be the default").
+			WithErr(credential.ErrDefaultUnusable).
+			WithStr(c.ID.String())
+	}
+	return nil
+}
+
+// Rotate replaces the secret with a different one, which is why it does not
+// match on the old value the way Reseal does: a reseal running in between would
+// make that match fail, and the rotation would be lost.
+func (r *CredentialRepository) Rotate(
+	ctx context.Context, sourceID string, id shared.ID, secret string, now time.Time,
+) error {
+	rows, err := r.q(ctx).RotateCredentialSecret(ctx, gen.RotateCredentialSecretParams{
+		ID:        id.String(),
+		SourceID:  sourceID,
+		Secret:    optional(secret),
+		UpdatedAt: now,
+	})
+	if err != nil {
+		return failed("rotate credential secret", err)
+	}
+	if rows == 0 {
+		return errs.NotFoundErr("no active credential with that id").
+			WithErr(credential.ErrNotFound).
+			WithStr(id.String())
+	}
+	return nil
+}
+
 // ClearDefault takes the flag off whichever credential holds it, so the next one
 // can take it. Finding none is not a failure: a channel with no default yet is
 // the ordinary case for the first credential on it.

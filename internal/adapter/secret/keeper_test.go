@@ -47,6 +47,16 @@ func (s *store) Reseal(_ context.Context, _ shared.ID, previous, secret string, 
 	return true, nil
 }
 
+func (s *store) Rotate(
+	_ context.Context, _ string, _ shared.ID, secret string, _ time.Time,
+) error {
+	if s.fail != nil {
+		return s.fail
+	}
+	s.secret = secret
+	return nil
+}
+
 func (s *store) ClearDefault(context.Context, string, shared.Channel, time.Time) error {
 	s.cleared++
 	return s.fail

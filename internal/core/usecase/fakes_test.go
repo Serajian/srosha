@@ -3,6 +3,8 @@ package usecase_test
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,14 +50,125 @@ func (r fakeSources) ReadByID(_ context.Context, id string) (*source.Source, err
 	return s, nil
 }
 
+// fakeCredentials keeps the identities by id, which is what the port asks for
+// now that a source can list, disable and rotate its own.
 type fakeCredentials struct {
-	byChannel map[shared.Channel][]credential.Credential
+	mu   sync.Mutex
+	byID map[shared.ID]credential.Credential
 }
 
-func (r fakeCredentials) ListBySourceAndChannel(
-	_ context.Context, _ string, c shared.Channel,
+func newFakeCredentials(byChannel map[shared.Channel][]credential.Credential) *fakeCredentials {
+	r := &fakeCredentials{byID: map[shared.ID]credential.Credential{}}
+	for _, list := range byChannel {
+		for _, c := range list {
+			r.byID[c.ID] = c
+		}
+	}
+	return r
+}
+
+func (r *fakeCredentials) all(sourceID string) []credential.Credential {
+	out := make([]credential.Credential, 0, len(r.byID))
+	for _, c := range r.byID {
+		if c.SourceID == sourceID {
+			out = append(out, c)
+		}
+	}
+	slices.SortFunc(out, func(a, b credential.Credential) int {
+		if a.Channel != b.Channel {
+			return strings.Compare(a.Channel.String(), b.Channel.String())
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+	return out
+}
+
+func (r *fakeCredentials) ListBySourceAndChannel(
+	_ context.Context, sourceID string, c shared.Channel,
 ) ([]credential.Credential, error) {
-	return r.byChannel[c], nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var out []credential.Credential
+	for _, got := range r.all(sourceID) {
+		if got.Channel == c {
+			out = append(out, got)
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeCredentials) ListBySourceID(
+	_ context.Context, sourceID string,
+) ([]credential.Credential, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.all(sourceID), nil
+}
+
+// ReadByID is scoped by source, as postgres is: a guessed id must find nothing
+// rather than somebody else's identity.
+func (r *fakeCredentials) ReadByID(
+	_ context.Context, sourceID string, id shared.ID,
+) (*credential.Credential, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	c, ok := r.byID[id]
+	if !ok || c.SourceID != sourceID {
+		return nil, errs.NotFoundErr("no credential with that id").WithErr(credential.ErrNotFound)
+	}
+	return &c, nil
+}
+
+func (r *fakeCredentials) Deactivate(_ context.Context, c *credential.Credential) error {
+	return r.save(c)
+}
+
+func (r *fakeCredentials) Activate(_ context.Context, c *credential.Credential) error {
+	return r.save(c)
+}
+
+// SetDefault refuses an inactive identity, as the statement does: a default that
+// cannot be used is the one state a channel must never be left in.
+func (r *fakeCredentials) SetDefault(_ context.Context, c *credential.Credential) error {
+	if !c.IsActive() {
+		return errs.InvalidInputErr("an inactive credential cannot be the default").
+			WithErr(credential.ErrDefaultUnusable)
+	}
+	return r.save(c)
+}
+
+func (r *fakeCredentials) ClearDefault(
+	_ context.Context, sourceID string, ch shared.Channel, now time.Time,
+) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, c := range r.byID {
+		if c.SourceID == sourceID && c.Channel == ch && c.IsDefault() {
+			cleared := *credential.Restore(snapshotOf(&c, false, c.IsActive(), now))
+			r.byID[id] = cleared
+		}
+	}
+	return nil
+}
+
+func (r *fakeCredentials) save(c *credential.Credential) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.byID[c.ID] = *c
+	return nil
+}
+
+func snapshotOf(
+	c *credential.Credential, isDefault, isActive bool, now time.Time,
+) credential.Snapshot {
+	return credential.Snapshot{
+		ID: c.ID, SourceID: c.SourceID, Channel: c.Channel, Name: c.Name,
+		IsDefault: isDefault, IsActive: isActive,
+		CreatedAt: c.CreatedAt, UpdatedAt: now,
+	}
 }
 
 type fakeNotifications struct {

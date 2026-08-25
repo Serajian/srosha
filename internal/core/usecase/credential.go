@@ -21,6 +21,12 @@ import (
 // does not ask.
 type CredentialSecrets interface {
 	Add(ctx context.Context, c *credential.Credential, config []byte, secret string) error
+
+	// Replace writes a new secret over the old one, keeping the identity. It is
+	// what a leaked token needs: without it a source would have to register a
+	// second identity under a new name, and every message still naming the old
+	// one would fail.
+	Replace(ctx context.Context, c *credential.Credential, secret string) error
 }
 
 // CredentialDefaults moves which identity a channel falls back to.
@@ -60,6 +66,7 @@ func (r CredentialRegistration) String() string {
 // must not cost a message from the sending quota.
 type Credentials struct {
 	sources  *source.Service
+	creds    *credential.Service
 	secrets  CredentialSecrets
 	defaults CredentialDefaults
 	uow      UnitOfWork
@@ -69,6 +76,7 @@ type Credentials struct {
 
 func NewCredentials(
 	sources *source.Service,
+	creds *credential.Service,
 	secrets CredentialSecrets,
 	defaults CredentialDefaults,
 	uow UnitOfWork,
@@ -76,7 +84,7 @@ func NewCredentials(
 	now shared.NowFunc,
 ) *Credentials {
 	return &Credentials{
-		sources: sources, secrets: secrets, defaults: defaults,
+		sources: sources, creds: creds, secrets: secrets, defaults: defaults,
 		uow: uow, newID: newID, now: now,
 	}
 }
@@ -125,4 +133,103 @@ func validConfig(config []byte) error {
 	}
 	return errs.InvalidInputErr("credential settings are not valid json").
 		WithStr(fmt.Sprintf("%d bytes", len(config)))
+}
+
+// List is what a source has registered, on every channel.
+//
+// Switched-off ones are in it, and that is the point: the answer to "what do I
+// have" must include the one somebody disabled, or nobody can turn it back on.
+func (c *Credentials) List(ctx context.Context, sourceID string) ([]credential.Credential, error) {
+	if _, err := c.sources.Load(ctx, sourceID); err != nil {
+		return nil, err
+	}
+	return c.creds.List(ctx, sourceID)
+}
+
+// Deactivate switches an identity off without forgetting it, so turning it back
+// on is not a re-registration. Never deleted: after an incident the first
+// question is when it was withdrawn, and a deleted row answers nothing.
+//
+// If it held the default, the channel is left with none until the source names
+// one. Guessing which should take over would move it silently.
+func (c *Credentials) Deactivate(
+	ctx context.Context, sourceID string, id shared.ID,
+) (*credential.Credential, error) {
+	cred, err := c.get(ctx, sourceID, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.creds.Deactivate(ctx, cred); err != nil {
+		return nil, err
+	}
+	return cred, nil
+}
+
+func (c *Credentials) Activate(
+	ctx context.Context, sourceID string, id shared.ID,
+) (*credential.Credential, error) {
+	cred, err := c.get(ctx, sourceID, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.creds.Activate(ctx, cred); err != nil {
+		return nil, err
+	}
+	return cred, nil
+}
+
+// SetDefault moves which identity a message that names none uses.
+//
+// Two writes and they must be one, for the same reason Register's are: the index
+// refuses two defaults on a channel, so without the clear this fails instead of
+// taking over -- and with the clear alone the channel is left with none.
+func (c *Credentials) SetDefault(
+	ctx context.Context, sourceID string, id shared.ID,
+) (*credential.Credential, error) {
+	cred, err := c.get(ctx, sourceID, id)
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.uow.Atomically(ctx, func(ctx context.Context) error {
+		if err := c.defaults.ClearDefault(ctx, sourceID, cred.Channel, c.now()); err != nil {
+			return err
+		}
+		return c.creds.MakeDefault(ctx, cred)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return cred, nil
+}
+
+// Rotate replaces the secret and keeps the name, which is what a leaked token
+// needs. The alternative -- register a second identity, abandon the first --
+// makes every message still naming the old one fail, so a leak on their side
+// becomes a code change on their side too.
+func (c *Credentials) Rotate(
+	ctx context.Context, sourceID string, id shared.ID, secret string,
+) (*credential.Credential, error) {
+	cred, err := c.get(ctx, sourceID, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.secrets.Replace(ctx, cred, secret); err != nil {
+		return nil, err
+	}
+	return cred, nil
+}
+
+// get is the one lookup all of these share: the source has to exist and be
+// active, and the identity has to be that source's own.
+func (c *Credentials) get(
+	ctx context.Context, sourceID string, id shared.ID,
+) (*credential.Credential, error) {
+	if _, err := c.sources.Load(ctx, sourceID); err != nil {
+		return nil, err
+	}
+	if id.IsZero() {
+		return nil, errs.InvalidInputErr("credential id is required").WithErr(shared.ErrInvalidID)
+	}
+	return c.creds.Get(ctx, sourceID, id)
 }

@@ -73,6 +73,58 @@ func (q *Queries) CreateCredential(ctx context.Context, arg CreateCredentialPara
 	return err
 }
 
+const listCredentialsBySource = `-- name: ListCredentialsBySource :many
+SELECT id, source_id, channel, name, is_default, is_active, created_at, updated_at
+FROM credentials
+WHERE source_id = $1
+ORDER BY channel, name
+`
+
+type ListCredentialsBySourceRow struct {
+	ID        string
+	SourceID  string
+	Channel   string
+	Name      string
+	IsDefault bool
+	IsActive  bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// ListCredentialsBySource is what a source asks to see what it has registered.
+// Every channel, switched-off ones included: the answer to "what do I have" must
+// include the one somebody disabled, or nobody can turn it back on.
+//
+// config and secret are NOT selected, for the same reason as above.
+func (q *Queries) ListCredentialsBySource(ctx context.Context, sourceID string) ([]ListCredentialsBySourceRow, error) {
+	rows, err := q.db.Query(ctx, listCredentialsBySource, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCredentialsBySourceRow{}
+	for rows.Next() {
+		var i ListCredentialsBySourceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceID,
+			&i.Channel,
+			&i.Name,
+			&i.IsDefault,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCredentialsBySourceAndChannel = `-- name: ListCredentialsBySourceAndChannel :many
 SELECT id, source_id, channel, name, is_default, is_active, created_at, updated_at
 FROM credentials
@@ -137,6 +189,50 @@ func (q *Queries) ListCredentialsBySourceAndChannel(ctx context.Context, arg Lis
 	return items, nil
 }
 
+const readCredential = `-- name: ReadCredential :one
+SELECT id, source_id, channel, name, is_default, is_active, created_at, updated_at
+FROM credentials
+WHERE id = $1 AND source_id = $2
+`
+
+type ReadCredentialParams struct {
+	ID       string
+	SourceID string
+}
+
+type ReadCredentialRow struct {
+	ID        string
+	SourceID  string
+	Channel   string
+	Name      string
+	IsDefault bool
+	IsActive  bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// ReadCredential finds one by id, scoped to its source.
+//
+// The source_id is in the WHERE clause and that is not belt and braces: the id
+// arrives in a request body, so without it a source could name somebody else's
+// credential and read, disable or rotate it. Scoping here means the worst a
+// guessed id can do is find nothing.
+func (q *Queries) ReadCredential(ctx context.Context, arg ReadCredentialParams) (ReadCredentialRow, error) {
+	row := q.db.QueryRow(ctx, readCredential, arg.ID, arg.SourceID)
+	var i ReadCredentialRow
+	err := row.Scan(
+		&i.ID,
+		&i.SourceID,
+		&i.Channel,
+		&i.Name,
+		&i.IsDefault,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const readCredentialSecret = `-- name: ReadCredentialSecret :one
 SELECT config, secret
 FROM credentials
@@ -191,6 +287,100 @@ func (q *Queries) ResealCredentialSecret(ctx context.Context, arg ResealCredenti
 		arg.ID,
 		arg.Previous,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const rotateCredentialSecret = `-- name: RotateCredentialSecret :execrows
+UPDATE credentials
+SET secret = $1, updated_at = $2::timestamptz
+WHERE id = $3 AND source_id = $4 AND is_active
+`
+
+type RotateCredentialSecretParams struct {
+	Secret    *string
+	UpdatedAt time.Time
+	ID        string
+	SourceID  string
+}
+
+// RotateCredentialSecret replaces the secret and nothing else.
+//
+// Distinct from ResealCredentialSecret above, which rewrites the same secret
+// under a newer key and matches on the old value to lose a race safely. This one
+// writes a DIFFERENT secret on purpose, so matching on the old value would make
+// it fail whenever a reseal had just run.
+func (q *Queries) RotateCredentialSecret(ctx context.Context, arg RotateCredentialSecretParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rotateCredentialSecret,
+		arg.Secret,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.SourceID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setCredentialActive = `-- name: SetCredentialActive :execrows
+UPDATE credentials
+SET is_active  = $1,
+    is_default = CASE WHEN $1::boolean THEN is_default ELSE FALSE END,
+    updated_at = $2::timestamptz
+WHERE id = $3 AND source_id = $4 AND is_active <> $1::boolean
+`
+
+type SetCredentialActiveParams struct {
+	IsActive  bool
+	UpdatedAt time.Time
+	ID        string
+	SourceID  string
+}
+
+// SetCredentialActive switches one off or on.
+//
+// Switching OFF also clears the default flag, because a default that cannot be
+// used leaves every message naming no identity failing with nothing to fix.
+// Switching ON does not restore it: which one is the default is a decision, and
+// guessing it back would silently move it.
+func (q *Queries) SetCredentialActive(ctx context.Context, arg SetCredentialActiveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setCredentialActive,
+		arg.IsActive,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.SourceID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setCredentialDefault = `-- name: SetCredentialDefault :execrows
+UPDATE credentials
+SET is_default = TRUE,
+    updated_at = $1::timestamptz
+WHERE id = $2 AND source_id = $3 AND is_active
+`
+
+type SetCredentialDefaultParams struct {
+	UpdatedAt time.Time
+	ID        string
+	SourceID  string
+}
+
+// SetCredentialDefault is the other half of moving the default, and must run in
+// the same transaction as ClearDefaultCredential. The partial unique index
+// refuses two defaults, so without the clear this fails instead of taking over.
+//
+// is_active is checked here rather than trusted from the read: the two happen at
+// different times, and a default that is switched off is the one state the
+// channel must never be left in.
+func (q *Queries) SetCredentialDefault(ctx context.Context, arg SetCredentialDefaultParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setCredentialDefault, arg.UpdatedAt, arg.ID, arg.SourceID)
 	if err != nil {
 		return 0, err
 	}

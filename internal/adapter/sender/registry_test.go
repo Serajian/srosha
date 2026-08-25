@@ -35,6 +35,25 @@ func (r rows) ListBySourceAndChannel(
 	return r.byChannel[c], nil
 }
 
+// The rest of the port is not on the send path. This adapter only ever resolves
+// which identity to use, so anything that writes one is a compile-time promise
+// and nothing more.
+func (r rows) ListBySourceID(context.Context, string) ([]credential.Credential, error) {
+	return nil, nil
+}
+
+func (r rows) ReadByID(context.Context, string, shared.ID) (*credential.Credential, error) {
+	return nil, nil
+}
+
+func (r rows) Deactivate(context.Context, *credential.Credential) error { return nil }
+func (r rows) Activate(context.Context, *credential.Credential) error   { return nil }
+func (r rows) SetDefault(context.Context, *credential.Credential) error { return nil }
+
+func (r rows) ClearDefault(context.Context, string, shared.Channel, time.Time) error {
+	return nil
+}
+
 type secrets struct {
 	secret string
 	config []byte
@@ -89,7 +108,7 @@ func registryOn(
 	r, err := sender.NewRegistry(
 		credential.NewService(rows{byChannel: map[shared.Channel][]credential.Credential{
 			c: have,
-		}}),
+		}}, time.Now),
 		s, http.DefaultClient, own,
 	)
 	if err != nil {
@@ -230,7 +249,7 @@ func TestAVaultFailureIsNotNoSender(t *testing.T) {
 }
 
 func TestARegistryRefusesToBeBuiltHalfWired(t *testing.T) {
-	creds := credential.NewService(rows{})
+	creds := credential.NewService(rows{}, time.Now)
 
 	if _, err := sender.NewRegistry(nil, &secrets{}, http.DefaultClient, sender.Fallback{}); err == nil {
 		t.Error("NewRegistry with no credentials succeeded")

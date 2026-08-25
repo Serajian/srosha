@@ -308,6 +308,26 @@ func fromCredential(c *credential.Credential) *pb.Credential {
 	}
 }
 
+func fromCredentials(cs []credential.Credential) []*pb.Credential {
+	out := make([]*pb.Credential, 0, len(cs))
+	for i := range cs {
+		out = append(out, fromCredential(&cs[i]))
+	}
+	return out
+}
+
+// onChannel keeps the ones on a channel. A source has a handful of identities,
+// so this is a loop rather than a second statement in the database.
+func onChannel(cs []credential.Credential, c shared.Channel) []credential.Credential {
+	out := make([]credential.Credential, 0, len(cs))
+	for i := range cs {
+		if cs[i].Channel == c {
+			out = append(out, cs[i])
+		}
+	}
+	return out
+}
+
 func fromWebhook(w *webhook.Webhook) *pb.Webhook {
 	if w == nil {
 		return nil

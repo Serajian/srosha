@@ -166,7 +166,7 @@ func buildDispatcherCore(
 	// --- the rules over them ------------------------------------------------
 	notifications := notification.NewService(notificationRows, ids.Generate, now)
 	deliveries := delivery.NewTracker(deliveryRows, now)
-	credentials := credential.NewService(credentialRows)
+	credentials := credential.NewService(credentialRows, now)
 	webhooks := webhook.NewService(webhookRows, ids.Generate, now, webhook.URLPolicy{
 		AllowInsecure: cfg.Webhook.AllowInsecureURL,
 		AllowPrivate:  cfg.Webhook.AllowPrivateURL,

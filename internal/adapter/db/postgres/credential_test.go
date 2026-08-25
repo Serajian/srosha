@@ -388,3 +388,177 @@ func sameJSON(t *testing.T, a, b []byte) bool {
 	}
 	return reflect.DeepEqual(x, y)
 }
+
+// The id arrives in a request body, so the source is part of every lookup and
+// every write. This is the test that says a guessed id finds nothing.
+func TestOneSourceCannotReachAnothersCredential(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	mine := withASource(t, pool, "CX")
+	theirs := withASource(t, pool, "CY")
+	repo := postgres.NewCredentialRepository(pool)
+	ctx := context.Background()
+
+	c := aCredential(t, ulid("CX1"), mine, "transactional", true)
+	if err := repo.Create(ctx, c, nil, theSecret); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if _, err := repo.ReadByID(ctx, theirs, c.ID); !errs.IsType(err, errs.ErrNotFound) {
+		t.Errorf("ReadByID as another source = %v, want not found", err)
+	}
+	if err := repo.Rotate(ctx, theirs, c.ID, "v1.9.a.b", time.Now().UTC()); !errs.IsType(err, errs.ErrNotFound) {
+		t.Errorf("Rotate as another source = %v, want not found", err)
+	}
+
+	// The flag writes report nothing, so the row itself is the evidence.
+	other := aCredential(t, c.ID.String(), theirs, "transactional", false)
+	other.Deactivate(time.Now().UTC())
+	if err := repo.Deactivate(ctx, other); err != nil {
+		t.Fatalf("Deactivate: %v", err)
+	}
+
+	got, err := repo.ReadByID(ctx, mine, c.ID)
+	if err != nil {
+		t.Fatalf("ReadByID: %v", err)
+	}
+	if !got.IsActive() {
+		t.Error("another source switched off a credential that is not theirs")
+	}
+}
+
+func TestListBySourceReturnsEveryChannel(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	sourceID := withASource(t, pool, "CB")
+	repo := postgres.NewCredentialRepository(pool)
+	ctx := context.Background()
+
+	email := aCredential(t, ulid("CB1"), sourceID, "transactional", true)
+	if err := repo.Create(ctx, email, nil, theSecret); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	tg, err := credential.New(
+		shared.ID(ulid("CB2")), sourceID, shared.ChannelTelegram, "alerts", true,
+		time.Now().UTC().Truncate(time.Microsecond),
+	)
+	if err != nil {
+		t.Fatalf("credential.New: %v", err)
+	}
+	if err := repo.Create(ctx, tg, nil, theSecret); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := repo.ListBySourceID(ctx, sourceID)
+	if err != nil {
+		t.Fatalf("ListBySourceID: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("listed %d, want 2", len(got))
+	}
+	// Ordered by channel then name: email before telegram.
+	if got[0].Channel != shared.ChannelEmail || got[1].Channel != shared.ChannelTelegram {
+		t.Errorf("order = %q, %q", got[0].Channel, got[1].Channel)
+	}
+}
+
+// Switching off clears the default with it, in one statement: a default that
+// cannot be used is the one state a channel must never be left in.
+func TestDeactivatingAlsoGivesUpTheDefault(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	sourceID := withASource(t, pool, "CD")
+	repo := postgres.NewCredentialRepository(pool)
+	ctx := context.Background()
+
+	c := aCredential(t, ulid("CD1"), sourceID, "transactional", true)
+	if err := repo.Create(ctx, c, nil, theSecret); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	c.Deactivate(time.Now().UTC())
+	if err := repo.Deactivate(ctx, c); err != nil {
+		t.Fatalf("Deactivate: %v", err)
+	}
+
+	got, err := repo.ReadByID(ctx, sourceID, c.ID)
+	if err != nil {
+		t.Fatalf("ReadByID: %v", err)
+	}
+	if got.IsActive() || got.IsDefault() {
+		t.Errorf("active %v / default %v, want both false", got.IsActive(), got.IsDefault())
+	}
+
+	// And the channel is now free for another to take the default.
+	second := aCredential(t, ulid("CD2"), sourceID, "marketing", true)
+	if err := repo.Create(ctx, second, nil, theSecret); err != nil {
+		t.Errorf("the channel is still holding a default: %v", err)
+	}
+}
+
+// SetDefault refuses a switched-off identity. The read and this write happen at
+// different times, so the check has to be in the statement.
+func TestASwitchedOffCredentialCannotTakeTheDefault(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	sourceID := withASource(t, pool, "CE")
+	repo := postgres.NewCredentialRepository(pool)
+	ctx := context.Background()
+
+	c := aCredential(t, ulid("CE1"), sourceID, "transactional", false)
+	if err := repo.Create(ctx, c, nil, theSecret); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	c.Deactivate(time.Now().UTC())
+	if err := repo.Deactivate(ctx, c); err != nil {
+		t.Fatalf("Deactivate: %v", err)
+	}
+
+	if err := repo.SetDefault(ctx, c); !errs.IsType(err, errs.ErrInvalidInput) {
+		t.Errorf("SetDefault = %v, want it refused", err)
+	}
+}
+
+// Rotate writes a DIFFERENT secret, so unlike Reseal it does not match on the
+// old value -- a reseal running in between must not lose the rotation.
+func TestRotateReplacesTheSecretWhateverResealDid(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	sourceID := withASource(t, pool, "CF")
+	repo := postgres.NewCredentialRepository(pool)
+	ctx := context.Background()
+
+	c := aCredential(t, ulid("CF1"), sourceID, "transactional", true)
+	config := []byte(`{"host":"smtp.acme.test"}`)
+	if err := repo.Create(ctx, c, config, theSecret); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// A reseal lands first, so the stored value is no longer what a caller read.
+	const resealed = "v1.3.cmVzZWFs.cmVzZWFs"
+	if _, err := repo.Reseal(ctx, c.ID, theSecret, resealed, time.Now().UTC()); err != nil {
+		t.Fatalf("Reseal: %v", err)
+	}
+
+	const rotated = "v1.3.cm90YXRl.cm90YXRl"
+	if err := repo.Rotate(ctx, sourceID, c.ID, rotated, time.Now().UTC()); err != nil {
+		t.Fatalf("Rotate: %v", err)
+	}
+
+	gotConfig, gotSecret, err := repo.ReadMaterial(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("ReadMaterial: %v", err)
+	}
+	if gotSecret != rotated {
+		t.Errorf("secret = %q, want the rotated one", gotSecret)
+	}
+	if !sameJSON(t, gotConfig, config) {
+		t.Errorf("config = %s, want it untouched", gotConfig)
+	}
+}

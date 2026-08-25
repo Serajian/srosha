@@ -30,6 +30,11 @@ type Store interface {
 	// Reseal writes the secret alone, and reports whether the row moved. It
 	// matches on the old value, so a reseal that lost a race writes nothing.
 	Reseal(ctx context.Context, id shared.ID, previous, secret string, now time.Time) (bool, error)
+
+	// Rotate writes a DIFFERENT secret, which is why it does not match on the
+	// old value: a reseal running in between would make that match fail and the
+	// rotation would be lost.
+	Rotate(ctx context.Context, sourceID string, id shared.ID, secret string, now time.Time) error
 }
 
 type Keeper struct {
@@ -70,6 +75,22 @@ func (k *Keeper) Add(
 		}
 	}
 	return k.store.Create(ctx, c, config, sealed)
+}
+
+// Replace seals a new secret over the old one, keeping the identity.
+//
+// This is what a leaked token needs. Without it a source would have to register
+// a second identity under a new name, and every message still naming the old one
+// would fail -- turning a token leak into a code change on their side.
+func (k *Keeper) Replace(ctx context.Context, c *credential.Credential, secret string) error {
+	sealed := ""
+	if secret != "" {
+		var err error
+		if sealed, err = k.keys.Seal([]byte(secret), bind(c.SourceID, c.Channel, c.ID)); err != nil {
+			return err
+		}
+	}
+	return k.store.Rotate(ctx, c.SourceID, c.ID, sealed, k.now())
 }
 
 // Material opens a credential for one send: the provider settings as stored, and
