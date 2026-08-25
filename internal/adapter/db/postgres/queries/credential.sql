@@ -50,3 +50,21 @@ WHERE id = @id AND is_active;
 UPDATE credentials
 SET is_default = FALSE, updated_at = @updated_at::timestamptz
 WHERE source_id = @source_id AND channel = @channel AND is_default;
+
+-- ResealCredentialSecret writes the secret alone, and is the only statement that
+-- ever rewrites one. It exists for key rotation: the stored value names the key
+-- that sealed it, so a value naming an old key is resealed with the current one
+-- the next time it is read.
+--
+-- The old value is in the WHERE clause, so a reseal that lost a race writes
+-- nothing rather than overwriting whatever the winner put there. Both would have
+-- sealed the same plaintext, but only one of them may be the row.
+--
+-- Nothing else is touched -- not config, not the name, not the flags. The same
+-- rule the webhook statements keep: a method writes what its caller meant to
+-- change and nothing more.
+--
+-- name: ResealCredentialSecret :execrows
+UPDATE credentials
+SET secret = @secret, updated_at = @updated_at::timestamptz
+WHERE id = @id AND secret = @previous;

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	pb "github.com/Serajian/srosha/gen/notification/v1"
+	"github.com/Serajian/srosha/internal/core/domain/credential"
 	"github.com/Serajian/srosha/internal/core/domain/delivery"
 	"github.com/Serajian/srosha/internal/core/domain/notification"
 	"github.com/Serajian/srosha/internal/core/domain/source"
@@ -262,6 +263,49 @@ func nextPageToken(page shared.Pagination[delivery.Delivery]) string {
 		return ""
 	}
 	return page.NextCursor.String()
+}
+
+// toCredentialRegistration reads a registration off the wire.
+//
+// config travels as a string and stays one: the service treats a provider's
+// settings as opaque json, and parsing it here only to serialize it again would
+// be this layer inventing a shape the rest of the code does not have.
+func toCredentialRegistration(
+	req *pb.CredentialServiceRegisterRequest,
+) (usecase.CredentialRegistration, error) {
+	channel, err := toChannel(req.GetChannel())
+	if err != nil {
+		return usecase.CredentialRegistration{}, err
+	}
+
+	var config []byte
+	if raw := req.GetConfig(); raw != "" {
+		config = []byte(raw)
+	}
+
+	return usecase.CredentialRegistration{
+		Channel:   channel,
+		Name:      req.GetName(),
+		Config:    config,
+		Secret:    req.GetSecret(),
+		IsDefault: req.GetIsDefault(),
+	}, nil
+}
+
+// fromCredential answers with the identity and never with its secret. There is
+// no field for one, which is the point: it cannot be added by accident.
+func fromCredential(c *credential.Credential) *pb.Credential {
+	if c == nil {
+		return nil
+	}
+	return &pb.Credential{
+		Id:        c.ID.String(),
+		Channel:   fromChannel(c.Channel),
+		Name:      c.Name,
+		IsDefault: c.IsDefault(),
+		IsActive:  c.IsActive(),
+		CreatedAt: timestamppb.New(c.CreatedAt),
+	}
 }
 
 func fromWebhook(w *webhook.Webhook) *pb.Webhook {

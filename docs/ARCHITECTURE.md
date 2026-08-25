@@ -183,3 +183,16 @@ This is for anything we must be able to read back — bot tokens, the SMTP passw
 opposite case from an API key, which is only ever compared and so is hashed. Two mechanisms
 for one thing is where one of them gets forgotten, so the rule is the question: *do we need
 the original back?*
+
+Both binaries hold the keys, and the cipher is symmetric — so the gateway holding the key to
+seal is the gateway holding the key to open. That is a real widening and it is accepted rather
+than overlooked: what this guards against is a database dump, and the gateway already reads
+those rows with the same connection string. An asymmetric scheme, where the gateway can only
+seal, is the only thing that would make the restriction real; that is a decision for the day
+these two stop trusting each other.
+
+A value is resealed when it is read, and only if it names a key that is no longer the current
+one. The key id is inside the value, so asking costs no column and no second query. Without
+that guard every read would be followed by a write, because sealing is randomized and no two
+seals of one value are ever equal. The reseal is best effort: the secret is already open and
+the message is going out, so a failed rewrite is logged and the next read tries again.

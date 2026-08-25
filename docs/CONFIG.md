@@ -140,6 +140,7 @@ Every key, with its defaults and which binary needs it, is documented in
 | db | `NOTIF_DB_DSN`, `NOTIF_DB_MAX_CONNS`, `NOTIF_DB_MAX_CONN_LIFETIME`, `NOTIF_DB_MAX_CONN_IDLE_TIME`, `NOTIF_DB_HEALTH_CHECK_PERIOD`, `NOTIF_DB_CONNECT_TIMEOUT`, `NOTIF_DB_CONNECT_ATTEMPTS`, `NOTIF_DB_CONNECT_BACKOFF` | ✅ | ✅ |
 | mq | `NOTIF_MQ_URL`, `NOTIF_MQ_STREAM`, `NOTIF_MQ_DUPLICATE_WINDOW`, `NOTIF_MQ_MAX_AGE`, `NOTIF_MQ_CONNECT_TIMEOUT`, `NOTIF_MQ_MAX_RECONNECTS`, `NOTIF_MQ_RECONNECT_WAIT`, `NOTIF_MQ_DRAIN_TIMEOUT` | ✅ | ✅ |
 | ratelimit | `NOTIF_RATELIMIT_PER_MINUTE` | ✅ | — |
+| crypto | `NOTIF_CRYPTO_KEYS`, `NOTIF_CRYPTO_KEY_ID` | ✅ | ✅ |
 | dispatch | `NOTIF_DISPATCH_MAX_ATTEMPTS`, `NOTIF_DISPATCH_ACK_WAIT`, `NOTIF_DISPATCH_MAX_IN_FLIGHT` | — | ✅ |
 | sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN` | — | ✅ |
 | webhook policy | `NOTIF_WEBHOOK_ALLOW_INSECURE_URL`, `NOTIF_WEBHOOK_ALLOW_PRIVATE_URL` | ✅ | ✅ |
@@ -148,19 +149,15 @@ Every key, with its defaults and which binary needs it, is documented in
 
 `NOTIF_MQ_URL` carries a **different** NATS user per binary. Do not collapse them.
 
-### Decided, not yet read by any code
+`NOTIF_CRYPTO_KEYS` is a JSON map of key id → key, one entry per key, and every
+stored value names the key that sealed it. `NOTIF_CRYPTO_KEY_ID` says which of
+them new values use. Rotation is therefore: add the second key, point the id at
+it, let old values reseal themselves as they are read, and drop the first when
+no value names it. No step stops the service.
 
-These are settled in `docs/ARCHITECTURE.md` and shape the `credentials` table, so
-they are recorded here before the code exists. They move into the table above and
-into `.env.example` in the same commit that first reads them.
-
-| Key | Purpose |
-| --- | --- |
-| `NOTIF_CRYPTO_KEYS` | JSON, key id → key. **Secret.** A set, not one value, so a key can be changed without an outage. Same shape as `NOTIF_WEBHOOK_SECRETS`. |
-| `NOTIF_CRYPTO_KEY_ID` | Which key in that set new values are encrypted with. Old values name their own. |
-
-Each key is 32 bytes for AES-256, base64 in the variable. Generate with
-`openssl rand -base64 32`.
+Each key is 32 bytes for AES-256, standard base64 in the variable. Generate with
+`openssl rand -base64 32`. **Both binaries read them** — the gateway seals a
+credential when a source registers one, the dispatcher opens it to send.
 
 ### Password rule
 

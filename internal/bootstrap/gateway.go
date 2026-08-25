@@ -9,6 +9,7 @@ import (
 	"github.com/Serajian/srosha/internal/adapter/db/postgres"
 	"github.com/Serajian/srosha/internal/adapter/mq/nats"
 	"github.com/Serajian/srosha/internal/adapter/ratelimit"
+	"github.com/Serajian/srosha/internal/adapter/secret"
 	"github.com/Serajian/srosha/internal/adapter/system"
 	"github.com/Serajian/srosha/internal/config"
 	"github.com/Serajian/srosha/internal/core/domain/credential"
@@ -19,6 +20,7 @@ import (
 	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/internal/infra/grpcserver"
 	"github.com/Serajian/srosha/internal/registry"
+	"github.com/Serajian/srosha/pkg/crypto"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go/jetstream"
@@ -84,6 +86,7 @@ type gatewayCore struct {
 	submitter *usecase.Submitter
 	querier   *usecase.Querier
 	registrar *usecase.Registrar
+	creds     *usecase.Credentials
 	authn     *source.Authenticator
 }
 
@@ -111,6 +114,16 @@ func buildGatewayCore(
 	}
 
 	limiter, err := ratelimit.NewMemory(cfg.RateLimit.PerMinute, now)
+	if err != nil {
+		return core, err
+	}
+
+	// The cipher is symmetric, so the gateway holding the key to seal a sending
+	// secret is the gateway holding the key to open one. That is the price of
+	// registering credentials through the API, and it is accepted rather than
+	// overlooked: what this guards against is a database dump, and the gateway
+	// already reads those rows.
+	keys, err := crypto.NewKeyring(cfg.Crypto.Keys, cfg.Crypto.ActiveID)
 	if err != nil {
 		return core, err
 	}
@@ -151,6 +164,14 @@ func buildGatewayCore(
 	// --- the rules over them ------------------------------------------------
 	sources := source.NewService(sourceRows, limiter)
 	credentials := credential.NewService(credentialRows)
+
+	// The rows never see a secret in the clear and the core never sees one
+	// sealed. This is the only place both are true at once.
+	secrets, err := secret.New(credentialRows, keys, now, log)
+	if err != nil {
+		return core, err
+	}
+
 	notifications := notification.NewService(notificationRows, ids.Generate, now)
 	deliveries := delivery.NewService(deliveryRows, publisher, ids.Generate, now)
 	webhooks := webhook.NewService(webhookRows, ids.Generate, now, webhook.URLPolicy{
@@ -162,6 +183,7 @@ func buildGatewayCore(
 		submitter: usecase.NewSubmitter(sources, credentials, notifications, deliveries, uow, log),
 		querier:   usecase.NewQuerier(notifications, deliveries),
 		registrar: usecase.NewRegistrar(sources, webhooks),
+		creds:     usecase.NewCredentials(sources, secrets, credentialRows, uow, ids.Generate, now),
 		authn:     source.NewAuthenticator(keyRows, now, cfg.Auth.KeyTouchAfter),
 	}, nil
 }
@@ -188,9 +210,15 @@ func gatewayGRPC(
 		return nil, err
 	}
 
+	credentials, err := grpcsrv.NewCredentialServer(core.creds)
+	if err != nil {
+		return nil, err
+	}
+
 	server, err := grpcsrv.New(grpcsrv.Deps{
 		Notifications: notifications,
 		Webhooks:      webhooks,
+		Credentials:   credentials,
 		Authn:         core.authn,
 		Scheme:        auth.NewScheme(),
 		Log:           log,

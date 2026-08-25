@@ -4,8 +4,10 @@ package postgres_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -285,4 +287,104 @@ func TestClearingNoDefaultIsNotAFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ClearDefault() = %v, want nil", err)
 	}
+}
+
+// Reseal is the write that makes a key change cost no outage. It rewrites the
+// secret and nothing else, and only if the row still holds what the caller read.
+func TestResealReplacesOnlyTheSecret(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	sourceID := withASource(t, pool, "CR")
+	repo := postgres.NewCredentialRepository(pool)
+	ctx := context.Background()
+
+	c := aCredential(t, ulid("CR1"), sourceID, "transactional", true)
+	config := []byte(`{"host":"smtp.acme.test"}`)
+	if err := repo.Create(ctx, c, config, theSecret); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	const underTheNewKey = "v1.3.bm9uY2Uy.Y2lwaGVydGV4dDI"
+
+	written, err := repo.Reseal(ctx, c.ID, theSecret, underTheNewKey, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Reseal: %v", err)
+	}
+	if !written {
+		t.Fatal("Reseal reported no write for a row that was there")
+	}
+
+	gotConfig, gotSecret, err := repo.ReadMaterial(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("ReadMaterial: %v", err)
+	}
+	if gotSecret != underTheNewKey {
+		t.Errorf("secret = %q, want the resealed value", gotSecret)
+	}
+	// jsonb reformats, so the bytes are compared as json rather than as text.
+	if !sameJSON(t, gotConfig, config) {
+		t.Errorf("config = %s, want %s", gotConfig, config)
+	}
+
+	// The identity itself must be exactly as it was.
+	list, err := repo.ListBySourceAndChannel(ctx, sourceID, shared.ChannelEmail)
+	if err != nil {
+		t.Fatalf("ListBySourceAndChannel: %v", err)
+	}
+	if len(list) != 1 || list[0].Name != "transactional" || !list[0].IsDefault() || !list[0].IsActive() {
+		t.Errorf("the identity moved: %+v", list)
+	}
+}
+
+// Two senders reading one credential at the same moment both reseal. Only one
+// of them can be the row, and the loser must write nothing rather than put its
+// own value over the winner's.
+func TestAResealThatLostTheRaceWritesNothing(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	sourceID := withASource(t, pool, "CL")
+	repo := postgres.NewCredentialRepository(pool)
+	ctx := context.Background()
+
+	c := aCredential(t, ulid("CL1"), sourceID, "transactional", false)
+	if err := repo.Create(ctx, c, nil, theSecret); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	const winner = "v1.3.d2lubmVy.d2lubmVy"
+	if _, err := repo.Reseal(ctx, c.ID, theSecret, winner, time.Now().UTC()); err != nil {
+		t.Fatalf("Reseal: %v", err)
+	}
+
+	// The loser still holds the value it read a moment ago.
+	written, err := repo.Reseal(ctx, c.ID, theSecret, "v1.3.bG9zZXI.bG9zZXI", time.Now().UTC())
+	if err != nil {
+		t.Fatalf("Reseal: %v", err)
+	}
+	if written {
+		t.Error("the loser overwrote the winner")
+	}
+
+	_, got, err := repo.ReadMaterial(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("ReadMaterial: %v", err)
+	}
+	if got != winner {
+		t.Errorf("secret = %q, want the winner's value", got)
+	}
+}
+
+func sameJSON(t *testing.T, a, b []byte) bool {
+	t.Helper()
+
+	var x, y any
+	if err := json.Unmarshal(a, &x); err != nil {
+		t.Fatalf("unmarshal %s: %v", a, err)
+	}
+	if err := json.Unmarshal(b, &y); err != nil {
+		t.Fatalf("unmarshal %s: %v", b, err)
+	}
+	return reflect.DeepEqual(x, y)
 }

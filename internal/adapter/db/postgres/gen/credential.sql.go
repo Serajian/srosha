@@ -158,3 +158,41 @@ func (q *Queries) ReadCredentialSecret(ctx context.Context, id string) (ReadCred
 	err := row.Scan(&i.Config, &i.Secret)
 	return i, err
 }
+
+const resealCredentialSecret = `-- name: ResealCredentialSecret :execrows
+UPDATE credentials
+SET secret = $1, updated_at = $2::timestamptz
+WHERE id = $3 AND secret = $4
+`
+
+type ResealCredentialSecretParams struct {
+	Secret    *string
+	UpdatedAt time.Time
+	ID        string
+	Previous  *string
+}
+
+// ResealCredentialSecret writes the secret alone, and is the only statement that
+// ever rewrites one. It exists for key rotation: the stored value names the key
+// that sealed it, so a value naming an old key is resealed with the current one
+// the next time it is read.
+//
+// The old value is in the WHERE clause, so a reseal that lost a race writes
+// nothing rather than overwriting whatever the winner put there. Both would have
+// sealed the same plaintext, but only one of them may be the row.
+//
+// Nothing else is touched -- not config, not the name, not the flags. The same
+// rule the webhook statements keep: a method writes what its caller meant to
+// change and nothing more.
+func (q *Queries) ResealCredentialSecret(ctx context.Context, arg ResealCredentialSecretParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resealCredentialSecret,
+		arg.Secret,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.Previous,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
