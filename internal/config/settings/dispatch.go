@@ -18,6 +18,17 @@ type Dispatch struct {
 	ReconcileGiveUp time.Duration
 	ReconcileBatch  int
 	ReconcileEvery  time.Duration
+
+	// AckWait is how long the broker waits for an acknowledgement before it
+	// decides nobody handled the message and gives it to somebody else. It has
+	// to be longer than the slowest send: shorter, and a provider that takes
+	// its time gets the same message twice.
+	AckWait time.Duration
+
+	// MaxInFlight bounds how many deliveries are being worked on at once, which
+	// is this binary's concurrency. Unbounded, a full queue would open hundreds
+	// of connections to one provider at the same moment.
+	MaxInFlight int
 }
 
 func LoadDispatch(r *env.Reader) Dispatch {
@@ -27,10 +38,17 @@ func LoadDispatch(r *env.Reader) Dispatch {
 		ReconcileGiveUp: r.Duration("RECONCILE_GIVE_UP", 30*time.Minute),
 		ReconcileBatch:  r.Int("RECONCILE_BATCH", 100),
 		ReconcileEvery:  r.Duration("RECONCILE_EVERY", 5*time.Minute),
+		AckWait:         r.Duration("DISPATCH_ACK_WAIT", time.Minute),
+		MaxInFlight:     r.Int("DISPATCH_MAX_IN_FLIGHT", 50),
 	}
 
 	r.Check(d.MaxAttempts > 0, "NOTIF_DISPATCH_MAX_ATTEMPTS must be above zero")
 	r.Check(d.ReconcileBatch > 0, "NOTIF_RECONCILE_BATCH must be above zero")
+	r.Check(d.MaxInFlight > 0, "NOTIF_DISPATCH_MAX_IN_FLIGHT must be above zero")
+
+	// Zero would leave the broker's own default in place, which is a number
+	// nobody here chose and which may well be under a slow provider's timeout.
+	r.Check(d.AckWait > 0, "NOTIF_DISPATCH_ACK_WAIT must be above zero")
 
 	// With give-up at or below after, a row is already past its last chance the
 	// first time recovery sees it, so it never gets a second attempt.
