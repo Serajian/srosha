@@ -492,3 +492,32 @@ func TestARowStillHeldIsSkipped(t *testing.T) {
 		t.Errorf("sent %d for a delivery somebody else was holding", d.sender.count())
 	}
 }
+
+// The contract is that a callback is sent once and never retried. A message
+// whose deliveries settle one after another must not produce two of them.
+func TestTheSourceIsToldOnce(t *testing.T) {
+	d := newDispatchRig(t, func(o *dispatchOpts) {
+		o.callback = "https://acme.com/hooks"
+	})
+
+	// Both deliveries of the message, settled one at a time. The second is the
+	// one that finishes the message, so only it should announce.
+	for _, id := range d.deliveries.ids(t) {
+		if err := d.dispatcher.Handle(context.Background(), id, 1); err != nil {
+			t.Fatalf("Handle(%s) error = %v", id, err)
+		}
+	}
+	if got := d.notifier.count(); got != 1 {
+		t.Fatalf("the source was told %d times, want 1", got)
+	}
+
+	// And a redelivered event settles nothing, so it announces nothing either.
+	for _, id := range d.deliveries.ids(t) {
+		if err := d.dispatcher.Handle(context.Background(), id, 2); err != nil {
+			t.Fatalf("Handle(%s) again error = %v", id, err)
+		}
+	}
+	if got := d.notifier.count(); got != 1 {
+		t.Errorf("a redelivered event told the source again: %d", got)
+	}
+}

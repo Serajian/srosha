@@ -250,6 +250,10 @@ func settled(err error) error {
 // failure here is logged and forgotten. The query API is how a source learns an
 // outcome for certain; this is the convenience on top of it, and srosha does
 // not keep a queue of callbacks it still owes anybody.
+//
+// Which is exactly why the announcement is CLAIMED before it is sent rather
+// than recorded after: nothing will retry it, so the one thing that must be
+// true is that it goes out once.
 func (d *Dispatcher) announce(ctx context.Context, n *notification.Notification) {
 	if n == nil {
 		return // no message, so nobody to tell and no source to tell it to
@@ -271,6 +275,20 @@ func (d *Dispatcher) announce(ctx context.Context, n *notification.Notification)
 
 	w, err := d.webhooks.Get(ctx, n.SourceID)
 	if err != nil || w == nil || !w.IsActive() {
+		return
+	}
+
+	// Whoever settles the last delivery announces -- but two workers settling the
+	// last TWO at the same moment both see a finished message here. Taking the
+	// announcement is what makes "sent once and never retried" true; the loser
+	// stops, which is the expected end of that race and not a failure.
+	mine, err := d.deliveries.ClaimAnnouncement(ctx, n.ID)
+	if err != nil {
+		d.log.ErrorContext(ctx, "could not claim the announcement",
+			"notification_id", n.ID, "err", err)
+		return
+	}
+	if !mine {
 		return
 	}
 

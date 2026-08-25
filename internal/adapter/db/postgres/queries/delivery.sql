@@ -112,11 +112,25 @@ SET status = @status,
     updated_at = @updated_at::timestamptz
 WHERE id = @id AND status = 'PENDING';
 
--- MarkDeliveryNotified records that the source was told. Separate from the
--- outcome write above so that neither can erase the other, and guarded so a
--- repeated callback does not move the timestamp.
+-- ClaimNotificationAnnouncement decides who tells the source, and it is a claim
+-- rather than a record.
 --
--- name: MarkDeliveryNotified :execrows
+-- The callback goes out when the LAST delivery of a message settles, and two
+-- workers settling the last two at the same moment both see a finished message:
+-- without this, both would send the same batch, and the contract says a callback
+-- is sent once and never retried.
+--
+-- One statement over the whole message, not one row at a time. Two of these
+-- serialise: the first stamps every row and reports how many, the second
+-- re-evaluates against what the first committed and reports none. A per-row
+-- version would let two callers each win a subset and both believe they had it.
+--
+-- So notified_at means "an announcement was made for this outcome", not "the
+-- source received it". That is the honest reading: the callback is best effort
+-- and never retried by design, so the attempt is the event -- and whether it
+-- landed is recorded on the webhook, in consecutive_failures.
+--
+-- name: ClaimNotificationAnnouncement :execrows
 UPDATE deliveries
 SET notified_at = @notified_at::timestamptz
-WHERE id = @id AND notified_at IS NULL;
+WHERE notification_id = @notification_id AND notified_at IS NULL;

@@ -423,15 +423,8 @@ func TestRestoreLoadsARowNewSetWouldReject(t *testing.T) {
 	}
 }
 
-func TestMarkNotified(t *testing.T) {
-	d := newOne(t)
-	if d.NotifiedAt() != nil {
-		t.Fatal("a new delivery must not be marked notified")
-	}
-
-	d.MarkNotified(later)
-
-	if d.NotifiedAt() == nil || !d.NotifiedAt().Equal(later) {
-		t.Errorf("NotifiedAt() = %v, want %v", d.NotifiedAt(), later)
+func TestANewDeliveryHasNotBeenAnnounced(t *testing.T) {
+	if d := newOne(t); d.NotifiedAt() != nil {
+		t.Errorf("NotifiedAt() = %v, want nil", d.NotifiedAt())
 	}
 }

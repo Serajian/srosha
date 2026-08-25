@@ -10,6 +10,42 @@ import (
 	"time"
 )
 
+const claimNotificationAnnouncement = `-- name: ClaimNotificationAnnouncement :execrows
+UPDATE deliveries
+SET notified_at = $1::timestamptz
+WHERE notification_id = $2 AND notified_at IS NULL
+`
+
+type ClaimNotificationAnnouncementParams struct {
+	NotifiedAt     time.Time
+	NotificationID string
+}
+
+// ClaimNotificationAnnouncement decides who tells the source, and it is a claim
+// rather than a record.
+//
+// The callback goes out when the LAST delivery of a message settles, and two
+// workers settling the last two at the same moment both see a finished message:
+// without this, both would send the same batch, and the contract says a callback
+// is sent once and never retried.
+//
+// One statement over the whole message, not one row at a time. Two of these
+// serialise: the first stamps every row and reports how many, the second
+// re-evaluates against what the first committed and reports none. A per-row
+// version would let two callers each win a subset and both believe they had it.
+//
+// So notified_at means "an announcement was made for this outcome", not "the
+// source received it". That is the honest reading: the callback is best effort
+// and never retried by design, so the attempt is the event -- and whether it
+// landed is recorded on the webhook, in consecutive_failures.
+func (q *Queries) ClaimNotificationAnnouncement(ctx context.Context, arg ClaimNotificationAnnouncementParams) (int64, error) {
+	result, err := q.db.Exec(ctx, claimNotificationAnnouncement, arg.NotifiedAt, arg.NotificationID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const claimStaleDeliveries = `-- name: ClaimStaleDeliveries :many
 UPDATE deliveries
 SET claimed_at = $1::timestamptz
@@ -149,28 +185,6 @@ func (q *Queries) ListDeliveriesByNotificationID(ctx context.Context, notificati
 		return nil, err
 	}
 	return items, nil
-}
-
-const markDeliveryNotified = `-- name: MarkDeliveryNotified :execrows
-UPDATE deliveries
-SET notified_at = $1::timestamptz
-WHERE id = $2 AND notified_at IS NULL
-`
-
-type MarkDeliveryNotifiedParams struct {
-	NotifiedAt time.Time
-	ID         string
-}
-
-// MarkDeliveryNotified records that the source was told. Separate from the
-// outcome write above so that neither can erase the other, and guarded so a
-// repeated callback does not move the timestamp.
-func (q *Queries) MarkDeliveryNotified(ctx context.Context, arg MarkDeliveryNotifiedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markDeliveryNotified, arg.NotifiedAt, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
 }
 
 const pageDeliveriesByNotificationID = `-- name: PageDeliveriesByNotificationID :many

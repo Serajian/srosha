@@ -110,6 +110,24 @@ func (r *DeliveryRepository) ClaimStale(
 	return toDeliveries(rows)
 }
 
+// ClaimAnnouncement decides whether this caller is the one that tells the source.
+//
+// True means the announcement is theirs and nobody else will make it. False
+// means somebody already has it -- not a failure, and the expected answer when
+// two workers settle the last two deliveries of a message at the same moment.
+func (r *DeliveryRepository) ClaimAnnouncement(
+	ctx context.Context, notificationID shared.ID, now time.Time,
+) (bool, error) {
+	rows, err := r.q(ctx).ClaimNotificationAnnouncement(ctx, gen.ClaimNotificationAnnouncementParams{
+		NotificationID: notificationID.String(),
+		NotifiedAt:     now,
+	})
+	if err != nil {
+		return false, failed("claim notification announcement", err)
+	}
+	return rows > 0, nil
+}
+
 // Release hands a row back before its lease is up, so a transient failure does
 // not make the lease the retry interval.
 //
