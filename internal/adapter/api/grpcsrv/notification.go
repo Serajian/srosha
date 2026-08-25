@@ -4,6 +4,7 @@ import (
 	"context"
 
 	pb "github.com/Serajian/srosha/gen/notification/v1"
+	"github.com/Serajian/srosha/internal/core/domain/notification"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/pkg/errs"
@@ -91,6 +92,36 @@ func (s *NotificationServer) Get(
 // front of it. It should be unreachable, and it is an internal error rather
 // than an unauthenticated one because the caller did nothing wrong -- we wired
 // the server incorrectly.
+func (s *NotificationServer) List(
+	ctx context.Context, req *pb.NotificationServiceListRequest,
+) (*pb.NotificationServiceListResponse, error) {
+	src, ok := SourceFrom(ctx)
+	if !ok {
+		return nil, errUnidentified()
+	}
+
+	cursor, err := toCursor(req.GetPage())
+	if err != nil {
+		return nil, err
+	}
+
+	page, err := s.querier.List(ctx, src.ID, usecase.ListQuery{
+		Window: notification.Window{
+			From:  toTime(req.GetFrom()),
+			Until: toTime(req.GetUntil()),
+		},
+		Cursor: cursor,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.NotificationServiceListResponse{
+		Notifications: fromNotifications(page),
+		NextPageToken: nextNotificationPageToken(page),
+	}, nil
+}
+
 func errUnidentified() error {
 	return errs.InternalErr("the request could not be completed").
 		WithStr("handler reached with no authenticated source")

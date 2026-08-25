@@ -247,6 +247,21 @@ func fromDelivery(d *delivery.Delivery) *pb.Delivery {
 	}
 }
 
+func fromNotifications(page shared.Pagination[notification.Notification]) []*pb.Notification {
+	out := make([]*pb.Notification, 0, len(page.Items))
+	for _, n := range page.Items {
+		out = append(out, fromNotification(n))
+	}
+	return out
+}
+
+func nextNotificationPageToken(page shared.Pagination[notification.Notification]) string {
+	if page.NextCursor == nil {
+		return ""
+	}
+	return page.NextCursor.String()
+}
+
 func fromDeliveries(page shared.Pagination[delivery.Delivery]) []*pb.Delivery {
 	out := make([]*pb.Delivery, 0, len(page.Items))
 	for _, d := range page.Items {

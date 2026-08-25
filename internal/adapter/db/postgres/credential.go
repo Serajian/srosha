@@ -265,6 +265,35 @@ func (r *CredentialRepository) Rotate(
 	return nil
 }
 
+// UpdateConfig replaces the provider settings and nothing else.
+//
+// Not the name: a message names the identity it wants, so renaming one would
+// break every message still asking for it -- the same reason rotating a secret
+// keeps the name.
+func (r *CredentialRepository) UpdateConfig(
+	ctx context.Context, sourceID string, id shared.ID, config []byte, now time.Time,
+) error {
+	if len(config) == 0 {
+		config = []byte("{}")
+	}
+
+	rows, err := r.q(ctx).UpdateCredentialConfig(ctx, gen.UpdateCredentialConfigParams{
+		ID:        id.String(),
+		SourceID:  sourceID,
+		Config:    config,
+		UpdatedAt: now,
+	})
+	if err != nil {
+		return failed("update credential config", err)
+	}
+	if rows == 0 {
+		return errs.NotFoundErr("no credential with that id").
+			WithErr(credential.ErrNotFound).
+			WithStr(id.String())
+	}
+	return nil
+}
+
 // ClearDefault takes the flag off whichever credential holds it, so the next one
 // can take it. Finding none is not a failure: a channel with no default yet is
 // the ordinary case for the first credential on it.

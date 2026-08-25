@@ -25,6 +25,7 @@ const (
 	CredentialService_Activate_FullMethodName   = "/notification.v1.CredentialService/Activate"
 	CredentialService_SetDefault_FullMethodName = "/notification.v1.CredentialService/SetDefault"
 	CredentialService_Rotate_FullMethodName     = "/notification.v1.CredentialService/Rotate"
+	CredentialService_Update_FullMethodName     = "/notification.v1.CredentialService/Update"
 )
 
 // CredentialServiceClient is the client API for CredentialService service.
@@ -64,6 +65,11 @@ type CredentialServiceClient interface {
 	// needs: registering a second identity instead would make every message still
 	// naming the old one fail, turning a leak into a code change.
 	Rotate(ctx context.Context, in *CredentialServiceRotateRequest, opts ...grpc.CallOption) (*CredentialServiceRotateResponse, error)
+	// Update replaces the provider settings and keeps the name, because a message
+	// asks for an identity by name: renaming would break every message still
+	// naming it. Changing a mail server is what this is for -- registering a
+	// second identity instead would do exactly that damage.
+	Update(ctx context.Context, in *CredentialServiceUpdateRequest, opts ...grpc.CallOption) (*CredentialServiceUpdateResponse, error)
 }
 
 type credentialServiceClient struct {
@@ -134,6 +140,16 @@ func (c *credentialServiceClient) Rotate(ctx context.Context, in *CredentialServ
 	return out, nil
 }
 
+func (c *credentialServiceClient) Update(ctx context.Context, in *CredentialServiceUpdateRequest, opts ...grpc.CallOption) (*CredentialServiceUpdateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CredentialServiceUpdateResponse)
+	err := c.cc.Invoke(ctx, CredentialService_Update_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CredentialServiceServer is the server API for CredentialService service.
 // All implementations must embed UnimplementedCredentialServiceServer
 // for forward compatibility.
@@ -171,6 +187,11 @@ type CredentialServiceServer interface {
 	// needs: registering a second identity instead would make every message still
 	// naming the old one fail, turning a leak into a code change.
 	Rotate(context.Context, *CredentialServiceRotateRequest) (*CredentialServiceRotateResponse, error)
+	// Update replaces the provider settings and keeps the name, because a message
+	// asks for an identity by name: renaming would break every message still
+	// naming it. Changing a mail server is what this is for -- registering a
+	// second identity instead would do exactly that damage.
+	Update(context.Context, *CredentialServiceUpdateRequest) (*CredentialServiceUpdateResponse, error)
 	mustEmbedUnimplementedCredentialServiceServer()
 }
 
@@ -198,6 +219,9 @@ func (UnimplementedCredentialServiceServer) SetDefault(context.Context, *Credent
 }
 func (UnimplementedCredentialServiceServer) Rotate(context.Context, *CredentialServiceRotateRequest) (*CredentialServiceRotateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Rotate not implemented")
+}
+func (UnimplementedCredentialServiceServer) Update(context.Context, *CredentialServiceUpdateRequest) (*CredentialServiceUpdateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Update not implemented")
 }
 func (UnimplementedCredentialServiceServer) mustEmbedUnimplementedCredentialServiceServer() {}
 func (UnimplementedCredentialServiceServer) testEmbeddedByValue()                           {}
@@ -328,6 +352,24 @@ func _CredentialService_Rotate_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CredentialService_Update_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CredentialServiceUpdateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CredentialServiceServer).Update(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CredentialService_Update_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CredentialServiceServer).Update(ctx, req.(*CredentialServiceUpdateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CredentialService_ServiceDesc is the grpc.ServiceDesc for CredentialService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -358,6 +400,10 @@ var CredentialService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Rotate",
 			Handler:    _CredentialService_Rotate_Handler,
+		},
+		{
+			MethodName: "Update",
+			Handler:    _CredentialService_Update_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

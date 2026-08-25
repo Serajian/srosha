@@ -20,6 +20,35 @@ service NotificationService {
 
   // Get answers "what happened to my message".
   rpc Get(NotificationServiceGetRequest) returns (NotificationServiceGetResponse);
+
+  // List answers "what did I send", newest first.
+  //
+  // Without it, Get can only be asked with an id the caller kept -- and the
+  // callback that would have carried it is best effort and never retried. This
+  // is what makes the query API the reliable path it is described as.
+  //
+  // Messages only. Their deliveries are Get's answer.
+  rpc List(NotificationServiceListRequest) returns (NotificationServiceListResponse);
+}
+
+message NotificationServiceListRequest {
+  // Both halves are optional and independent: "since yesterday" and "that week
+  // in March" are both real questions, and neither should have to invent the
+  // other's bound. until is exclusive, so two windows that meet cannot both
+  // return the same message.
+  google.protobuf.Timestamp from = 1;
+  google.protobuf.Timestamp until = 2;
+
+  Page page = 3;
+}
+
+message NotificationServiceListResponse {
+  // Newest first, which is the opposite of every other listing here -- a source
+  // asking this wants what it just sent.
+  repeated Notification notifications = 1;
+
+  // Empty when this was the last page. Pass it back as Page.after for the next.
+  string next_page_token = 2;
 }
 
 // Route is one channel to send on.

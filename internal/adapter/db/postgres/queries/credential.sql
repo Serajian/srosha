@@ -132,3 +132,17 @@ WHERE id = @id AND source_id = @source_id AND is_active;
 UPDATE credentials
 SET secret = @secret, updated_at = @updated_at::timestamptz
 WHERE id = @id AND source_id = @source_id AND is_active;
+
+-- UpdateCredentialConfig replaces the provider settings and nothing else.
+--
+-- Not the name: a message names the identity it wants, so renaming one would
+-- break every message still asking for it -- the same reason rotating a secret
+-- keeps the name. Not the flags either; those have statements of their own.
+--
+-- Scoped by source like every other write here, because the id arrives in a
+-- request body.
+--
+-- name: UpdateCredentialConfig :execrows
+UPDATE credentials
+SET config = @config, updated_at = @updated_at::timestamptz
+WHERE id = @id AND source_id = @source_id;

@@ -22,6 +22,125 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type NotificationServiceListRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Both halves are optional and independent: "since yesterday" and "that week
+	// in March" are both real questions, and neither should have to invent the
+	// other's bound. until is exclusive, so two windows that meet cannot both
+	// return the same message.
+	From          *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=from,proto3" json:"from,omitempty"`
+	Until         *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=until,proto3" json:"until,omitempty"`
+	Page          *Page                  `protobuf:"bytes,3,opt,name=page,proto3" json:"page,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationServiceListRequest) Reset() {
+	*x = NotificationServiceListRequest{}
+	mi := &file_notification_v1_notification_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationServiceListRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationServiceListRequest) ProtoMessage() {}
+
+func (x *NotificationServiceListRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_notification_v1_notification_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationServiceListRequest.ProtoReflect.Descriptor instead.
+func (*NotificationServiceListRequest) Descriptor() ([]byte, []int) {
+	return file_notification_v1_notification_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *NotificationServiceListRequest) GetFrom() *timestamppb.Timestamp {
+	if x != nil {
+		return x.From
+	}
+	return nil
+}
+
+func (x *NotificationServiceListRequest) GetUntil() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Until
+	}
+	return nil
+}
+
+func (x *NotificationServiceListRequest) GetPage() *Page {
+	if x != nil {
+		return x.Page
+	}
+	return nil
+}
+
+type NotificationServiceListResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Newest first, which is the opposite of every other listing here -- a source
+	// asking this wants what it just sent.
+	Notifications []*Notification `protobuf:"bytes,1,rep,name=notifications,proto3" json:"notifications,omitempty"`
+	// Empty when this was the last page. Pass it back as Page.after for the next.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationServiceListResponse) Reset() {
+	*x = NotificationServiceListResponse{}
+	mi := &file_notification_v1_notification_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationServiceListResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationServiceListResponse) ProtoMessage() {}
+
+func (x *NotificationServiceListResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_notification_v1_notification_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationServiceListResponse.ProtoReflect.Descriptor instead.
+func (*NotificationServiceListResponse) Descriptor() ([]byte, []int) {
+	return file_notification_v1_notification_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *NotificationServiceListResponse) GetNotifications() []*Notification {
+	if x != nil {
+		return x.Notifications
+	}
+	return nil
+}
+
+func (x *NotificationServiceListResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
 // Route is one channel to send on.
 type Route struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
@@ -39,7 +158,7 @@ type Route struct {
 
 func (x *Route) Reset() {
 	*x = Route{}
-	mi := &file_notification_v1_notification_proto_msgTypes[0]
+	mi := &file_notification_v1_notification_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51,7 +170,7 @@ func (x *Route) String() string {
 func (*Route) ProtoMessage() {}
 
 func (x *Route) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_notification_proto_msgTypes[0]
+	mi := &file_notification_v1_notification_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -64,7 +183,7 @@ func (x *Route) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Route.ProtoReflect.Descriptor instead.
 func (*Route) Descriptor() ([]byte, []int) {
-	return file_notification_v1_notification_proto_rawDescGZIP(), []int{0}
+	return file_notification_v1_notification_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Route) GetChannel() Channel {
@@ -114,7 +233,7 @@ type SubmitRequest struct {
 
 func (x *SubmitRequest) Reset() {
 	*x = SubmitRequest{}
-	mi := &file_notification_v1_notification_proto_msgTypes[1]
+	mi := &file_notification_v1_notification_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -126,7 +245,7 @@ func (x *SubmitRequest) String() string {
 func (*SubmitRequest) ProtoMessage() {}
 
 func (x *SubmitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_notification_proto_msgTypes[1]
+	mi := &file_notification_v1_notification_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -139,7 +258,7 @@ func (x *SubmitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitRequest.ProtoReflect.Descriptor instead.
 func (*SubmitRequest) Descriptor() ([]byte, []int) {
-	return file_notification_v1_notification_proto_rawDescGZIP(), []int{1}
+	return file_notification_v1_notification_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SubmitRequest) GetIdempotencyKey() string {
@@ -208,7 +327,7 @@ type SubmitResponse struct {
 
 func (x *SubmitResponse) Reset() {
 	*x = SubmitResponse{}
-	mi := &file_notification_v1_notification_proto_msgTypes[2]
+	mi := &file_notification_v1_notification_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -220,7 +339,7 @@ func (x *SubmitResponse) String() string {
 func (*SubmitResponse) ProtoMessage() {}
 
 func (x *SubmitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_notification_proto_msgTypes[2]
+	mi := &file_notification_v1_notification_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -233,7 +352,7 @@ func (x *SubmitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitResponse.ProtoReflect.Descriptor instead.
 func (*SubmitResponse) Descriptor() ([]byte, []int) {
-	return file_notification_v1_notification_proto_rawDescGZIP(), []int{2}
+	return file_notification_v1_notification_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *SubmitResponse) GetId() string {
@@ -280,7 +399,7 @@ type NotificationServiceGetRequest struct {
 
 func (x *NotificationServiceGetRequest) Reset() {
 	*x = NotificationServiceGetRequest{}
-	mi := &file_notification_v1_notification_proto_msgTypes[3]
+	mi := &file_notification_v1_notification_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -292,7 +411,7 @@ func (x *NotificationServiceGetRequest) String() string {
 func (*NotificationServiceGetRequest) ProtoMessage() {}
 
 func (x *NotificationServiceGetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_notification_proto_msgTypes[3]
+	mi := &file_notification_v1_notification_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -305,7 +424,7 @@ func (x *NotificationServiceGetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationServiceGetRequest.ProtoReflect.Descriptor instead.
 func (*NotificationServiceGetRequest) Descriptor() ([]byte, []int) {
-	return file_notification_v1_notification_proto_rawDescGZIP(), []int{3}
+	return file_notification_v1_notification_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *NotificationServiceGetRequest) GetId() string {
@@ -346,7 +465,7 @@ type Delivery struct {
 
 func (x *Delivery) Reset() {
 	*x = Delivery{}
-	mi := &file_notification_v1_notification_proto_msgTypes[4]
+	mi := &file_notification_v1_notification_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -358,7 +477,7 @@ func (x *Delivery) String() string {
 func (*Delivery) ProtoMessage() {}
 
 func (x *Delivery) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_notification_proto_msgTypes[4]
+	mi := &file_notification_v1_notification_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -371,7 +490,7 @@ func (x *Delivery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Delivery.ProtoReflect.Descriptor instead.
 func (*Delivery) Descriptor() ([]byte, []int) {
-	return file_notification_v1_notification_proto_rawDescGZIP(), []int{4}
+	return file_notification_v1_notification_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Delivery) GetId() string {
@@ -449,7 +568,7 @@ type Notification struct {
 
 func (x *Notification) Reset() {
 	*x = Notification{}
-	mi := &file_notification_v1_notification_proto_msgTypes[5]
+	mi := &file_notification_v1_notification_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -461,7 +580,7 @@ func (x *Notification) String() string {
 func (*Notification) ProtoMessage() {}
 
 func (x *Notification) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_notification_proto_msgTypes[5]
+	mi := &file_notification_v1_notification_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -474,7 +593,7 @@ func (x *Notification) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Notification.ProtoReflect.Descriptor instead.
 func (*Notification) Descriptor() ([]byte, []int) {
-	return file_notification_v1_notification_proto_rawDescGZIP(), []int{5}
+	return file_notification_v1_notification_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Notification) GetId() string {
@@ -552,7 +671,7 @@ type NotificationServiceGetResponse struct {
 
 func (x *NotificationServiceGetResponse) Reset() {
 	*x = NotificationServiceGetResponse{}
-	mi := &file_notification_v1_notification_proto_msgTypes[6]
+	mi := &file_notification_v1_notification_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -564,7 +683,7 @@ func (x *NotificationServiceGetResponse) String() string {
 func (*NotificationServiceGetResponse) ProtoMessage() {}
 
 func (x *NotificationServiceGetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_notification_proto_msgTypes[6]
+	mi := &file_notification_v1_notification_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -577,7 +696,7 @@ func (x *NotificationServiceGetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationServiceGetResponse.ProtoReflect.Descriptor instead.
 func (*NotificationServiceGetResponse) Descriptor() ([]byte, []int) {
-	return file_notification_v1_notification_proto_rawDescGZIP(), []int{6}
+	return file_notification_v1_notification_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *NotificationServiceGetResponse) GetNotification() *Notification {
@@ -605,7 +724,14 @@ var File_notification_v1_notification_proto protoreflect.FileDescriptor
 
 const file_notification_v1_notification_proto_rawDesc = "" +
 	"\n" +
-	"\"notification/v1/notification.proto\x12\x0fnotification.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cnotification/v1/common.proto\"m\n" +
+	"\"notification/v1/notification.proto\x12\x0fnotification.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cnotification/v1/common.proto\"\xad\x01\n" +
+	"\x1eNotificationServiceListRequest\x12.\n" +
+	"\x04from\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x120\n" +
+	"\x05until\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x05until\x12)\n" +
+	"\x04page\x18\x03 \x01(\v2\x15.notification.v1.PageR\x04page\"\x8e\x01\n" +
+	"\x1fNotificationServiceListResponse\x12C\n" +
+	"\rnotifications\x18\x01 \x03(\v2\x1d.notification.v1.NotificationR\rnotifications\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"m\n" +
 	"\x05Route\x122\n" +
 	"\achannel\x18\x01 \x01(\x0e2\x18.notification.v1.ChannelR\achannel\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\x16\n" +
@@ -660,10 +786,11 @@ const file_notification_v1_notification_proto_rawDesc = "" +
 	"\n" +
 	"deliveries\x18\x02 \x03(\v2\x19.notification.v1.DeliveryR\n" +
 	"deliveries\x12&\n" +
-	"\x0fnext_page_token\x18\x03 \x01(\tR\rnextPageToken2\xc8\x01\n" +
+	"\x0fnext_page_token\x18\x03 \x01(\tR\rnextPageToken2\xb3\x02\n" +
 	"\x13NotificationService\x12I\n" +
 	"\x06Submit\x12\x1e.notification.v1.SubmitRequest\x1a\x1f.notification.v1.SubmitResponse\x12f\n" +
-	"\x03Get\x12..notification.v1.NotificationServiceGetRequest\x1a/.notification.v1.NotificationServiceGetResponseB\xc4\x01\n" +
+	"\x03Get\x12..notification.v1.NotificationServiceGetRequest\x1a/.notification.v1.NotificationServiceGetResponse\x12i\n" +
+	"\x04List\x12/.notification.v1.NotificationServiceListRequest\x1a0.notification.v1.NotificationServiceListResponseB\xc4\x01\n" +
 	"\x13com.notification.v1B\x11NotificationProtoP\x01Z=github.com/Serajian/srosha/gen/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
 
 var (
@@ -678,52 +805,60 @@ func file_notification_v1_notification_proto_rawDescGZIP() []byte {
 	return file_notification_v1_notification_proto_rawDescData
 }
 
-var file_notification_v1_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_notification_v1_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_notification_v1_notification_proto_goTypes = []any{
-	(*Route)(nil),                          // 0: notification.v1.Route
-	(*SubmitRequest)(nil),                  // 1: notification.v1.SubmitRequest
-	(*SubmitResponse)(nil),                 // 2: notification.v1.SubmitResponse
-	(*NotificationServiceGetRequest)(nil),  // 3: notification.v1.NotificationServiceGetRequest
-	(*Delivery)(nil),                       // 4: notification.v1.Delivery
-	(*Notification)(nil),                   // 5: notification.v1.Notification
-	(*NotificationServiceGetResponse)(nil), // 6: notification.v1.NotificationServiceGetResponse
-	nil,                                    // 7: notification.v1.SubmitRequest.MetadataEntry
-	nil,                                    // 8: notification.v1.Notification.MetadataEntry
-	(Channel)(0),                           // 9: notification.v1.Channel
-	(Priority)(0),                          // 10: notification.v1.Priority
-	(*timestamppb.Timestamp)(nil),          // 11: google.protobuf.Timestamp
-	(*Page)(nil),                           // 12: notification.v1.Page
-	(DeliveryStatus)(0),                    // 13: notification.v1.DeliveryStatus
-	(FailureReason)(0),                     // 14: notification.v1.FailureReason
+	(*NotificationServiceListRequest)(nil),  // 0: notification.v1.NotificationServiceListRequest
+	(*NotificationServiceListResponse)(nil), // 1: notification.v1.NotificationServiceListResponse
+	(*Route)(nil),                           // 2: notification.v1.Route
+	(*SubmitRequest)(nil),                   // 3: notification.v1.SubmitRequest
+	(*SubmitResponse)(nil),                  // 4: notification.v1.SubmitResponse
+	(*NotificationServiceGetRequest)(nil),   // 5: notification.v1.NotificationServiceGetRequest
+	(*Delivery)(nil),                        // 6: notification.v1.Delivery
+	(*Notification)(nil),                    // 7: notification.v1.Notification
+	(*NotificationServiceGetResponse)(nil),  // 8: notification.v1.NotificationServiceGetResponse
+	nil,                                     // 9: notification.v1.SubmitRequest.MetadataEntry
+	nil,                                     // 10: notification.v1.Notification.MetadataEntry
+	(*timestamppb.Timestamp)(nil),           // 11: google.protobuf.Timestamp
+	(*Page)(nil),                            // 12: notification.v1.Page
+	(Channel)(0),                            // 13: notification.v1.Channel
+	(Priority)(0),                           // 14: notification.v1.Priority
+	(DeliveryStatus)(0),                     // 15: notification.v1.DeliveryStatus
+	(FailureReason)(0),                      // 16: notification.v1.FailureReason
 }
 var file_notification_v1_notification_proto_depIdxs = []int32{
-	9,  // 0: notification.v1.Route.channel:type_name -> notification.v1.Channel
-	10, // 1: notification.v1.SubmitRequest.priority:type_name -> notification.v1.Priority
-	11, // 2: notification.v1.SubmitRequest.expire_at:type_name -> google.protobuf.Timestamp
-	7,  // 3: notification.v1.SubmitRequest.metadata:type_name -> notification.v1.SubmitRequest.MetadataEntry
-	0,  // 4: notification.v1.SubmitRequest.routes:type_name -> notification.v1.Route
-	10, // 5: notification.v1.SubmitResponse.effective_priority:type_name -> notification.v1.Priority
-	12, // 6: notification.v1.NotificationServiceGetRequest.page:type_name -> notification.v1.Page
-	9,  // 7: notification.v1.Delivery.channel:type_name -> notification.v1.Channel
-	13, // 8: notification.v1.Delivery.status:type_name -> notification.v1.DeliveryStatus
-	14, // 9: notification.v1.Delivery.failure_reason:type_name -> notification.v1.FailureReason
-	11, // 10: notification.v1.Delivery.updated_at:type_name -> google.protobuf.Timestamp
-	10, // 11: notification.v1.Notification.requested_priority:type_name -> notification.v1.Priority
-	10, // 12: notification.v1.Notification.effective_priority:type_name -> notification.v1.Priority
-	11, // 13: notification.v1.Notification.expire_at:type_name -> google.protobuf.Timestamp
-	8,  // 14: notification.v1.Notification.metadata:type_name -> notification.v1.Notification.MetadataEntry
-	11, // 15: notification.v1.Notification.created_at:type_name -> google.protobuf.Timestamp
-	5,  // 16: notification.v1.NotificationServiceGetResponse.notification:type_name -> notification.v1.Notification
-	4,  // 17: notification.v1.NotificationServiceGetResponse.deliveries:type_name -> notification.v1.Delivery
-	1,  // 18: notification.v1.NotificationService.Submit:input_type -> notification.v1.SubmitRequest
-	3,  // 19: notification.v1.NotificationService.Get:input_type -> notification.v1.NotificationServiceGetRequest
-	2,  // 20: notification.v1.NotificationService.Submit:output_type -> notification.v1.SubmitResponse
-	6,  // 21: notification.v1.NotificationService.Get:output_type -> notification.v1.NotificationServiceGetResponse
-	20, // [20:22] is the sub-list for method output_type
-	18, // [18:20] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	11, // 0: notification.v1.NotificationServiceListRequest.from:type_name -> google.protobuf.Timestamp
+	11, // 1: notification.v1.NotificationServiceListRequest.until:type_name -> google.protobuf.Timestamp
+	12, // 2: notification.v1.NotificationServiceListRequest.page:type_name -> notification.v1.Page
+	7,  // 3: notification.v1.NotificationServiceListResponse.notifications:type_name -> notification.v1.Notification
+	13, // 4: notification.v1.Route.channel:type_name -> notification.v1.Channel
+	14, // 5: notification.v1.SubmitRequest.priority:type_name -> notification.v1.Priority
+	11, // 6: notification.v1.SubmitRequest.expire_at:type_name -> google.protobuf.Timestamp
+	9,  // 7: notification.v1.SubmitRequest.metadata:type_name -> notification.v1.SubmitRequest.MetadataEntry
+	2,  // 8: notification.v1.SubmitRequest.routes:type_name -> notification.v1.Route
+	14, // 9: notification.v1.SubmitResponse.effective_priority:type_name -> notification.v1.Priority
+	12, // 10: notification.v1.NotificationServiceGetRequest.page:type_name -> notification.v1.Page
+	13, // 11: notification.v1.Delivery.channel:type_name -> notification.v1.Channel
+	15, // 12: notification.v1.Delivery.status:type_name -> notification.v1.DeliveryStatus
+	16, // 13: notification.v1.Delivery.failure_reason:type_name -> notification.v1.FailureReason
+	11, // 14: notification.v1.Delivery.updated_at:type_name -> google.protobuf.Timestamp
+	14, // 15: notification.v1.Notification.requested_priority:type_name -> notification.v1.Priority
+	14, // 16: notification.v1.Notification.effective_priority:type_name -> notification.v1.Priority
+	11, // 17: notification.v1.Notification.expire_at:type_name -> google.protobuf.Timestamp
+	10, // 18: notification.v1.Notification.metadata:type_name -> notification.v1.Notification.MetadataEntry
+	11, // 19: notification.v1.Notification.created_at:type_name -> google.protobuf.Timestamp
+	7,  // 20: notification.v1.NotificationServiceGetResponse.notification:type_name -> notification.v1.Notification
+	6,  // 21: notification.v1.NotificationServiceGetResponse.deliveries:type_name -> notification.v1.Delivery
+	3,  // 22: notification.v1.NotificationService.Submit:input_type -> notification.v1.SubmitRequest
+	5,  // 23: notification.v1.NotificationService.Get:input_type -> notification.v1.NotificationServiceGetRequest
+	0,  // 24: notification.v1.NotificationService.List:input_type -> notification.v1.NotificationServiceListRequest
+	4,  // 25: notification.v1.NotificationService.Submit:output_type -> notification.v1.SubmitResponse
+	8,  // 26: notification.v1.NotificationService.Get:output_type -> notification.v1.NotificationServiceGetResponse
+	1,  // 27: notification.v1.NotificationService.List:output_type -> notification.v1.NotificationServiceListResponse
+	25, // [25:28] is the sub-list for method output_type
+	22, // [22:25] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_notification_v1_notification_proto_init() }
@@ -738,7 +873,7 @@ func file_notification_v1_notification_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_notification_v1_notification_proto_rawDesc), len(file_notification_v1_notification_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

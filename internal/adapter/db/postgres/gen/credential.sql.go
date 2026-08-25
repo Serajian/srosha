@@ -386,3 +386,37 @@ func (q *Queries) SetCredentialDefault(ctx context.Context, arg SetCredentialDef
 	}
 	return result.RowsAffected(), nil
 }
+
+const updateCredentialConfig = `-- name: UpdateCredentialConfig :execrows
+UPDATE credentials
+SET config = $1, updated_at = $2::timestamptz
+WHERE id = $3 AND source_id = $4
+`
+
+type UpdateCredentialConfigParams struct {
+	Config    []byte
+	UpdatedAt time.Time
+	ID        string
+	SourceID  string
+}
+
+// UpdateCredentialConfig replaces the provider settings and nothing else.
+//
+// Not the name: a message names the identity it wants, so renaming one would
+// break every message still asking for it -- the same reason rotating a secret
+// keeps the name. Not the flags either; those have statements of their own.
+//
+// Scoped by source like every other write here, because the id arrives in a
+// request body.
+func (q *Queries) UpdateCredentialConfig(ctx context.Context, arg UpdateCredentialConfigParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateCredentialConfig,
+		arg.Config,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.SourceID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

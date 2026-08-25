@@ -213,6 +213,40 @@ func (r *fakeNotifications) ReadByID(
 	return n, nil
 }
 
+// PageBySource is newest first, as postgres is, and honors the window: a fake
+// that ignored either would let a listing that ordered or filtered wrongly pass.
+func (r *fakeNotifications) PageBySource(
+	_ context.Context, sourceID string, w notification.Window, c shared.Cursor,
+) (shared.Pagination[notification.Notification], error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	c = c.Normalize()
+
+	var all []*notification.Notification
+	for _, n := range r.byID {
+		switch {
+		case n.SourceID != sourceID:
+		case w.From != nil && n.CreatedAt.Before(*w.From):
+		case w.Until != nil && !n.CreatedAt.Before(*w.Until):
+		case c.After != nil && n.ID >= *c.After:
+		default:
+			all = append(all, n)
+		}
+	}
+	slices.SortFunc(all, func(a, b *notification.Notification) int {
+		return strings.Compare(string(b.ID), string(a.ID)) // newest first
+	})
+
+	var next *shared.ID
+	if len(all) > c.Limit {
+		all = all[:c.Limit]
+		last := all[len(all)-1].ID
+		next = &last
+	}
+	return shared.Pagination[notification.Notification]{Items: all, NextCursor: next}, nil
+}
+
 // forget deletes a message while its deliveries are still around, which is what
 // a retention job or a manual clean-up does.
 func (r *fakeNotifications) forget(id shared.ID) {

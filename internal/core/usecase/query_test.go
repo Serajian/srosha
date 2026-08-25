@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Serajian/srosha/internal/core/domain/notification"
 	"github.com/Serajian/srosha/internal/core/shared"
+	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/pkg/errs"
 )
 
@@ -102,5 +104,114 @@ func TestGetOnAnUnknownID(t *testing.T) {
 
 	if !errors.Is(err, notification.ErrNotFound) {
 		t.Errorf("error = %v, want ErrNotFound", err)
+	}
+}
+
+// --- List --------------------------------------------------------------------
+
+// Without this, Get can only be asked with an id the caller kept -- and the
+// callback that would have carried it is best effort and never retried.
+func TestListAnswersWhatDidISend(t *testing.T) {
+	r := newRig(t, nil)
+
+	for range 3 {
+		if _, err := r.submitter.Submit(context.Background(), cmd()); err != nil {
+			t.Fatalf("Submit() error = %v", err)
+		}
+	}
+
+	got, err := r.querier.List(context.Background(), "acme", usecase.ListQuery{})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(got.Items) != 3 {
+		t.Fatalf("listed %d messages, want 3", len(got.Items))
+	}
+}
+
+// Newest first, which is the opposite of every other listing here: a source
+// asking this wants what it just sent.
+func TestListPutsTheNewestFirst(t *testing.T) {
+	r := newRig(t, nil)
+
+	var ids []shared.ID
+	for range 3 {
+		res, err := r.submitter.Submit(context.Background(), cmd())
+		if err != nil {
+			t.Fatalf("Submit() error = %v", err)
+		}
+		ids = append(ids, res.ID)
+	}
+
+	got, err := r.querier.List(context.Background(), "acme", usecase.ListQuery{})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	for i, want := range []shared.ID{ids[2], ids[1], ids[0]} {
+		if got.Items[i].ID != want {
+			t.Errorf("position %d = %s, want %s", i, got.Items[i].ID, want)
+		}
+	}
+}
+
+func TestListWalksBackwardsAPageAtATime(t *testing.T) {
+	r := newRig(t, nil)
+
+	for range 5 {
+		if _, err := r.submitter.Submit(context.Background(), cmd()); err != nil {
+			t.Fatalf("Submit() error = %v", err)
+		}
+	}
+
+	first, err := r.querier.List(context.Background(), "acme",
+		usecase.ListQuery{Cursor: shared.Cursor{Limit: 2}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(first.Items) != 2 || first.NextCursor == nil {
+		t.Fatalf("first page = %d items, next %v", len(first.Items), first.NextCursor)
+	}
+
+	second, err := r.querier.List(context.Background(), "acme",
+		usecase.ListQuery{Cursor: shared.Cursor{Limit: 2, After: first.NextCursor}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(second.Items) != 2 {
+		t.Fatalf("second page = %d items, want 2", len(second.Items))
+	}
+	if second.Items[0].ID >= first.Items[1].ID {
+		t.Errorf("the second page did not carry on from the first")
+	}
+}
+
+// One source's messages are not another's.
+func TestListShowsOnlyTheCallersMessages(t *testing.T) {
+	r := newRig(t, nil)
+
+	if _, err := r.submitter.Submit(context.Background(), cmd()); err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+
+	got, err := r.querier.List(context.Background(), "somebody-else", usecase.ListQuery{})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(got.Items) != 0 {
+		t.Errorf("listed %d of another source's messages", len(got.Items))
+	}
+}
+
+// A window that cannot contain anything is a question nobody meant to ask, and
+// an empty answer would look like an answer.
+func TestAWindowThatEndsBeforeItStarts(t *testing.T) {
+	r := newRig(t, nil)
+
+	from, until := now, now.Add(-time.Hour)
+	_, err := r.querier.List(context.Background(), "acme", usecase.ListQuery{
+		Window: notification.Window{From: &from, Until: &until},
+	})
+	if !errs.IsType(err, errs.ErrInvalidInput) {
+		t.Errorf("List() = %v, want invalid input", err)
 	}
 }

@@ -562,3 +562,71 @@ func TestRotateReplacesTheSecretWhateverResealDid(t *testing.T) {
 		t.Errorf("config = %s, want it untouched", gotConfig)
 	}
 }
+
+// Update replaces the settings and nothing else: the name is what a message
+// asks for, so renaming would break every message still asking.
+func TestUpdateConfigLeavesTheIdentityAlone(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	sourceID := withASource(t, pool, "UC")
+	repo := postgres.NewCredentialRepository(pool)
+	ctx := context.Background()
+
+	c := aCredential(t, ulid("UC1"), sourceID, "transactional", true)
+	if err := repo.Create(ctx, c, []byte(`{"host":"smtp.acme.test"}`), theSecret); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	next := []byte(`{"host":"smtp2.acme.test","port":465}`)
+	if err := repo.UpdateConfig(ctx, sourceID, c.ID, next, time.Now().UTC()); err != nil {
+		t.Fatalf("UpdateConfig: %v", err)
+	}
+
+	gotConfig, gotSecret, err := repo.ReadMaterial(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("ReadMaterial: %v", err)
+	}
+	if !sameJSON(t, gotConfig, next) {
+		t.Errorf("config = %s, want the new settings", gotConfig)
+	}
+	if gotSecret != theSecret {
+		t.Errorf("the secret moved: %q", gotSecret)
+	}
+
+	got, err := repo.ReadByID(ctx, sourceID, c.ID)
+	if err != nil {
+		t.Fatalf("ReadByID: %v", err)
+	}
+	if got.Name != "transactional" || !got.IsDefault() || !got.IsActive() {
+		t.Errorf("the identity moved: %+v", got)
+	}
+}
+
+func TestUpdateConfigIsScopedToItsSource(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	mine := withASource(t, pool, "UD")
+	theirs := withASource(t, pool, "UE")
+	repo := postgres.NewCredentialRepository(pool)
+	ctx := context.Background()
+
+	c := aCredential(t, ulid("UD1"), mine, "transactional", true)
+	if err := repo.Create(ctx, c, []byte(`{"host":"smtp.acme.test"}`), theSecret); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	err := repo.UpdateConfig(ctx, theirs, c.ID, []byte(`{"host":"evil.test"}`), time.Now().UTC())
+	if !errs.IsType(err, errs.ErrNotFound) {
+		t.Errorf("UpdateConfig as another source = %v, want not found", err)
+	}
+
+	got, _, readErr := repo.ReadMaterial(ctx, c.ID)
+	if readErr != nil {
+		t.Fatalf("ReadMaterial: %v", readErr)
+	}
+	if !sameJSON(t, got, []byte(`{"host":"smtp.acme.test"}`)) {
+		t.Errorf("another source changed the settings: %s", got)
+	}
+}

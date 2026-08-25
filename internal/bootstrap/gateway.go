@@ -183,7 +183,7 @@ func buildGatewayCore(
 		submitter: usecase.NewSubmitter(sources, credentials, notifications, deliveries, uow, log),
 		querier:   usecase.NewQuerier(notifications, deliveries),
 		registrar: usecase.NewRegistrar(sources, webhooks),
-		creds:     usecase.NewCredentials(sources, credentials, secrets, credentialRows, uow, ids.Generate, now),
+		creds:     usecase.NewCredentials(sources, credentials, secrets, credentialRows, credentialRows, uow, ids.Generate, now),
 		authn:     source.NewAuthenticator(keyRows, now, cfg.Auth.KeyTouchAfter),
 	}, nil
 }

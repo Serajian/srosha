@@ -34,3 +34,28 @@ SELECT * FROM notifications WHERE id = @id;
 -- name: ReadNotificationByIdempotencyKey :one
 SELECT * FROM notifications
 WHERE source_id = @source_id AND idempotency_key = @idempotency_key;
+
+-- PageNotificationsBySource answers "what did I send", newest first.
+--
+-- DESC and not ASC, unlike every other listing here: a source asking this wants
+-- what it just sent, not what it sent when it signed up. The cursor follows --
+-- id < after rather than id > after -- because a ULID orders by time and this
+-- walks backwards through it.
+--
+-- The window is optional and both halves are separate: "since yesterday" and
+-- "that week in March" are both real questions, and neither should need the
+-- other's bound invented.
+--
+-- One row more than asked for is fetched, which is the whole answer to "is there
+-- another page" and costs nothing next to a second query that counts.
+--
+-- name: PageNotificationsBySource :many
+SELECT * FROM notifications
+WHERE source_id = @source_id
+  -- Cast to text, not to ulid: the domain's base type is text, and a cast to
+  -- the domain itself is opaque to sqlc, which then types the parameter as any.
+  AND (sqlc.narg('after')::text IS NULL OR id < sqlc.narg('after')::text)
+  AND (sqlc.narg('from')::timestamptz IS NULL OR created_at >= sqlc.narg('from')::timestamptz)
+  AND (sqlc.narg('until')::timestamptz IS NULL OR created_at < sqlc.narg('until')::timestamptz)
+ORDER BY id DESC
+LIMIT @row_limit;

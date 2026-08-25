@@ -1,6 +1,10 @@
 // Package messagequeue opens the connection to nats and owns it. It knows how
 // to reach the broker and nothing about what this service publishes there: no
 // stream, no subject, no consumer.
+//
+// JetStream is opened here rather than in a file of its own, because it is not
+// a second technology: it rides the same connection and shares its lifecycle,
+// so a file apart would be one that cannot mean anything without this one.
 package messagequeue
 
 import (
