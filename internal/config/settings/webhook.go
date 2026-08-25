@@ -53,6 +53,18 @@ type Webhook struct {
 	MaxFailures int
 }
 
+// SecretFor hands over one source's signing secret, and reports whether there
+// is one. Reading the map directly would mean passing the whole set to whoever
+// signs, and a component that holds every secret is one that can be asked for
+// any of them.
+func (w Webhook) SecretFor(sourceID string) (string, bool) {
+	s, ok := w.Secrets[sourceID]
+	if !ok || s.IsZero() {
+		return "", false
+	}
+	return s.Reveal(), true
+}
+
 func LoadWebhook(r *env.Reader, production bool) Webhook {
 	w := Webhook{
 		WebhookPolicy: LoadWebhookPolicy(r, production),
