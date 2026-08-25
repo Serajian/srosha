@@ -21,7 +21,11 @@ import (
 type App struct {
 	log       *slog.Logger
 	resources *registry.Resources
-	server    *httpserver.Server
+
+	// failed carries whichever listener died first. The gateway has two -- gRPC
+	// and the health endpoint -- and either one stopping on its own means the
+	// process is answering less than it claims to.
+	failed <-chan error
 }
 
 // Run blocks until the process is asked to stop, or until something that was
@@ -34,9 +38,28 @@ func (a *App) Run(ctx context.Context) error {
 	case <-ctx.Done():
 		a.log.InfoContext(ctx, "shutting down")
 		return nil
-	case err := <-a.server.Err():
+	case err := <-a.failed:
 		return err
 	}
+}
+
+// watch merges the listeners' error channels into the one Run selects on.
+//
+// A select over a slice cannot be written directly, and the alternative -- one
+// case per listener -- is a line that has to be edited every time a binary
+// grows a port. Nothing is closed here: a shutdown is not a failure and must
+// never wake Run up.
+func watch(chans ...<-chan error) <-chan error {
+	merged := make(chan error, len(chans))
+
+	for _, ch := range chans {
+		go func() {
+			if err, ok := <-ch; ok {
+				merged <- err
+			}
+		}()
+	}
+	return merged
 }
 
 // Close shuts everything in the reverse of the order it opened.

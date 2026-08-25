@@ -21,7 +21,7 @@ import (
 // in deliver.
 type Dispatcher struct {
 	notifs     *notification.Service
-	deliveries *delivery.Service
+	deliveries *delivery.Tracker
 	webhooks   *webhook.Service
 	senders    delivery.SenderRegistry
 	notifier   webhook.Notifier
@@ -46,7 +46,7 @@ type Dispatcher struct {
 
 func NewDispatcher(
 	notifs *notification.Service,
-	deliveries *delivery.Service,
+	deliveries *delivery.Tracker,
 	webhooks *webhook.Service,
 	senders delivery.SenderRegistry,
 	notifier webhook.Notifier,

@@ -141,7 +141,8 @@ Every key, with its defaults and which binary needs it, is documented in
 | mq | `NOTIF_MQ_URL`, `NOTIF_MQ_STREAM`, `NOTIF_MQ_DUPLICATE_WINDOW`, `NOTIF_MQ_MAX_AGE`, `NOTIF_MQ_CONNECT_TIMEOUT`, `NOTIF_MQ_MAX_RECONNECTS`, `NOTIF_MQ_RECONNECT_WAIT`, `NOTIF_MQ_DRAIN_TIMEOUT` | ✅ | ✅ |
 | ratelimit | `NOTIF_RATELIMIT_PER_MINUTE` | ✅ | — |
 | sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN` | — | ✅ |
-| webhook | `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_ATTEMPTS` | — | ✅ |
+| webhook policy | `NOTIF_WEBHOOK_ALLOW_INSECURE_URL`, `NOTIF_WEBHOOK_ALLOW_PRIVATE_URL` | ✅ | ✅ |
+| webhook | `NOTIF_WEBHOOK_SECRETS`, `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ |
 | telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ |
 
 `NOTIF_MQ_URL` carries a **different** NATS user per binary. Do not collapse them.
@@ -217,7 +218,6 @@ cannot share a wire.
 | Group | Keys | gateway | dispatcher |
 | --- | --- | --- | --- |
 | reconcile | `NOTIF_RECONCILE_AFTER`, `NOTIF_RECONCILE_GIVE_UP` | — | ✅ |
-| webhook | `NOTIF_WEBHOOK_SECRETS` | — | ✅ |
 
 `NOTIF_WEBHOOK_SECRETS` holds one signing secret per source, keyed by source id.
 Each source gets its own: with a single shared secret, any source holding it
