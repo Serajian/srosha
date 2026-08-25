@@ -6,9 +6,11 @@ package sender
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/Serajian/srosha/internal/adapter/sender/bale"
+	"github.com/Serajian/srosha/internal/adapter/sender/email"
 	"github.com/Serajian/srosha/internal/adapter/sender/telegram"
 	"github.com/Serajian/srosha/internal/core/domain/credential"
 	"github.com/Serajian/srosha/internal/core/domain/delivery"
@@ -39,18 +41,50 @@ type Secrets interface {
 type Fallback struct {
 	TelegramToken string
 	BaleToken     string
+
+	// SMTP is a whole identity rather than a token, because mail is. A bot is a
+	// secret and nothing else; a mail account is a server, a user and an address,
+	// and any one of them wrong is a message that never arrives.
+	SMTP SMTP
 }
+
+// SMTP is srosha's own mail identity.
+type SMTP struct {
+	Host     string
+	Port     int
+	Username string
+	From     string
+
+	// Never marshaled: this struct reaches a log line eventually.
+	Password string `json:"-"`
+}
+
+// String keeps the password out of whatever this ends up inside.
+func (s SMTP) String() string {
+	return fmt.Sprintf("SMTP{Host:%q, Port:%d, Username:%q, From:%q}",
+		s.Host, s.Port, s.Username, s.From)
+}
+
+// configured reports whether there is enough here to send at all. A deployment
+// that only sends on Telegram should not have to invent a mail server.
+func (s SMTP) configured() bool { return s.Host != "" && s.From != "" }
 
 // Registry implements delivery.SenderRegistry.
 type Registry struct {
 	creds   *credential.Service
 	secrets Secrets
 	client  *http.Client
-	own     Fallback
+
+	// mail is what registry opened for SMTP. A dialer rather than a client,
+	// because every source may send through its own server as its own account.
+	mail email.Dialer
+
+	own Fallback
 }
 
 func NewRegistry(
-	creds *credential.Service, secrets Secrets, client *http.Client, own Fallback,
+	creds *credential.Service, secrets Secrets,
+	client *http.Client, mail email.Dialer, own Fallback,
 ) (*Registry, error) {
 	switch {
 	case creds == nil:
@@ -59,8 +93,10 @@ func NewRegistry(
 		return nil, errs.InternalErr("sender registry cannot open credentials")
 	case client == nil:
 		return nil, errs.InternalErr("sender registry has no http client")
+	case mail == nil:
+		return nil, errs.InternalErr("sender registry has no mail dialer")
 	}
-	return &Registry{creds: creds, secrets: secrets, client: client, own: own}, nil
+	return &Registry{creds: creds, secrets: secrets, client: client, mail: mail, own: own}, nil
 }
 
 // For hands back a sender already configured with the right identity.
@@ -104,7 +140,18 @@ func (r *Registry) ours(c shared.Channel) (delivery.Sender, error) {
 	case shared.ChannelBale:
 		return r.buildOwn(c, r.own.BaleToken)
 
-	case shared.ChannelEmail, shared.ChannelWhatsApp:
+	case shared.ChannelEmail:
+		if !r.own.SMTP.configured() {
+			return nil, noSender(c)
+		}
+		return email.New(r.mail, email.Config{
+			Host:     r.own.SMTP.Host,
+			Port:     r.own.SMTP.Port,
+			Username: r.own.SMTP.Username,
+			From:     r.own.SMTP.From,
+		}, r.own.SMTP.Password)
+
+	case shared.ChannelWhatsApp:
 		return nil, noSender(c)
 
 	default:
@@ -133,7 +180,17 @@ func (r *Registry) build(c shared.Channel, config []byte, secret string) (delive
 	case shared.ChannelBale:
 		return bale.New(r.client, secret, config)
 
-	case shared.ChannelEmail, shared.ChannelWhatsApp:
+	case shared.ChannelEmail:
+		// Mail parses its settings into a type of its own rather than taking
+		// raw json: they are required and interdependent, so they are checked
+		// once here instead of at the moment a message is going out.
+		cfg, err := email.ParseConfig(config)
+		if err != nil {
+			return nil, err
+		}
+		return email.New(r.mail, cfg, secret)
+
+	case shared.ChannelWhatsApp:
 		return nil, noSender(c)
 
 	default:

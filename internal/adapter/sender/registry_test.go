@@ -10,6 +10,7 @@ import (
 	"github.com/Serajian/srosha/internal/adapter/sender"
 	"github.com/Serajian/srosha/internal/core/domain/credential"
 	"github.com/Serajian/srosha/internal/core/shared"
+	"github.com/Serajian/srosha/internal/infra/smtp"
 	"github.com/Serajian/srosha/pkg/errs"
 )
 
@@ -109,7 +110,7 @@ func registryOn(
 		credential.NewService(rows{byChannel: map[shared.Channel][]credential.Credential{
 			c: have,
 		}}, time.Now),
-		s, http.DefaultClient, own,
+		s, http.DefaultClient, mailDialer(t), own,
 	)
 	if err != nil {
 		t.Fatalf("NewRegistry: %v", err)
@@ -187,15 +188,27 @@ func TestNothingToStandInWithIsNoSender(t *testing.T) {
 
 // Every channel that has a sender resolves through the same three answers.
 func TestEveryWiredChannelResolves(t *testing.T) {
-	tests := map[shared.Channel]sender.Fallback{
-		shared.ChannelTelegram: {TelegramToken: ours},
-		shared.ChannelBale:     {BaleToken: ours},
+	// A bot identity is a secret and nothing else; a mail identity is settings
+	// as well, so the table carries both.
+	tests := map[shared.Channel]struct {
+		own    sender.Fallback
+		config []byte
+	}{
+		shared.ChannelTelegram: {own: sender.Fallback{TelegramToken: ours}},
+		shared.ChannelBale:     {own: sender.Fallback{BaleToken: ours}},
+		shared.ChannelEmail: {
+			own: sender.Fallback{SMTP: sender.SMTP{
+				Host: "smtp.acme.test", Port: 587, From: "srosha@acme.test",
+			}},
+			config: []byte(`{"host":"smtp.theirs.test","from":"them@theirs.test"}`),
+		},
 	}
 
-	for c, own := range tests {
+	for c, tt := range tests {
+		own := tt.own
 		t.Run(c.String(), func(t *testing.T) {
 			// theirs
-			s := &secrets{secret: theirs}
+			s := &secrets{secret: theirs, config: tt.config}
 			got, err := registryOn(t, c, []credential.Credential{credOn(t, c, "alerts", true, true)}, s, own).
 				For(context.Background(), sourceID, c, "")
 			if err != nil {
@@ -223,7 +236,7 @@ func TestEveryWiredChannelResolves(t *testing.T) {
 // A channel with no sender written yet answers as configuration, not as a
 // fault: the delivery is reported to the source and not retried.
 func TestAChannelWithNoSenderYet(t *testing.T) {
-	for _, c := range []shared.Channel{shared.ChannelEmail, shared.ChannelWhatsApp} {
+	for _, c := range []shared.Channel{shared.ChannelWhatsApp} {
 		t.Run(c.String(), func(t *testing.T) {
 			r := registry(t, nil, &secrets{}, sender.Fallback{TelegramToken: ours})
 
@@ -251,13 +264,28 @@ func TestAVaultFailureIsNotNoSender(t *testing.T) {
 func TestARegistryRefusesToBeBuiltHalfWired(t *testing.T) {
 	creds := credential.NewService(rows{}, time.Now)
 
-	if _, err := sender.NewRegistry(nil, &secrets{}, http.DefaultClient, sender.Fallback{}); err == nil {
+	if _, err := sender.NewRegistry(nil, &secrets{}, http.DefaultClient, mailDialer(t), sender.Fallback{}); err == nil {
 		t.Error("NewRegistry with no credentials succeeded")
 	}
-	if _, err := sender.NewRegistry(creds, nil, http.DefaultClient, sender.Fallback{}); err == nil {
+	if _, err := sender.NewRegistry(creds, nil, http.DefaultClient, mailDialer(t), sender.Fallback{}); err == nil {
 		t.Error("NewRegistry with no vault succeeded")
 	}
-	if _, err := sender.NewRegistry(creds, &secrets{}, nil, sender.Fallback{}); err == nil {
+	if _, err := sender.NewRegistry(creds, &secrets{}, nil, mailDialer(t), sender.Fallback{}); err == nil {
 		t.Error("NewRegistry with no client succeeded")
 	}
+	if _, err := sender.NewRegistry(creds, &secrets{}, http.DefaultClient, nil, sender.Fallback{}); err == nil {
+		t.Error("NewRegistry with no mail dialer succeeded")
+	}
+}
+
+// mailDialer is what registry opens. Mail is the one channel whose way out is
+// not the shared http client.
+func mailDialer(t *testing.T) *smtp.Dialer {
+	t.Helper()
+
+	d, err := smtp.NewDialer(smtp.DialerConfig{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("NewDialer: %v", err)
+	}
+	return d
 }
