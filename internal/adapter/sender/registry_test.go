@@ -54,10 +54,17 @@ func (s *secrets) Material(
 
 func cred(t *testing.T, name string, isDefault, isActive bool) credential.Credential {
 	t.Helper()
+	return credOn(t, shared.ChannelTelegram, name, isDefault, isActive)
+}
+
+func credOn(
+	t *testing.T, ch shared.Channel, name string, isDefault, isActive bool,
+) credential.Credential {
+	t.Helper()
 
 	c, err := credential.New(
 		shared.ID("01K0CRED" + name + "00000000000000")[:26], sourceID,
-		shared.ChannelTelegram, name, isDefault, time.Now(),
+		ch, name, isDefault, time.Now(),
 	)
 	if err != nil {
 		t.Fatalf("credential.New(%q): %v", name, err)
@@ -70,10 +77,18 @@ func cred(t *testing.T, name string, isDefault, isActive bool) credential.Creden
 
 func registry(t *testing.T, have []credential.Credential, s *secrets, own sender.Fallback) *sender.Registry {
 	t.Helper()
+	return registryOn(t, shared.ChannelTelegram, have, s, own)
+}
+
+func registryOn(
+	t *testing.T, c shared.Channel, have []credential.Credential,
+	s *secrets, own sender.Fallback,
+) *sender.Registry {
+	t.Helper()
 
 	r, err := sender.NewRegistry(
 		credential.NewService(rows{byChannel: map[shared.Channel][]credential.Credential{
-			shared.ChannelTelegram: have,
+			c: have,
 		}}),
 		s, http.DefaultClient, own,
 	)
@@ -151,10 +166,45 @@ func TestNothingToStandInWithIsNoSender(t *testing.T) {
 	}
 }
 
+// Every channel that has a sender resolves through the same three answers.
+func TestEveryWiredChannelResolves(t *testing.T) {
+	tests := map[shared.Channel]sender.Fallback{
+		shared.ChannelTelegram: {TelegramToken: ours},
+		shared.ChannelBale:     {BaleToken: ours},
+	}
+
+	for c, own := range tests {
+		t.Run(c.String(), func(t *testing.T) {
+			// theirs
+			s := &secrets{secret: theirs}
+			got, err := registryOn(t, c, []credential.Credential{credOn(t, c, "alerts", true, true)}, s, own).
+				For(context.Background(), sourceID, c, "")
+			if err != nil {
+				t.Fatalf("For: %v", err)
+			}
+			if got.Channel() != c {
+				t.Errorf("Channel() = %q, want %q", got.Channel(), c)
+			}
+
+			// ours, when they registered nothing
+			if _, err := registryOn(t, c, nil, &secrets{}, own).
+				For(context.Background(), sourceID, c, ""); err != nil {
+				t.Errorf("For with no credential = %v, want ours to stand in", err)
+			}
+
+			// and nothing to stand in with
+			if _, err := registryOn(t, c, nil, &secrets{}, sender.Fallback{}).
+				For(context.Background(), sourceID, c, ""); !errs.IsType(err, errs.ErrInvalidInput) {
+				t.Errorf("For with no fallback = %v, want invalid input", err)
+			}
+		})
+	}
+}
+
 // A channel with no sender written yet answers as configuration, not as a
 // fault: the delivery is reported to the source and not retried.
 func TestAChannelWithNoSenderYet(t *testing.T) {
-	for _, c := range []shared.Channel{shared.ChannelEmail, shared.ChannelBale, shared.ChannelWhatsApp} {
+	for _, c := range []shared.Channel{shared.ChannelEmail, shared.ChannelWhatsApp} {
 		t.Run(c.String(), func(t *testing.T) {
 			r := registry(t, nil, &secrets{}, sender.Fallback{TelegramToken: ours})
 

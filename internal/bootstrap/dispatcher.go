@@ -179,6 +179,7 @@ func buildDispatcherCore(
 
 	senders, err := sender.NewRegistry(credentials, secrets, providers, sender.Fallback{
 		TelegramToken: cfg.Sender.Telegram.Reveal(),
+		BaleToken:     cfg.Sender.Bale.Reveal(),
 	})
 	if err != nil {
 		return core, err
