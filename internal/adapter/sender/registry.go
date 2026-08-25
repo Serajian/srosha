@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/Serajian/srosha/internal/adapter/sender/bale"
 	"github.com/Serajian/srosha/internal/adapter/sender/telegram"
 	"github.com/Serajian/srosha/internal/core/domain/credential"
 	"github.com/Serajian/srosha/internal/core/domain/delivery"
@@ -37,6 +38,7 @@ type Secrets interface {
 // It grows one field per channel as each sender is written.
 type Fallback struct {
 	TelegramToken string
+	BaleToken     string
 }
 
 // Registry implements delivery.SenderRegistry.
@@ -97,17 +99,27 @@ func (r *Registry) For(
 func (r *Registry) ours(c shared.Channel) (delivery.Sender, error) {
 	switch c {
 	case shared.ChannelTelegram:
-		if r.own.TelegramToken == "" {
-			return nil, noSender(c)
-		}
-		return r.build(c, nil, r.own.TelegramToken)
+		return r.buildOwn(c, r.own.TelegramToken)
 
-	case shared.ChannelEmail, shared.ChannelBale, shared.ChannelWhatsApp:
+	case shared.ChannelBale:
+		return r.buildOwn(c, r.own.BaleToken)
+
+	case shared.ChannelEmail, shared.ChannelWhatsApp:
 		return nil, noSender(c)
 
 	default:
 		return nil, noSender(c)
 	}
+}
+
+// buildOwn refuses an empty token here rather than letting the provider package
+// answer, so "we have no identity on this channel" and "the identity we have is
+// not usable" stay one sentence to whoever reads the delivery.
+func (r *Registry) buildOwn(c shared.Channel, token string) (delivery.Sender, error) {
+	if token == "" {
+		return nil, noSender(c)
+	}
+	return r.build(c, nil, token)
 }
 
 // build is the one place a channel becomes a provider. A channel with no case
@@ -118,7 +130,10 @@ func (r *Registry) build(c shared.Channel, config []byte, secret string) (delive
 	case shared.ChannelTelegram:
 		return telegram.New(r.client, secret, config)
 
-	case shared.ChannelEmail, shared.ChannelBale, shared.ChannelWhatsApp:
+	case shared.ChannelBale:
+		return bale.New(r.client, secret, config)
+
+	case shared.ChannelEmail, shared.ChannelWhatsApp:
 		return nil, noSender(c)
 
 	default:
