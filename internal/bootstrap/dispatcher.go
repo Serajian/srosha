@@ -46,5 +46,5 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 		"env", cfg.App.Env,
 		"http", server.Addr(),
 	)
-	return &App{log: log, resources: res, server: server}, nil
+	return &App{log: log, resources: res, failed: watch(server.Err())}, nil
 }

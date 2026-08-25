@@ -17,7 +17,12 @@ type Gateway struct {
 	DB         settings.DB
 	MQ         settings.MQ
 	RateLimit  settings.RateLimit
-	Telemetry  settings.Telemetry
+
+	// The gateway validates a callback address when a source registers one, so
+	// it needs the policy -- and nothing else about webhooks. The signing
+	// secrets are the dispatcher's and must not be loaded here.
+	WebhookPolicy settings.WebhookPolicy
+	Telemetry     settings.Telemetry
 }
 
 // LoadGateway reads the environment and reports everything wrong with it at
@@ -36,7 +41,9 @@ func LoadGateway() (Gateway, error) {
 		DB:         settings.LoadDB(r),
 		MQ:         settings.LoadMQ(r),
 		RateLimit:  settings.LoadRateLimit(r),
-		Telemetry:  settings.LoadTelemetry(r, app.IsProduction()),
+
+		WebhookPolicy: settings.LoadWebhookPolicy(r, app.IsProduction()),
+		Telemetry:     settings.LoadTelemetry(r, app.IsProduction()),
 	}
 
 	if err := r.Err(); err != nil {

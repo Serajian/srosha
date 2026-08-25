@@ -2,10 +2,15 @@ package grpcsrv_test
 
 import (
 	"errors"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/Serajian/srosha/internal/adapter/api/grpcsrv"
+	"github.com/Serajian/srosha/internal/adapter/auth"
+	"github.com/Serajian/srosha/internal/core/domain/source"
+	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/pkg/errs"
 
 	"google.golang.org/grpc/codes"
@@ -78,5 +83,69 @@ func TestAForeignErrorSaysNothingAboutItself(t *testing.T) {
 	}
 	if got == "" {
 		t.Error("the caller was told nothing at all, not even that it failed")
+	}
+}
+
+// Reflection is a streaming method, so the unary interceptors do not run on it.
+// A server with it on tells anyone who reaches the port what it serves, with no
+// key -- which is fine on a laptop and is not on a deployment.
+func TestReflectionIsOffUnlessAskedFor(t *testing.T) {
+	const service = "grpc.reflection.v1.ServerReflection"
+
+	tests := []struct {
+		name string
+		on   bool
+		want bool
+	}{
+		{"production", false, false},
+		{"anywhere else", true, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server, err := grpcsrv.New(deps(t, tt.on))
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			_, registered := server.GetServiceInfo()[service]
+			if registered != tt.want {
+				t.Errorf("reflection registered = %v, want %v", registered, tt.want)
+			}
+
+			// The rpcs themselves are there either way.
+			for _, ours := range []string{
+				"notification.v1.NotificationService",
+				"notification.v1.WebhookService",
+			} {
+				if _, ok := server.GetServiceInfo()[ours]; !ok {
+					t.Errorf("%s is not registered", ours)
+				}
+			}
+		})
+	}
+}
+
+// deps is the least that New accepts, which is all this test needs: it looks at
+// what was registered, never at what a handler does.
+func deps(t *testing.T, reflection bool) grpcsrv.Deps {
+	t.Helper()
+
+	notifications, err := grpcsrv.NewNotificationServer(&usecase.Submitter{}, &usecase.Querier{})
+	if err != nil {
+		t.Fatalf("NewNotificationServer: %v", err)
+	}
+	webhooks, err := grpcsrv.NewWebhookServer(&usecase.Registrar{})
+	if err != nil {
+		t.Fatalf("NewWebhookServer: %v", err)
+	}
+
+	return grpcsrv.Deps{
+		Notifications: notifications,
+		Webhooks:      webhooks,
+		Authn:         &source.Authenticator{},
+		Scheme:        auth.NewScheme(),
+		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Reflection:    reflection,
 	}
 }

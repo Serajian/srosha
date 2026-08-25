@@ -9,6 +9,7 @@ import (
 	"github.com/Serajian/srosha/pkg/errs"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 // Deps is what the gRPC surface needs. Everything in it was built by bootstrap;
@@ -23,6 +24,18 @@ type Deps struct {
 	Scheme KeyScheme
 
 	Log *slog.Logger
+
+	// Reflection lets a client ask the server what it serves, so grpcurl and
+	// Postman work with no proto files in hand.
+	//
+	// It is off in production and the caller decides, because reflection is a
+	// STREAMING method: the interceptors below are unary and do not run on it,
+	// so a server with it on hands its whole API surface -- every service,
+	// method, message and field -- to anyone who can reach the port, with no
+	// key and no log line that looks like a request.
+	//
+	// Off, a client needs the proto files, which every real client already has.
+	Reflection bool
 }
 
 func (d Deps) validate() error {
@@ -75,5 +88,9 @@ func New(d Deps) (*grpc.Server, error) {
 
 	pb.RegisterNotificationServiceServer(server, d.Notifications)
 	pb.RegisterWebhookServiceServer(server, d.Webhooks)
+
+	if d.Reflection {
+		reflection.Register(server)
+	}
 	return server, nil
 }
