@@ -15,10 +15,25 @@ type Repository interface {
 	// last of them settles and the whole outcome goes out at once.
 	ListByNotificationID(ctx context.Context, notificationID shared.ID) ([]Delivery, error)
 
-	// ListStale finds deliveries still pending past a cutoff: the ones whose
+	// ClaimStale takes the deliveries still pending past a cutoff: the ones whose
 	// publish never reached the broker. It returns the rows themselves, because
 	// the caller decides what to do from how long each has been waiting.
-	ListStale(ctx context.Context, olderThan time.Duration, limit int) ([]Delivery, error)
+	//
+	// It CLAIMS them, and that is the whole point. Recovery sends directly
+	// rather than republishing, so the broker's duplicate window never sees
+	// these -- two sweeps running at once would both send. The claim is what
+	// makes a second dispatcher possible.
+	//
+	// lease is how long a claim is good for. A dispatcher that dies mid-send
+	// would otherwise strand the row for ever, so the claim expires; a send that
+	// merely failed calls Release, so the lease means one thing only.
+	ClaimStale(ctx context.Context, olderThan, lease time.Duration, limit int) ([]Delivery, error)
+
+	// Release hands a claimed row back before its lease is up. A transient
+	// failure writes nothing, so without this the row would sit unclaimable
+	// until the lease expired -- and the lease would quietly become the retry
+	// interval, giving a row fewer attempts than the configuration says.
+	Release(ctx context.Context, d *Delivery) error
 
 	PageByNotificationID(
 		ctx context.Context, notificationID shared.ID, c shared.Cursor,

@@ -17,6 +17,15 @@ type Dispatch struct {
 	ReconcileAfter  time.Duration
 	ReconcileGiveUp time.Duration
 	ReconcileBatch  int
+
+	// ReconcileLease is how long a claimed delivery stays one dispatcher's.
+	//
+	// It covers exactly one case: a dispatcher that died holding a row. A send
+	// that merely failed gives the row back, so this is set from the slowest
+	// send there could be and not from how often recovery runs. Shorter than a
+	// send takes, and a second dispatcher picks up a delivery the first is still
+	// working on.
+	ReconcileLease time.Duration
 	// ReconcileSchedule is when recovery sweeps, as a cron spec or an interval
 	// descriptor: "@every 5m", "*/5 * * * *", "0 3 * * *". A string rather than
 	// a duration because one parser reads all three, so a deployment that
@@ -41,6 +50,7 @@ func LoadDispatch(r *env.Reader) Dispatch {
 		ReconcileAfter:    r.Duration("RECONCILE_AFTER", 5*time.Minute),
 		ReconcileGiveUp:   r.Duration("RECONCILE_GIVE_UP", 30*time.Minute),
 		ReconcileBatch:    r.Int("RECONCILE_BATCH", 100),
+		ReconcileLease:    r.Duration("RECONCILE_LEASE", 10*time.Minute),
 		ReconcileSchedule: r.Str("RECONCILE_SCHEDULE", "@every 5m"),
 		AckWait:           r.Duration("DISPATCH_ACK_WAIT", time.Minute),
 		MaxInFlight:       r.Int("DISPATCH_MAX_IN_FLIGHT", 50),
@@ -48,6 +58,11 @@ func LoadDispatch(r *env.Reader) Dispatch {
 
 	r.Check(d.MaxAttempts > 0, "NOTIF_DISPATCH_MAX_ATTEMPTS must be above zero")
 	r.Check(d.ReconcileBatch > 0, "NOTIF_RECONCILE_BATCH must be above zero")
+
+	// A lease at or below the ack wait is shorter than a send is allowed to
+	// take, so a second dispatcher could claim a row the first is still sending.
+	r.Check(d.ReconcileLease > d.AckWait,
+		"NOTIF_RECONCILE_LEASE must be longer than NOTIF_DISPATCH_ACK_WAIT")
 	// The spec itself is checked by the scheduler, which owns the parser.
 	r.Check(d.ReconcileSchedule != "", "NOTIF_RECONCILE_SCHEDULE must not be empty")
 	r.Check(d.MaxInFlight > 0, "NOTIF_DISPATCH_MAX_IN_FLIGHT must be above zero")

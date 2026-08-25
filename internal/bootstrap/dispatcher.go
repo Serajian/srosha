@@ -196,7 +196,8 @@ func buildDispatcherCore(
 			notifications, deliveries, webhooks, senders, callback,
 			ids.Generate, now, log,
 			cfg.Dispatch.MaxAttempts, cfg.Webhook.MaxFailures,
-			cfg.Dispatch.ReconcileAfter, cfg.Dispatch.ReconcileGiveUp, cfg.Dispatch.ReconcileBatch,
+			cfg.Dispatch.ReconcileAfter, cfg.Dispatch.ReconcileGiveUp, cfg.Dispatch.ReconcileLease,
+			cfg.Dispatch.ReconcileBatch,
 		),
 	}, nil
 }

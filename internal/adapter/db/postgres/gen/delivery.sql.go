@@ -10,6 +10,98 @@ import (
 	"time"
 )
 
+const claimStaleDeliveries = `-- name: ClaimStaleDeliveries :many
+UPDATE deliveries
+SET claimed_at = $1::timestamptz
+WHERE id IN (
+    SELECT id FROM deliveries
+    WHERE status = 'PENDING'
+      AND updated_at < $2::timestamptz
+      AND (claimed_at IS NULL OR claimed_at < $3::timestamptz)
+    ORDER BY updated_at, id
+    LIMIT $4
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING id, notification_id, channel, address, sender_name, status, attempts, last_error, failure_reason, provider_message_id, notified_at, claimed_at, created_at, updated_at
+`
+
+type ClaimStaleDeliveriesParams struct {
+	Now                time.Time
+	OlderThan          time.Time
+	ClaimExpiredBefore time.Time
+	RowLimit           int32
+}
+
+// ListStaleDeliveries is what recovery scans: rows the broker was never told
+// about, or was told about and dropped. Oldest first, so the ones closest to
+// giving up are dealt with first, and limited because this runs on a timer and
+// must not pull a backlog into memory.
+//
+// The order is (updated_at, id) rather than updated_at alone. With equal
+// timestamps the order would otherwise be whatever the plan happened to produce,
+// and a caller walking one batch after another could skip a row or see it twice.
+//
+// THIS DOES NOT CLAIM THE ROWS. One dispatcher is safe: it reads once and hands
+// the rows to its workers, so no row reaches two of them. Two dispatchers are
+// not: both would read the same PENDING rows, and recovery sends directly rather
+// than republishing, so the broker's duplicate window cannot save it -- somebody
+// gets the message twice.
+//
+// The claim is what makes a second dispatcher possible, and it is one statement
+// rather than a transaction held open across the sends.
+//
+// SKIP LOCKED settles the instant of contention -- two sweeps arriving together
+// get disjoint sets -- and claimed_at holds the claim for the minutes after it,
+// once the lock is gone. Neither replaces the other: a lock cannot outlive its
+// statement, and a column cannot break a tie.
+//
+// The claim expires, because a dispatcher that dies mid-send would otherwise
+// strand the row for ever. It is also released explicitly when a send fails
+// transiently, so the lease covers only the case it was invented for -- see
+// ReleaseDeliveryClaim.
+//
+// updated_at is NOT touched. Age is the retry counter, and moving it would mean
+// the row never reaches RECONCILE_GIVE_UP.
+func (q *Queries) ClaimStaleDeliveries(ctx context.Context, arg ClaimStaleDeliveriesParams) ([]Delivery, error) {
+	rows, err := q.db.Query(ctx, claimStaleDeliveries,
+		arg.Now,
+		arg.OlderThan,
+		arg.ClaimExpiredBefore,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Delivery{}
+	for rows.Next() {
+		var i Delivery
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotificationID,
+			&i.Channel,
+			&i.Address,
+			&i.SenderName,
+			&i.Status,
+			&i.Attempts,
+			&i.LastError,
+			&i.FailureReason,
+			&i.ProviderMessageID,
+			&i.NotifiedAt,
+			&i.ClaimedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 type CreateDeliveriesParams struct {
 	ID             string
 	NotificationID string
@@ -21,7 +113,7 @@ type CreateDeliveriesParams struct {
 }
 
 const listDeliveriesByNotificationID = `-- name: ListDeliveriesByNotificationID :many
-SELECT id, notification_id, channel, address, sender_name, status, attempts, last_error, failure_reason, provider_message_id, notified_at, created_at, updated_at FROM deliveries WHERE notification_id = $1 ORDER BY id
+SELECT id, notification_id, channel, address, sender_name, status, attempts, last_error, failure_reason, provider_message_id, notified_at, claimed_at, created_at, updated_at FROM deliveries WHERE notification_id = $1 ORDER BY id
 `
 
 func (q *Queries) ListDeliveriesByNotificationID(ctx context.Context, notificationID string) ([]Delivery, error) {
@@ -45,74 +137,7 @@ func (q *Queries) ListDeliveriesByNotificationID(ctx context.Context, notificati
 			&i.FailureReason,
 			&i.ProviderMessageID,
 			&i.NotifiedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listStaleDeliveries = `-- name: ListStaleDeliveries :many
-SELECT id, notification_id, channel, address, sender_name, status, attempts, last_error, failure_reason, provider_message_id, notified_at, created_at, updated_at FROM deliveries
-WHERE status = 'PENDING' AND updated_at < $1::timestamptz
-ORDER BY updated_at, id
-LIMIT $2
-`
-
-type ListStaleDeliveriesParams struct {
-	OlderThan time.Time
-	RowLimit  int32
-}
-
-// ListStaleDeliveries is what recovery scans: rows the broker was never told
-// about, or was told about and dropped. Oldest first, so the ones closest to
-// giving up are dealt with first, and limited because this runs on a timer and
-// must not pull a backlog into memory.
-//
-// The order is (updated_at, id) rather than updated_at alone. With equal
-// timestamps the order would otherwise be whatever the plan happened to produce,
-// and a caller walking one batch after another could skip a row or see it twice.
-//
-// THIS DOES NOT CLAIM THE ROWS. One dispatcher is safe: it reads once and hands
-// the rows to its workers, so no row reaches two of them. Two dispatchers are
-// not: both would read the same PENDING rows, and recovery sends directly rather
-// than republishing, so the broker's duplicate window cannot save it -- somebody
-// gets the message twice.
-//
-// FOR UPDATE SKIP LOCKED was here and was removed because it only holds inside a
-// transaction, and the transaction would have to stay open across the sends.
-// Claiming by touching updated_at is worse still: age IS the retry counter, so
-// resetting it means the row never gives up.
-//
-// A second dispatcher therefore needs a claimed_at column first. That is a
-// migration, and it is the price of the second replica, not of this query.
-func (q *Queries) ListStaleDeliveries(ctx context.Context, arg ListStaleDeliveriesParams) ([]Delivery, error) {
-	rows, err := q.db.Query(ctx, listStaleDeliveries, arg.OlderThan, arg.RowLimit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Delivery{}
-	for rows.Next() {
-		var i Delivery
-		if err := rows.Scan(
-			&i.ID,
-			&i.NotificationID,
-			&i.Channel,
-			&i.Address,
-			&i.SenderName,
-			&i.Status,
-			&i.Attempts,
-			&i.LastError,
-			&i.FailureReason,
-			&i.ProviderMessageID,
-			&i.NotifiedAt,
+			&i.ClaimedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -149,7 +174,7 @@ func (q *Queries) MarkDeliveryNotified(ctx context.Context, arg MarkDeliveryNoti
 }
 
 const pageDeliveriesByNotificationID = `-- name: PageDeliveriesByNotificationID :many
-SELECT id, notification_id, channel, address, sender_name, status, attempts, last_error, failure_reason, provider_message_id, notified_at, created_at, updated_at FROM deliveries
+SELECT id, notification_id, channel, address, sender_name, status, attempts, last_error, failure_reason, provider_message_id, notified_at, claimed_at, created_at, updated_at FROM deliveries
 WHERE notification_id = $1
   -- Cast to text, not to ulid: the domain's base type is text, and a cast to
   -- the domain itself is opaque to sqlc, which then types the parameter as any.
@@ -188,6 +213,7 @@ func (q *Queries) PageDeliveriesByNotificationID(ctx context.Context, arg PageDe
 			&i.FailureReason,
 			&i.ProviderMessageID,
 			&i.NotifiedAt,
+			&i.ClaimedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -202,7 +228,7 @@ func (q *Queries) PageDeliveriesByNotificationID(ctx context.Context, arg PageDe
 }
 
 const readDelivery = `-- name: ReadDelivery :one
-SELECT id, notification_id, channel, address, sender_name, status, attempts, last_error, failure_reason, provider_message_id, notified_at, created_at, updated_at FROM deliveries WHERE id = $1
+SELECT id, notification_id, channel, address, sender_name, status, attempts, last_error, failure_reason, provider_message_id, notified_at, claimed_at, created_at, updated_at FROM deliveries WHERE id = $1
 `
 
 func (q *Queries) ReadDelivery(ctx context.Context, id string) (Delivery, error) {
@@ -220,10 +246,34 @@ func (q *Queries) ReadDelivery(ctx context.Context, id string) (Delivery, error)
 		&i.FailureReason,
 		&i.ProviderMessageID,
 		&i.NotifiedAt,
+		&i.ClaimedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const releaseDeliveryClaim = `-- name: ReleaseDeliveryClaim :execrows
+UPDATE deliveries
+SET claimed_at = NULL
+WHERE id = $1 AND status = 'PENDING'
+`
+
+// ReleaseDeliveryClaim hands a row back before its lease is up.
+//
+// A transient failure writes nothing -- the row stays PENDING and only gets
+// older -- so without this it would sit unclaimable until the lease expired, and
+// the lease would silently become the retry interval. With reconcile every five
+// minutes, give-up at thirty and a ten minute lease, a row would get three
+// attempts where the configuration says six.
+//
+// So the lease means one thing only: the dispatcher holding this row is gone.
+func (q *Queries) ReleaseDeliveryClaim(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.Exec(ctx, releaseDeliveryClaim, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateDelivery = `-- name: UpdateDelivery :execrows

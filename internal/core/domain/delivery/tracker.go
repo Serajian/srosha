@@ -40,12 +40,22 @@ func (t *Tracker) ListAllForNotification(
 	return t.repo.ListByNotificationID(ctx, notificationID)
 }
 
-// ListStale finds the deliveries nobody was told about: the rows whose publish
+// ClaimStale takes the deliveries nobody was told about: the rows whose publish
 // never reached the broker.
-func (t *Tracker) ListStale(
-	ctx context.Context, olderThan time.Duration, limit int,
+//
+// Taking rather than listing, because recovery sends directly and the broker's
+// duplicate window never sees these. Whoever gets a row here owns it until the
+// lease runs out or Release hands it back.
+func (t *Tracker) ClaimStale(
+	ctx context.Context, olderThan, lease time.Duration, limit int,
 ) ([]Delivery, error) {
-	return t.repo.ListStale(ctx, olderThan, limit)
+	return t.repo.ClaimStale(ctx, olderThan, lease, limit)
+}
+
+// Release gives a claimed row back, so a failure that changed nothing does not
+// hold it for the whole lease.
+func (t *Tracker) Release(ctx context.Context, d *Delivery) error {
+	return t.repo.Release(ctx, d)
 }
 
 // RecordSent stores the outcome. The sending already happened; this only writes

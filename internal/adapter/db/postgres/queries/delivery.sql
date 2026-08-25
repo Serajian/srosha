@@ -30,19 +30,50 @@ SELECT * FROM deliveries WHERE notification_id = @notification_id ORDER BY id;
 -- than republishing, so the broker's duplicate window cannot save it -- somebody
 -- gets the message twice.
 --
--- FOR UPDATE SKIP LOCKED was here and was removed because it only holds inside a
--- transaction, and the transaction would have to stay open across the sends.
--- Claiming by touching updated_at is worse still: age IS the retry counter, so
--- resetting it means the row never gives up.
+-- The claim is what makes a second dispatcher possible, and it is one statement
+-- rather than a transaction held open across the sends.
 --
--- A second dispatcher therefore needs a claimed_at column first. That is a
--- migration, and it is the price of the second replica, not of this query.
+-- SKIP LOCKED settles the instant of contention -- two sweeps arriving together
+-- get disjoint sets -- and claimed_at holds the claim for the minutes after it,
+-- once the lock is gone. Neither replaces the other: a lock cannot outlive its
+-- statement, and a column cannot break a tie.
 --
--- name: ListStaleDeliveries :many
-SELECT * FROM deliveries
-WHERE status = 'PENDING' AND updated_at < @older_than::timestamptz
-ORDER BY updated_at, id
-LIMIT @row_limit;
+-- The claim expires, because a dispatcher that dies mid-send would otherwise
+-- strand the row for ever. It is also released explicitly when a send fails
+-- transiently, so the lease covers only the case it was invented for -- see
+-- ReleaseDeliveryClaim.
+--
+-- updated_at is NOT touched. Age is the retry counter, and moving it would mean
+-- the row never reaches RECONCILE_GIVE_UP.
+--
+-- name: ClaimStaleDeliveries :many
+UPDATE deliveries
+SET claimed_at = @now::timestamptz
+WHERE id IN (
+    SELECT id FROM deliveries
+    WHERE status = 'PENDING'
+      AND updated_at < @older_than::timestamptz
+      AND (claimed_at IS NULL OR claimed_at < @claim_expired_before::timestamptz)
+    ORDER BY updated_at, id
+    LIMIT @row_limit
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING *;
+
+-- ReleaseDeliveryClaim hands a row back before its lease is up.
+--
+-- A transient failure writes nothing -- the row stays PENDING and only gets
+-- older -- so without this it would sit unclaimable until the lease expired, and
+-- the lease would silently become the retry interval. With reconcile every five
+-- minutes, give-up at thirty and a ten minute lease, a row would get three
+-- attempts where the configuration says six.
+--
+-- So the lease means one thing only: the dispatcher holding this row is gone.
+--
+-- name: ReleaseDeliveryClaim :execrows
+UPDATE deliveries
+SET claimed_at = NULL
+WHERE id = @id AND status = 'PENDING';
 
 -- PageDeliveriesByNotificationID walks a message's deliveries by id. The id is a
 -- ULID, so ordering by it is ordering by time and the cursor needs no second

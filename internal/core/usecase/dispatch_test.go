@@ -22,6 +22,7 @@ const (
 	maxWebhookFailures = 3
 	reconcileAfter     = 5 * time.Minute
 	reconcileGiveUp    = 30 * time.Minute
+	reconcileLease     = 10 * time.Minute
 )
 
 type dispatchRig struct {
@@ -103,7 +104,7 @@ func newDispatchRig(t *testing.T, tweak func(*dispatchOpts)) *dispatchRig {
 		clock,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		maxAttempts, maxWebhookFailures,
-		reconcileAfter, reconcileGiveUp, 100,
+		reconcileAfter, reconcileGiveUp, reconcileLease, 100,
 	)
 	return d
 }
@@ -439,5 +440,55 @@ func TestADeliveryWithoutAMessageIsFailedRatherThanRetried(t *testing.T) {
 	}
 	if got.FailureReason() != delivery.FailurePermanent {
 		t.Errorf("reason = %q, want PERMANENT", got.FailureReason())
+	}
+}
+
+// A claimed row must not come back on the next sweep. Recovery sends directly,
+// so two sweeps holding the same delivery is somebody getting the message twice.
+func TestASweptRowIsNotSweptAgain(t *testing.T) {
+	d := newDispatchRig(t, func(o *dispatchOpts) {
+		o.at = now.Add(reconcileAfter + time.Minute)
+		o.sender = &fakeSender{channel: shared.ChannelEmail, err: errors.New("provider is down")}
+		o.registry = fakeRegistry{sender: o.sender}
+	})
+
+	if err := d.dispatcher.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	first := d.sender.count()
+	if first == 0 {
+		t.Fatal("the first sweep sent nothing")
+	}
+
+	// The claim was released by the transient failure, so the row is available
+	// again -- but only because it was released, not because claims are free.
+	if err := d.dispatcher.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if d.sender.count() != first*2 {
+		t.Errorf("second sweep sent %d in total, want %d", d.sender.count(), first*2)
+	}
+}
+
+// The other half: a row still held is skipped. Without the release above this
+// is what every transient failure would look like until the lease ran out.
+func TestARowStillHeldIsSkipped(t *testing.T) {
+	at := now.Add(reconcileAfter + time.Minute)
+	d := newDispatchRig(t, func(o *dispatchOpts) {
+		o.at = at
+
+		// One route, so the whole message is the row being held.
+		one := cmd()
+		one.Routes = one.Routes[:1]
+		o.cmd = one
+	})
+
+	d.deliveries.hold(d.deliveryID, at)
+
+	if err := d.dispatcher.Recover(context.Background()); err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if d.sender.count() != 0 {
+		t.Errorf("sent %d for a delivery somebody else was holding", d.sender.count())
 	}
 }
