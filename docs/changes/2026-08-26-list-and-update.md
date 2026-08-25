@@ -101,6 +101,30 @@ provider چه فیلدهایی دارد، و عمداً نمی‌داند.
 و روشن شد که پورت سلامت **اصلاً API نیست**: `/healthz` مالِ پلتفرم است تا تصمیم
 بگیرد کانتینر زنده است یا نه، و هیچ‌چیزش وعده‌ای به مشتری نیست.
 
+# یک فایل خالی که یک وعده بود
+
+`internal/infra/messagequeue/jetstream.go` یک خط داشت — `package messagequeue` —
+و از ۱۹ آگوست دست‌نخورده مانده بود، دو روز قبل از اینکه `nats.go` نوشته شود.
+
+شکافی در رفتار نبود: JetStream از همان اول در `nats.go` باز می‌شود.
+
+```
+nats.go:132   js, err := jetstream.New(conn)
+nats.go:207   func (n *NATS) JetStream() jetstream.JetStream
+```
+
+مسئله این بود که یک فایل خالی **یک وعده است**: کسی که package را باز می‌کند
+`jetstream.go` را می‌بیند و کد را جایی می‌گردد که نیست. و هیچ چکی پیدایش نمی‌کرد
+— نه vet، نه lint، نه `arch-check`؛ فقط شمردن خطوط.
+
+حذف شد، و دلیلش در package doc نشست: JetStream تکنولوژی دومی نیست، روی همان
+اتصال سوار است و همان lifecycle را دارد، پس فایلی جدا فایلی است که بدون آن یکی
+معنا ندارد.
+
+`internal/infra/telemetry/prometheus.go` **ماند** و فرقش همین است: آنجا متریک‌ها
+واقعاً وجود ندارند، پس آن فایل خالی یک کارِ نکرده را نشان می‌دهد نه یک فایل اضافه
+را.
+
 # Files Changed
 
 - `internal/adapter/db/postgres/queries/{notification,credential}.sql` + `gen/`
@@ -114,6 +138,8 @@ provider چه فیلدهایی دارد، و عمداً نمی‌داند.
 - `internal/adapter/api/grpcsrv/{notification,credential,mapper}.go`
 - `internal/bootstrap/gateway.go`
 - `docs/CONFIG.md` *(REST حذف شد، پورت‌های سلامت روشن شدند)*
+- `internal/infra/messagequeue/jetstream.go` *(حذف — خالی بود)*
+- `internal/infra/messagequeue/nats.go` *(package doc می‌گوید چرا JetStream اینجاست)*
 
 هیچ migration و هیچ کلید کانفیگی لازم نشد.
 
