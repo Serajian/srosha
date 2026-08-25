@@ -567,6 +567,14 @@ func (s *fakeSender) count() int {
 	return len(s.sent)
 }
 
+// messages is what it was actually asked to send, so a test can look at what
+// reached the provider rather than only how many times.
+func (s *fakeSender) messages() []shared.Message {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]shared.Message(nil), s.sent...)
+}
+
 // fakeRegistry hands back one sender for every channel, or refuses.
 type fakeRegistry struct {
 	sender *fakeSender

@@ -58,11 +58,21 @@ const (
 	FailureMaxAttempts FailureReason = "MAX_ATTEMPTS" // the broker gave up retrying
 	FailurePermanent   FailureReason = "PERMANENT"    // the provider says this will never work
 	FailureNoSender    FailureReason = "NO_SENDER"    // no sender registered for the channel
+
+	// FailureNotReachable is the provider refusing the RECIPIENT rather than the
+	// message: a person who blocked us, a conversation window that closed, a
+	// device token no longer registered.
+	//
+	// Separate from PERMANENT because the source can act on it and cannot act on
+	// the other. Nothing they wrote differently would have helped -- somebody has
+	// to talk to us first, or a token has to be replaced.
+	FailureNotReachable FailureReason = "NOT_REACHABLE"
 )
 
 func (r FailureReason) Valid() bool {
 	switch r {
-	case FailureExpired, FailureMaxAttempts, FailurePermanent, FailureNoSender:
+	case FailureExpired, FailureMaxAttempts, FailurePermanent, FailureNoSender,
+		FailureNotReachable:
 		return true
 	default:
 		return false

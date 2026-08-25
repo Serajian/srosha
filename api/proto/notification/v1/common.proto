@@ -72,6 +72,15 @@ enum FailureReason {
   // configuration answer, not a provider one -- it will read the same on every
   // retry until somebody changes the setup.
   FAILURE_REASON_NO_SENDER = 4;
+
+  // The provider refused the RECIPIENT rather than the message: somebody who
+  // blocked us, a conversation window that closed, a device token no longer
+  // registered.
+  //
+  // Apart from PERMANENT because you can act on it and cannot act on that one:
+  // nothing written differently would have helped. Somebody has to open a
+  // conversation, or a token has to be replaced.
+  FAILURE_REASON_NOT_REACHABLE = 5;
 }
 
 // Page is where a listing carries on from.

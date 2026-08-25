@@ -225,6 +225,14 @@ const (
 	// configuration answer, not a provider one -- it will read the same on every
 	// retry until somebody changes the setup.
 	FailureReason_FAILURE_REASON_NO_SENDER FailureReason = 4
+	// The provider refused the RECIPIENT rather than the message: somebody who
+	// blocked us, a conversation window that closed, a device token no longer
+	// registered.
+	//
+	// Apart from PERMANENT because you can act on it and cannot act on that one:
+	// nothing written differently would have helped. Somebody has to open a
+	// conversation, or a token has to be replaced.
+	FailureReason_FAILURE_REASON_NOT_REACHABLE FailureReason = 5
 )
 
 // Enum value maps for FailureReason.
@@ -235,13 +243,15 @@ var (
 		2: "FAILURE_REASON_MAX_ATTEMPTS",
 		3: "FAILURE_REASON_PERMANENT",
 		4: "FAILURE_REASON_NO_SENDER",
+		5: "FAILURE_REASON_NOT_REACHABLE",
 	}
 	FailureReason_value = map[string]int32{
-		"FAILURE_REASON_UNSPECIFIED":  0,
-		"FAILURE_REASON_EXPIRED":      1,
-		"FAILURE_REASON_MAX_ATTEMPTS": 2,
-		"FAILURE_REASON_PERMANENT":    3,
-		"FAILURE_REASON_NO_SENDER":    4,
+		"FAILURE_REASON_UNSPECIFIED":   0,
+		"FAILURE_REASON_EXPIRED":       1,
+		"FAILURE_REASON_MAX_ATTEMPTS":  2,
+		"FAILURE_REASON_PERMANENT":     3,
+		"FAILURE_REASON_NO_SENDER":     4,
+		"FAILURE_REASON_NOT_REACHABLE": 5,
 	}
 )
 
@@ -355,13 +365,14 @@ const file_notification_v1_common_proto_rawDesc = "" +
 	"\x1bDELIVERY_STATUS_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17DELIVERY_STATUS_PENDING\x10\x01\x12\x18\n" +
 	"\x14DELIVERY_STATUS_SENT\x10\x02\x12\x1a\n" +
-	"\x16DELIVERY_STATUS_FAILED\x10\x03*\xa8\x01\n" +
+	"\x16DELIVERY_STATUS_FAILED\x10\x03*\xca\x01\n" +
 	"\rFailureReason\x12\x1e\n" +
 	"\x1aFAILURE_REASON_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16FAILURE_REASON_EXPIRED\x10\x01\x12\x1f\n" +
 	"\x1bFAILURE_REASON_MAX_ATTEMPTS\x10\x02\x12\x1c\n" +
 	"\x18FAILURE_REASON_PERMANENT\x10\x03\x12\x1c\n" +
-	"\x18FAILURE_REASON_NO_SENDER\x10\x04B\xbe\x01\n" +
+	"\x18FAILURE_REASON_NO_SENDER\x10\x04\x12 \n" +
+	"\x1cFAILURE_REASON_NOT_REACHABLE\x10\x05B\xbe\x01\n" +
 	"\x13com.notification.v1B\vCommonProtoP\x01Z=github.com/Serajian/srosha/gen/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
 
 var (

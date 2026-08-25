@@ -174,6 +174,7 @@ func (d *Dispatcher) deliver(
 		Recipient: del.Recipient,
 		Title:     n.Title,
 		Body:      n.Body,
+		Metadata:  n.Metadata(),
 	})
 	if err != nil {
 		return d.sendFailed(ctx, del, n, err, lastChance)
@@ -191,8 +192,15 @@ func (d *Dispatcher) sendFailed(
 	ctx context.Context, del *delivery.Delivery, n *notification.Notification,
 	err error, lastChance bool,
 ) error {
-	if shared.IsPermanentSend(err) {
+	// The provider's own conclusion, carried through rather than flattened: a
+	// recipient who blocked us is something the source can act on, and a message
+	// the provider refused is not.
+	switch shared.SendKindOf(err) {
+	case shared.SendUnreachable:
+		return d.fail(ctx, del, n, delivery.FailureNotReachable, err.Error())
+	case shared.SendPermanent:
 		return d.fail(ctx, del, n, delivery.FailurePermanent, err.Error())
+	case shared.SendTransient:
 	}
 	if lastChance {
 		// Recording it rather than letting the attempt vanish means the outcome

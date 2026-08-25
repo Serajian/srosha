@@ -197,6 +197,8 @@ func fromFailureReason(r delivery.FailureReason) pb.FailureReason {
 		return pb.FailureReason_FAILURE_REASON_MAX_ATTEMPTS
 	case delivery.FailureNoSender:
 		return pb.FailureReason_FAILURE_REASON_NO_SENDER
+	case delivery.FailureNotReachable:
+		return pb.FailureReason_FAILURE_REASON_NOT_REACHABLE
 	default:
 		return pb.FailureReason_FAILURE_REASON_UNSPECIFIED
 	}
