@@ -140,6 +140,14 @@ func Pick(creds []Credential, name string) (Credential, error) {
 			return c, nil
 		}
 	}
+
+	// Both are "no sender", and the difference matters one layer up: nothing
+	// registered means a service-wide identity may stand in, while something
+	// registered and unusable is a choice this source made.
+	if len(creds) == 0 {
+		return Credential{}, errs.InvalidInputErr("no sender configured for this channel").
+			WithErr(ErrNoCredentials)
+	}
 	return Credential{}, errs.InvalidInputErr("no sender configured for this channel").
 		WithErr(ErrNoDefault)
 }

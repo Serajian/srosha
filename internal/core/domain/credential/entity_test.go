@@ -211,10 +211,13 @@ func TestPickRefuses(t *testing.T) {
 		sentinel error
 	}{
 		{
+			// Not ErrNoDefault: nothing was registered, so nothing was chosen.
+			// A service-wide identity may stand in for this and not for the
+			// case below, where the source registered one and switched it off.
 			name:     "no credential at all",
 			creds:    nil,
 			want:     "",
-			sentinel: credential.ErrNoDefault,
+			sentinel: credential.ErrNoCredentials,
 		},
 		{
 			name:     "none marked default",
