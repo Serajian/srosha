@@ -252,3 +252,88 @@ func TestDispatchStreamPairsTheConfiguredNameWithOurOwnNamespace(t *testing.T) {
 		t.Error("DispatchStream accepted a stream with no name")
 	}
 }
+
+// The broker refuses a consumer with more backoff intervals than delivery
+// attempts, so a deployment that lowered the limit would fail to start.
+func TestBackoffIsTrimmedToTheDeliveryLimit(t *testing.T) {
+	tests := []struct {
+		attempts int
+		want     int
+	}{
+		{1, 1},
+		{2, 2},
+		{len(backoff), len(backoff)},
+		{len(backoff) + 3, len(backoff)},
+	}
+
+	for _, tt := range tests {
+		if got := len(delaysFor(tt.attempts)); got != tt.want {
+			t.Errorf("delaysFor(%d) gave %d intervals, want %d", tt.attempts, got, tt.want)
+		}
+	}
+}
+
+// attempt is the broker's own count and starts at one, so the first failure
+// waits the first interval rather than skipping it.
+func TestTheDelayGrowsWithTheAttemptAndThenHolds(t *testing.T) {
+	c := &Consumer{backoff: delaysFor(10)}
+
+	if got := c.delay(1); got != backoff[0] {
+		t.Errorf("delay(1) = %v, want %v", got, backoff[0])
+	}
+	if got := c.delay(2); got != backoff[1] {
+		t.Errorf("delay(2) = %v, want %v", got, backoff[1])
+	}
+
+	last := backoff[len(backoff)-1]
+	for _, attempt := range []int{len(backoff), len(backoff) + 1, 99} {
+		if got := c.delay(attempt); got != last {
+			t.Errorf("delay(%d) = %v, want the last interval %v", attempt, got, last)
+		}
+	}
+
+	// A count the broker should never produce still has to answer something.
+	if got := c.delay(0); got != backoff[0] {
+		t.Errorf("delay(0) = %v, want %v", got, backoff[0])
+	}
+}
+
+// The dispatcher cannot work without the id -- everything else it needs is read
+// from the row -- so an event without one is a message nobody can act on.
+func TestDecodeRefusesWhatNobodyCouldAct(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+	}{
+		{"not json", "{"},
+		{"empty object", "{}"},
+		{"no delivery id", `{"source_id":"acme","channel":"email","priority":"HIGH"}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := decode([]byte(tt.data)); err == nil {
+				t.Error("it was accepted")
+			}
+		})
+	}
+}
+
+// What the gateway publishes is what the dispatcher reads, possibly a release
+// apart. This is the one test that holds both ends at once.
+func TestWhatEncodeWritesDecodeReads(t *testing.T) {
+	want := anEvent(shared.ChannelTelegram, shared.PriorityCritical)
+
+	data, err := encode(want, want.DeliveryID.String())
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	got, err := decode(data)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got != want {
+		t.Errorf("round trip changed it:\n  got  %+v\n  want %+v", got, want)
+	}
+}
