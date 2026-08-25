@@ -117,6 +117,7 @@ func TestReflectionIsOffUnlessAskedFor(t *testing.T) {
 			for _, ours := range []string{
 				"notification.v1.NotificationService",
 				"notification.v1.WebhookService",
+				"notification.v1.CredentialService",
 			} {
 				if _, ok := server.GetServiceInfo()[ours]; !ok {
 					t.Errorf("%s is not registered", ours)
@@ -139,10 +140,15 @@ func deps(t *testing.T, reflection bool) grpcsrv.Deps {
 	if err != nil {
 		t.Fatalf("NewWebhookServer: %v", err)
 	}
+	credentials, err := grpcsrv.NewCredentialServer(&usecase.Credentials{})
+	if err != nil {
+		t.Fatalf("NewCredentialServer: %v", err)
+	}
 
 	return grpcsrv.Deps{
 		Notifications: notifications,
 		Webhooks:      webhooks,
+		Credentials:   credentials,
 		Authn:         &source.Authenticator{},
 		Scheme:        auth.NewScheme(),
 		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),

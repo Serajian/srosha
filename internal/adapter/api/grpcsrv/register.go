@@ -17,6 +17,7 @@ import (
 type Deps struct {
 	Notifications *NotificationServer
 	Webhooks      *WebhookServer
+	Credentials   *CredentialServer
 
 	// Authn and Scheme are the auth interceptor's. The scheme knows what a key
 	// looks like, the authenticator knows whose it is.
@@ -46,6 +47,9 @@ func (d Deps) validate() error {
 	}
 	if d.Webhooks == nil {
 		missing = append(missing, errs.InternalErr("no webhook server"))
+	}
+	if d.Credentials == nil {
+		missing = append(missing, errs.InternalErr("no credential server"))
 	}
 	if d.Authn == nil {
 		missing = append(missing, errs.InternalErr("no authenticator"))
@@ -88,6 +92,7 @@ func New(d Deps) (*grpc.Server, error) {
 
 	pb.RegisterNotificationServiceServer(server, d.Notifications)
 	pb.RegisterWebhookServiceServer(server, d.Webhooks)
+	pb.RegisterCredentialServiceServer(server, d.Credentials)
 
 	if d.Reflection {
 		reflection.Register(server)

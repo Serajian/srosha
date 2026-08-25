@@ -13,7 +13,13 @@ func setMinimum(t *testing.T) {
 	t.Helper()
 	t.Setenv("NOTIF_DB_DSN", "postgres://srosha:pw@postgres:5432/srosha")
 	t.Setenv("NOTIF_MQ_URL", "nats://gateway:pw@nats:4222")
+	t.Setenv("NOTIF_CRYPTO_KEYS", `{"1":"`+testKey+`"}`)
+	t.Setenv("NOTIF_CRYPTO_KEY_ID", "1")
 }
+
+// testKey is 32 zero bytes in standard base64. Key material never has to be
+// real to be the right length, and the length is the only thing config checks.
+const testKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 func TestGatewayLoadsWithDefaults(t *testing.T) {
 	setMinimum(t)
@@ -143,5 +149,44 @@ func TestSecretsDoNotPrint(t *testing.T) {
 		if strings.Contains(printed, leak) {
 			t.Errorf("printing the config leaked %q:\n%s", leak, printed)
 		}
+	}
+}
+
+func TestTheKeyringIsCheckedAtBoot(t *testing.T) {
+	cases := map[string]struct {
+		keys, active, want string
+	}{
+		"not base64":       {`{"1":"not base64!"}`, "1", "not valid base64"},
+		"wrong length":     {`{"1":"c2hvcnQ="}`, "1", "must be 32"},
+		"active not there": {`{"1":"` + testKey + `"}`, "2", "not a key in"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("NOTIF_DB_DSN", "postgres://srosha:pw@postgres:5432/srosha")
+			t.Setenv("NOTIF_MQ_URL", "nats://gateway:pw@nats:4222")
+			t.Setenv("NOTIF_CRYPTO_KEYS", c.keys)
+			t.Setenv("NOTIF_CRYPTO_KEY_ID", c.active)
+
+			_, err := config.LoadGateway()
+			if err == nil {
+				t.Fatal("LoadGateway() accepted a broken keyring")
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %v, want it to mention %q", err, c.want)
+			}
+		})
+	}
+}
+
+// The keyring must survive being logged, the same as every other secret.
+func TestTheKeyringDoesNotPrint(t *testing.T) {
+	setMinimum(t)
+
+	c, err := config.LoadGateway()
+	if err != nil {
+		t.Fatalf("LoadGateway() error = %v", err)
+	}
+	if printed := fmt.Sprintf("%v", c.Crypto); strings.Contains(printed, testKey) {
+		t.Errorf("the keyring printed its key material: %s", printed)
 	}
 }

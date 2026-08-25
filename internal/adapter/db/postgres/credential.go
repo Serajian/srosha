@@ -118,6 +118,31 @@ func (r *CredentialRepository) ReadMaterial(
 	return row.Config, deref(row.Secret), nil
 }
 
+// Reseal replaces a stored secret with the same secret under the current key.
+//
+// It reports whether the row was actually rewritten. Finding nothing is not a
+// failure: two senders reading one credential at the same moment both reseal,
+// and only one of them can be the row -- the other sealed the same value and
+// its write is not needed. The statement matches on the old value so the loser
+// writes nothing rather than overwriting the winner.
+//
+// The values are opaque here. What "sealed" means, and which key did it, is the
+// business of whoever holds the keys.
+func (r *CredentialRepository) Reseal(
+	ctx context.Context, id shared.ID, previous, secret string, now time.Time,
+) (bool, error) {
+	rows, err := r.q(ctx).ResealCredentialSecret(ctx, gen.ResealCredentialSecretParams{
+		ID:        id.String(),
+		Previous:  optional(previous),
+		Secret:    optional(secret),
+		UpdatedAt: now,
+	})
+	if err != nil {
+		return false, failed("reseal credential secret", err)
+	}
+	return rows > 0, nil
+}
+
 // ClearDefault takes the flag off whichever credential holds it, so the next one
 // can take it. Finding none is not a failure: a channel with no default yet is
 // the ordinary case for the first credential on it.

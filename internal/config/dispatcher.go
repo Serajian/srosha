@@ -16,6 +16,7 @@ type Dispatcher struct {
 	DB         settings.DB
 	MQ         settings.MQ
 	Sender     settings.Sender
+	Crypto     settings.Crypto
 	Webhook    settings.Webhook
 	Dispatch   settings.Dispatch
 	Telemetry  settings.Telemetry
@@ -33,6 +34,7 @@ func LoadDispatcher() (Dispatcher, error) {
 		DB:         settings.LoadDB(r),
 		MQ:         settings.LoadMQ(r),
 		Sender:     settings.LoadSender(r),
+		Crypto:     settings.LoadCrypto(r),
 		Webhook:    settings.LoadWebhook(r, app.IsProduction()),
 		Dispatch:   settings.LoadDispatch(r),
 		Telemetry:  settings.LoadTelemetry(r, app.IsProduction()),
