@@ -2,15 +2,37 @@ package bootstrap
 
 import (
 	"context"
+	"log/slog"
+	"net/http"
+	"time"
 
+	"github.com/Serajian/srosha/internal/adapter/db/postgres"
+	"github.com/Serajian/srosha/internal/adapter/mq/nats"
+	"github.com/Serajian/srosha/internal/adapter/notifier"
+	"github.com/Serajian/srosha/internal/adapter/secret"
+	"github.com/Serajian/srosha/internal/adapter/sender"
+	"github.com/Serajian/srosha/internal/adapter/system"
 	"github.com/Serajian/srosha/internal/config"
+	"github.com/Serajian/srosha/internal/core/domain/credential"
+	"github.com/Serajian/srosha/internal/core/domain/delivery"
+	"github.com/Serajian/srosha/internal/core/domain/notification"
+	"github.com/Serajian/srosha/internal/core/domain/webhook"
+	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/internal/registry"
+	"github.com/Serajian/srosha/pkg/crypto"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 // Dispatcher opens what the dispatcher needs. On top of the gateway's two it
 // calls out: to the sources' callbacks, and to the providers. Those are two
 // clients rather than one, because only the callback address is chosen by
 // somebody else.
+//
+// It has two ways in and neither is a port anybody dials. The broker brings an
+// event; the scheduler finds a row nobody was told about. The only listener is
+// health.
 func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 	log, err := logger(cfg.Telemetry, cfg.App.ServiceName, binaryDispatcher)
 	if err != nil {
@@ -19,32 +41,161 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 
 	res := registry.New(log)
 
-	if _, err := registry.Postgres(ctx, cfg.DB, res); err != nil {
-		return abandon(ctx, res, err)
-	}
-
-	if _, err := registry.NATS(ctx, cfg.MQ, res); err != nil {
-		return abandon(ctx, res, err)
-	}
-
-	if _, err := registry.WebhookClient(cfg.HTTPClient, cfg.Webhook, res); err != nil {
-		return abandon(ctx, res, err)
-	}
-
-	if _, err := registry.SenderClient(cfg.HTTPClient, res); err != nil {
-		return abandon(ctx, res, err)
-	}
-
-	server, err := httpServer(ctx, binaryDispatcher, cfg.HTTP.Addr, cfg.HTTPServer, log, res)
+	db, err := registry.Postgres(ctx, cfg.DB, res)
 	if err != nil {
 		return abandon(ctx, res, err)
 	}
 
-	log.InfoContext(ctx,
-		"dispatcher started",
-		"service", cfg.App.ServiceName,
-		"env", cfg.App.Env,
-		"http", server.Addr(),
+	mq, err := registry.NATS(ctx, cfg.MQ, res)
+	if err != nil {
+		return abandon(ctx, res, err)
+	}
+
+	callbacks, err := registry.WebhookClient(cfg.HTTPClient, cfg.Webhook, res)
+	if err != nil {
+		return abandon(ctx, res, err)
+	}
+
+	providers, err := registry.SenderClient(cfg.HTTPClient, res)
+	if err != nil {
+		return abandon(ctx, res, err)
+	}
+
+	core, err := buildDispatcherCore(ctx, cfg, db.Pool(), mq.JetStream(), callbacks, providers, log)
+	if err != nil {
+		return abandon(ctx, res, err)
+	}
+
+	// The broker's way in.
+	_, err = registry.Consumer(
+		ctx, "dispatch consumer", mq.JetStream(), core.stream, cfg.Dispatch, core.dispatcher, res,
 	)
-	return &App{log: log, resources: res, failed: watch(server.Err())}, nil
+	if err != nil {
+		return abandon(ctx, res, err)
+	}
+
+	// The other way in, for the deliveries no event ever arrived for: the rows
+	// written when a publish never reached the broker.
+	//
+	// UTC, so a schedule means the same moment wherever this runs and does not
+	// happen twice on the day a zone puts its clocks back.
+	_, err = registry.Scheduler(ctx, "scheduler", time.UTC, cfg.App.ShutdownTimeout, []registry.Job{{
+		Name:     "recovery",
+		Schedule: cfg.Dispatch.ReconcileSchedule,
+		Run:      core.dispatcher.Recover,
+	}}, res)
+	if err != nil {
+		return abandon(ctx, res, err)
+	}
+
+	health, err := httpServer(ctx, binaryDispatcher, cfg.HTTP.Addr, cfg.HTTPServer, log, res)
+	if err != nil {
+		return abandon(ctx, res, err)
+	}
+
+	log.InfoContext(ctx, "dispatcher started",
+		"env", cfg.App.Env, "http", health.Addr())
+
+	return &App{
+		log:       log,
+		resources: res,
+		failed:    watch(health.Err()),
+	}, nil
+}
+
+// dispatcherCore is what the two ways in are pointed at, plus the stream the
+// consumer is created on.
+type dispatcherCore struct {
+	dispatcher *usecase.Dispatcher
+	stream     nats.Stream
+}
+
+// buildDispatcherCore assembles it, in the same four steps the gateway takes:
+// what the machine gives us, what the broker needs, the rows, and the rules
+// over them.
+//
+// Nothing here is registered with the registry. None of it holds a resource --
+// they were all opened above and are passed in.
+func buildDispatcherCore(
+	ctx context.Context,
+	cfg config.Dispatcher,
+	pool *pgxpool.Pool,
+	js jetstream.JetStream,
+	callbacks, providers *http.Client,
+	log *slog.Logger,
+) (dispatcherCore, error) {
+	var core dispatcherCore
+
+	// --- what the machine knows --------------------------------------------
+	now := system.Clock()
+
+	ids, err := system.NewIDs(now)
+	if err != nil {
+		return core, err
+	}
+
+	keys, err := crypto.NewKeyring(cfg.Crypto.Keys, cfg.Crypto.ActiveID)
+	if err != nil {
+		return core, err
+	}
+
+	// --- the broker ---------------------------------------------------------
+	//
+	// Created here rather than waited for: the gateway does the same, and
+	// whichever container starts first is not something to make matter.
+	stream, err := nats.DispatchStream(cfg.MQ.Stream)
+	if err != nil {
+		return core, err
+	}
+
+	err = nats.EnsureStream(ctx, js, nats.StreamConfig{
+		Stream:          stream,
+		DuplicateWindow: cfg.MQ.DuplicateWindow,
+		MaxAge:          cfg.MQ.MaxAge,
+	})
+	if err != nil {
+		return core, err
+	}
+
+	// --- the rows -----------------------------------------------------------
+	notificationRows := postgres.NewNotificationRepository(pool)
+	deliveryRows := postgres.NewDeliveryRepository(pool, now)
+	credentialRows := postgres.NewCredentialRepository(pool)
+	webhookRows := postgres.NewWebhookRepository(pool)
+
+	// --- the rules over them ------------------------------------------------
+	notifications := notification.NewService(notificationRows, ids.Generate, now)
+	deliveries := delivery.NewTracker(deliveryRows, now)
+	credentials := credential.NewService(credentialRows)
+	webhooks := webhook.NewService(webhookRows, ids.Generate, now, webhook.URLPolicy{
+		AllowInsecure: cfg.Webhook.AllowInsecureURL,
+		AllowPrivate:  cfg.Webhook.AllowPrivateURL,
+	})
+
+	secrets, err := secret.New(credentialRows, keys, now, log)
+	if err != nil {
+		return core, err
+	}
+
+	senders, err := sender.NewRegistry(credentials, secrets, providers, sender.Fallback{
+		TelegramToken: cfg.Sender.Telegram.Reveal(),
+	})
+	if err != nil {
+		return core, err
+	}
+
+	callback, err := notifier.New(callbacks, cfg.Webhook, now, log)
+	if err != nil {
+		return core, err
+	}
+
+	return dispatcherCore{
+		stream: stream,
+		dispatcher: usecase.NewDispatcher(
+			notifications, deliveries, webhooks, senders, callback,
+			ids.Generate, now, log,
+			cfg.Dispatch.MaxAttempts, cfg.Webhook.MaxFailures,
+			cfg.Dispatch.ReconcileAfter, cfg.Dispatch.ReconcileGiveUp, cfg.Dispatch.ReconcileBatch,
+		),
+	}, nil
 }

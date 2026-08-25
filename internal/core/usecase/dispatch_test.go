@@ -406,3 +406,38 @@ func (d *dispatchRig) sendAnother(t *testing.T) {
 		t.Fatalf("Handle() error = %v", err)
 	}
 }
+
+// An event for a row that is gone must not come back. Returning the error would
+// ask the broker for it again, once per backoff step, for something no attempt
+// can find.
+func TestAnEventForADeliveryThatIsGoneIsDone(t *testing.T) {
+	d := newDispatchRig(t, nil)
+
+	err := d.dispatcher.Handle(context.Background(), shared.ID("01J8XQ2M4E7N9V3B5C6D7F8999"), 1)
+	if err != nil {
+		t.Errorf("Handle() error = %v, want the broker to be told it is done", err)
+	}
+	if d.sender.count() != 0 {
+		t.Error("something was sent for a delivery that does not exist")
+	}
+}
+
+// A delivery whose message was deleted gets an outcome written down. Without
+// that the row stays pending for ever: every attempt reads the same absence and
+// records nothing against it.
+func TestADeliveryWithoutAMessageIsFailedRatherThanRetried(t *testing.T) {
+	d := newDispatchRig(t, nil)
+	d.notifs.forget(d.reload(t).NotificationID)
+
+	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1); err != nil {
+		t.Fatalf("Handle() error = %v, want the outcome written rather than retried", err)
+	}
+
+	got := d.reload(t)
+	if got.Status() != delivery.StatusFailed {
+		t.Errorf("status = %q, want FAILED", got.Status())
+	}
+	if got.FailureReason() != delivery.FailurePermanent {
+		t.Errorf("reason = %q, want PERMANENT", got.FailureReason())
+	}
+}
