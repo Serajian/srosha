@@ -23,3 +23,20 @@ type Request struct {
 	ExpireAt       *time.Time        // optional
 	Metadata       map[string]string // optional
 }
+
+// Window bounds a listing in time. Both halves are optional and separate:
+// "since yesterday" and "that week in March" are both real questions, and
+// neither should have to invent the other's bound.
+//
+// Until is exclusive, so two windows that meet cannot both return the same
+// message.
+type Window struct {
+	From  *time.Time
+	Until *time.Time
+}
+
+// Valid refuses a window that cannot contain anything, which is a question
+// nobody meant to ask.
+func (w Window) Valid() bool {
+	return w.From == nil || w.Until == nil || w.From.Before(*w.Until)
+}

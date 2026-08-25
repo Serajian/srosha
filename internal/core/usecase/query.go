@@ -48,3 +48,20 @@ func (q *Querier) Get(
 	}
 	return QueryResult{Notification: n, Deliveries: page}, nil
 }
+
+// ListQuery is what a source asks for when it wants its own messages back.
+type ListQuery struct {
+	Window notification.Window
+	Cursor shared.Cursor
+}
+
+// List answers "what did I send", newest first.
+//
+// Messages only. Their deliveries are Get's answer, and returning them here
+// would mean either a query per row or a join that needs a second page of its
+// own -- for a listing whose job is to hand back the ids Get is asked with.
+func (q *Querier) List(
+	ctx context.Context, sourceID string, query ListQuery,
+) (shared.Pagination[notification.Notification], error) {
+	return q.notifs.Page(ctx, sourceID, query.Window, query.Cursor)
+}

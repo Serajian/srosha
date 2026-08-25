@@ -70,6 +70,77 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 	return result.RowsAffected(), nil
 }
 
+const pageNotificationsBySource = `-- name: PageNotificationsBySource :many
+SELECT id, source_id, idempotency_key, source_name, title, body, requested_priority, effective_priority, expire_at, metadata, created_at FROM notifications
+WHERE source_id = $1
+  -- Cast to text, not to ulid: the domain's base type is text, and a cast to
+  -- the domain itself is opaque to sqlc, which then types the parameter as any.
+  AND ($2::text IS NULL OR id < $2::text)
+  AND ($3::timestamptz IS NULL OR created_at >= $3::timestamptz)
+  AND ($4::timestamptz IS NULL OR created_at < $4::timestamptz)
+ORDER BY id DESC
+LIMIT $5
+`
+
+type PageNotificationsBySourceParams struct {
+	SourceID string
+	After    *string
+	From     *time.Time
+	Until    *time.Time
+	RowLimit int32
+}
+
+// PageNotificationsBySource answers "what did I send", newest first.
+//
+// DESC and not ASC, unlike every other listing here: a source asking this wants
+// what it just sent, not what it sent when it signed up. The cursor follows --
+// id < after rather than id > after -- because a ULID orders by time and this
+// walks backwards through it.
+//
+// The window is optional and both halves are separate: "since yesterday" and
+// "that week in March" are both real questions, and neither should need the
+// other's bound invented.
+//
+// One row more than asked for is fetched, which is the whole answer to "is there
+// another page" and costs nothing next to a second query that counts.
+func (q *Queries) PageNotificationsBySource(ctx context.Context, arg PageNotificationsBySourceParams) ([]Notification, error) {
+	rows, err := q.db.Query(ctx, pageNotificationsBySource,
+		arg.SourceID,
+		arg.After,
+		arg.From,
+		arg.Until,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Notification{}
+	for rows.Next() {
+		var i Notification
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceID,
+			&i.IdempotencyKey,
+			&i.SourceName,
+			&i.Title,
+			&i.Body,
+			&i.RequestedPriority,
+			&i.EffectivePriority,
+			&i.ExpireAt,
+			&i.Metadata,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readNotification = `-- name: ReadNotification :one
 SELECT id, source_id, idempotency_key, source_name, title, body, requested_priority, effective_priority, expire_at, metadata, created_at FROM notifications WHERE id = $1
 `

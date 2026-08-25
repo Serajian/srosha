@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	NotificationService_Submit_FullMethodName = "/notification.v1.NotificationService/Submit"
 	NotificationService_Get_FullMethodName    = "/notification.v1.NotificationService/Get"
+	NotificationService_List_FullMethodName   = "/notification.v1.NotificationService/List"
 )
 
 // NotificationServiceClient is the client API for NotificationService service.
@@ -39,6 +40,14 @@ type NotificationServiceClient interface {
 	Submit(ctx context.Context, in *SubmitRequest, opts ...grpc.CallOption) (*SubmitResponse, error)
 	// Get answers "what happened to my message".
 	Get(ctx context.Context, in *NotificationServiceGetRequest, opts ...grpc.CallOption) (*NotificationServiceGetResponse, error)
+	// List answers "what did I send", newest first.
+	//
+	// Without it, Get can only be asked with an id the caller kept -- and the
+	// callback that would have carried it is best effort and never retried. This
+	// is what makes the query API the reliable path it is described as.
+	//
+	// Messages only. Their deliveries are Get's answer.
+	List(ctx context.Context, in *NotificationServiceListRequest, opts ...grpc.CallOption) (*NotificationServiceListResponse, error)
 }
 
 type notificationServiceClient struct {
@@ -69,6 +78,16 @@ func (c *notificationServiceClient) Get(ctx context.Context, in *NotificationSer
 	return out, nil
 }
 
+func (c *notificationServiceClient) List(ctx context.Context, in *NotificationServiceListRequest, opts ...grpc.CallOption) (*NotificationServiceListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NotificationServiceListResponse)
+	err := c.cc.Invoke(ctx, NotificationService_List_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NotificationServiceServer is the server API for NotificationService service.
 // All implementations must embed UnimplementedNotificationServiceServer
 // for forward compatibility.
@@ -85,6 +104,14 @@ type NotificationServiceServer interface {
 	Submit(context.Context, *SubmitRequest) (*SubmitResponse, error)
 	// Get answers "what happened to my message".
 	Get(context.Context, *NotificationServiceGetRequest) (*NotificationServiceGetResponse, error)
+	// List answers "what did I send", newest first.
+	//
+	// Without it, Get can only be asked with an id the caller kept -- and the
+	// callback that would have carried it is best effort and never retried. This
+	// is what makes the query API the reliable path it is described as.
+	//
+	// Messages only. Their deliveries are Get's answer.
+	List(context.Context, *NotificationServiceListRequest) (*NotificationServiceListResponse, error)
 	mustEmbedUnimplementedNotificationServiceServer()
 }
 
@@ -100,6 +127,9 @@ func (UnimplementedNotificationServiceServer) Submit(context.Context, *SubmitReq
 }
 func (UnimplementedNotificationServiceServer) Get(context.Context, *NotificationServiceGetRequest) (*NotificationServiceGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Get not implemented")
+}
+func (UnimplementedNotificationServiceServer) List(context.Context, *NotificationServiceListRequest) (*NotificationServiceListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method List not implemented")
 }
 func (UnimplementedNotificationServiceServer) mustEmbedUnimplementedNotificationServiceServer() {}
 func (UnimplementedNotificationServiceServer) testEmbeddedByValue()                             {}
@@ -158,6 +188,24 @@ func _NotificationService_Get_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NotificationService_List_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NotificationServiceListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).List(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_List_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).List(ctx, req.(*NotificationServiceListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NotificationService_ServiceDesc is the grpc.ServiceDesc for NotificationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -172,6 +220,10 @@ var NotificationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Get",
 			Handler:    _NotificationService_Get_Handler,
+		},
+		{
+			MethodName: "List",
+			Handler:    _NotificationService_List_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

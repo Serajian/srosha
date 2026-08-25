@@ -22,6 +22,104 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type CredentialServiceUpdateRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// The whole settings document, not a patch: srosha does not know which fields
+	// a provider has, and a patch would mean it had to.
+	Config        string `protobuf:"bytes,2,opt,name=config,proto3" json:"config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CredentialServiceUpdateRequest) Reset() {
+	*x = CredentialServiceUpdateRequest{}
+	mi := &file_notification_v1_credential_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CredentialServiceUpdateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CredentialServiceUpdateRequest) ProtoMessage() {}
+
+func (x *CredentialServiceUpdateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_notification_v1_credential_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CredentialServiceUpdateRequest.ProtoReflect.Descriptor instead.
+func (*CredentialServiceUpdateRequest) Descriptor() ([]byte, []int) {
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *CredentialServiceUpdateRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *CredentialServiceUpdateRequest) GetConfig() string {
+	if x != nil {
+		return x.Config
+	}
+	return ""
+}
+
+type CredentialServiceUpdateResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Credential    *Credential            `protobuf:"bytes,1,opt,name=credential,proto3" json:"credential,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CredentialServiceUpdateResponse) Reset() {
+	*x = CredentialServiceUpdateResponse{}
+	mi := &file_notification_v1_credential_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CredentialServiceUpdateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CredentialServiceUpdateResponse) ProtoMessage() {}
+
+func (x *CredentialServiceUpdateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_notification_v1_credential_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CredentialServiceUpdateResponse.ProtoReflect.Descriptor instead.
+func (*CredentialServiceUpdateResponse) Descriptor() ([]byte, []int) {
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *CredentialServiceUpdateResponse) GetCredential() *Credential {
+	if x != nil {
+		return x.Credential
+	}
+	return nil
+}
+
 // The service's own name is in it because RegisterRequest is already taken by
 // WebhookService, and one proto package cannot hold two messages with the same
 // name.
@@ -52,7 +150,7 @@ type CredentialServiceRegisterRequest struct {
 
 func (x *CredentialServiceRegisterRequest) Reset() {
 	*x = CredentialServiceRegisterRequest{}
-	mi := &file_notification_v1_credential_proto_msgTypes[0]
+	mi := &file_notification_v1_credential_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -64,7 +162,7 @@ func (x *CredentialServiceRegisterRequest) String() string {
 func (*CredentialServiceRegisterRequest) ProtoMessage() {}
 
 func (x *CredentialServiceRegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[0]
+	mi := &file_notification_v1_credential_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -77,7 +175,7 @@ func (x *CredentialServiceRegisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CredentialServiceRegisterRequest.ProtoReflect.Descriptor instead.
 func (*CredentialServiceRegisterRequest) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{0}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *CredentialServiceRegisterRequest) GetChannel() Channel {
@@ -124,7 +222,7 @@ type CredentialServiceRegisterResponse struct {
 
 func (x *CredentialServiceRegisterResponse) Reset() {
 	*x = CredentialServiceRegisterResponse{}
-	mi := &file_notification_v1_credential_proto_msgTypes[1]
+	mi := &file_notification_v1_credential_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -136,7 +234,7 @@ func (x *CredentialServiceRegisterResponse) String() string {
 func (*CredentialServiceRegisterResponse) ProtoMessage() {}
 
 func (x *CredentialServiceRegisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[1]
+	mi := &file_notification_v1_credential_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -149,7 +247,7 @@ func (x *CredentialServiceRegisterResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use CredentialServiceRegisterResponse.ProtoReflect.Descriptor instead.
 func (*CredentialServiceRegisterResponse) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{1}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CredentialServiceRegisterResponse) GetCredential() *Credential {
@@ -177,7 +275,7 @@ type Credential struct {
 
 func (x *Credential) Reset() {
 	*x = Credential{}
-	mi := &file_notification_v1_credential_proto_msgTypes[2]
+	mi := &file_notification_v1_credential_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -189,7 +287,7 @@ func (x *Credential) String() string {
 func (*Credential) ProtoMessage() {}
 
 func (x *Credential) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[2]
+	mi := &file_notification_v1_credential_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -202,7 +300,7 @@ func (x *Credential) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Credential.ProtoReflect.Descriptor instead.
 func (*Credential) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{2}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Credential) GetId() string {
@@ -257,7 +355,7 @@ type CredentialServiceListRequest struct {
 
 func (x *CredentialServiceListRequest) Reset() {
 	*x = CredentialServiceListRequest{}
-	mi := &file_notification_v1_credential_proto_msgTypes[3]
+	mi := &file_notification_v1_credential_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -269,7 +367,7 @@ func (x *CredentialServiceListRequest) String() string {
 func (*CredentialServiceListRequest) ProtoMessage() {}
 
 func (x *CredentialServiceListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[3]
+	mi := &file_notification_v1_credential_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -282,7 +380,7 @@ func (x *CredentialServiceListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CredentialServiceListRequest.ProtoReflect.Descriptor instead.
 func (*CredentialServiceListRequest) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{3}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CredentialServiceListRequest) GetChannel() Channel {
@@ -301,7 +399,7 @@ type CredentialServiceListResponse struct {
 
 func (x *CredentialServiceListResponse) Reset() {
 	*x = CredentialServiceListResponse{}
-	mi := &file_notification_v1_credential_proto_msgTypes[4]
+	mi := &file_notification_v1_credential_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -313,7 +411,7 @@ func (x *CredentialServiceListResponse) String() string {
 func (*CredentialServiceListResponse) ProtoMessage() {}
 
 func (x *CredentialServiceListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[4]
+	mi := &file_notification_v1_credential_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -326,7 +424,7 @@ func (x *CredentialServiceListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CredentialServiceListResponse.ProtoReflect.Descriptor instead.
 func (*CredentialServiceListResponse) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{4}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CredentialServiceListResponse) GetCredentials() []*Credential {
@@ -347,7 +445,7 @@ type CredentialServiceDeactivateRequest struct {
 
 func (x *CredentialServiceDeactivateRequest) Reset() {
 	*x = CredentialServiceDeactivateRequest{}
-	mi := &file_notification_v1_credential_proto_msgTypes[5]
+	mi := &file_notification_v1_credential_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -359,7 +457,7 @@ func (x *CredentialServiceDeactivateRequest) String() string {
 func (*CredentialServiceDeactivateRequest) ProtoMessage() {}
 
 func (x *CredentialServiceDeactivateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[5]
+	mi := &file_notification_v1_credential_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -372,7 +470,7 @@ func (x *CredentialServiceDeactivateRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use CredentialServiceDeactivateRequest.ProtoReflect.Descriptor instead.
 func (*CredentialServiceDeactivateRequest) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{5}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CredentialServiceDeactivateRequest) GetId() string {
@@ -391,7 +489,7 @@ type CredentialServiceActivateRequest struct {
 
 func (x *CredentialServiceActivateRequest) Reset() {
 	*x = CredentialServiceActivateRequest{}
-	mi := &file_notification_v1_credential_proto_msgTypes[6]
+	mi := &file_notification_v1_credential_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -403,7 +501,7 @@ func (x *CredentialServiceActivateRequest) String() string {
 func (*CredentialServiceActivateRequest) ProtoMessage() {}
 
 func (x *CredentialServiceActivateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[6]
+	mi := &file_notification_v1_credential_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -416,7 +514,7 @@ func (x *CredentialServiceActivateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CredentialServiceActivateRequest.ProtoReflect.Descriptor instead.
 func (*CredentialServiceActivateRequest) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{6}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CredentialServiceActivateRequest) GetId() string {
@@ -435,7 +533,7 @@ type CredentialServiceSetDefaultRequest struct {
 
 func (x *CredentialServiceSetDefaultRequest) Reset() {
 	*x = CredentialServiceSetDefaultRequest{}
-	mi := &file_notification_v1_credential_proto_msgTypes[7]
+	mi := &file_notification_v1_credential_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -447,7 +545,7 @@ func (x *CredentialServiceSetDefaultRequest) String() string {
 func (*CredentialServiceSetDefaultRequest) ProtoMessage() {}
 
 func (x *CredentialServiceSetDefaultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[7]
+	mi := &file_notification_v1_credential_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -460,7 +558,7 @@ func (x *CredentialServiceSetDefaultRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use CredentialServiceSetDefaultRequest.ProtoReflect.Descriptor instead.
 func (*CredentialServiceSetDefaultRequest) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{7}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CredentialServiceSetDefaultRequest) GetId() string {
@@ -481,7 +579,7 @@ type CredentialServiceRotateRequest struct {
 
 func (x *CredentialServiceRotateRequest) Reset() {
 	*x = CredentialServiceRotateRequest{}
-	mi := &file_notification_v1_credential_proto_msgTypes[8]
+	mi := &file_notification_v1_credential_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -493,7 +591,7 @@ func (x *CredentialServiceRotateRequest) String() string {
 func (*CredentialServiceRotateRequest) ProtoMessage() {}
 
 func (x *CredentialServiceRotateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[8]
+	mi := &file_notification_v1_credential_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -506,7 +604,7 @@ func (x *CredentialServiceRotateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CredentialServiceRotateRequest.ProtoReflect.Descriptor instead.
 func (*CredentialServiceRotateRequest) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{8}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CredentialServiceRotateRequest) GetId() string {
@@ -534,7 +632,7 @@ type CredentialServiceDeactivateResponse struct {
 
 func (x *CredentialServiceDeactivateResponse) Reset() {
 	*x = CredentialServiceDeactivateResponse{}
-	mi := &file_notification_v1_credential_proto_msgTypes[9]
+	mi := &file_notification_v1_credential_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -546,7 +644,7 @@ func (x *CredentialServiceDeactivateResponse) String() string {
 func (*CredentialServiceDeactivateResponse) ProtoMessage() {}
 
 func (x *CredentialServiceDeactivateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[9]
+	mi := &file_notification_v1_credential_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -559,7 +657,7 @@ func (x *CredentialServiceDeactivateResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use CredentialServiceDeactivateResponse.ProtoReflect.Descriptor instead.
 func (*CredentialServiceDeactivateResponse) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{9}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CredentialServiceDeactivateResponse) GetCredential() *Credential {
@@ -578,7 +676,7 @@ type CredentialServiceActivateResponse struct {
 
 func (x *CredentialServiceActivateResponse) Reset() {
 	*x = CredentialServiceActivateResponse{}
-	mi := &file_notification_v1_credential_proto_msgTypes[10]
+	mi := &file_notification_v1_credential_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -590,7 +688,7 @@ func (x *CredentialServiceActivateResponse) String() string {
 func (*CredentialServiceActivateResponse) ProtoMessage() {}
 
 func (x *CredentialServiceActivateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[10]
+	mi := &file_notification_v1_credential_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -603,7 +701,7 @@ func (x *CredentialServiceActivateResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use CredentialServiceActivateResponse.ProtoReflect.Descriptor instead.
 func (*CredentialServiceActivateResponse) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{10}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CredentialServiceActivateResponse) GetCredential() *Credential {
@@ -622,7 +720,7 @@ type CredentialServiceSetDefaultResponse struct {
 
 func (x *CredentialServiceSetDefaultResponse) Reset() {
 	*x = CredentialServiceSetDefaultResponse{}
-	mi := &file_notification_v1_credential_proto_msgTypes[11]
+	mi := &file_notification_v1_credential_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -634,7 +732,7 @@ func (x *CredentialServiceSetDefaultResponse) String() string {
 func (*CredentialServiceSetDefaultResponse) ProtoMessage() {}
 
 func (x *CredentialServiceSetDefaultResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[11]
+	mi := &file_notification_v1_credential_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -647,7 +745,7 @@ func (x *CredentialServiceSetDefaultResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use CredentialServiceSetDefaultResponse.ProtoReflect.Descriptor instead.
 func (*CredentialServiceSetDefaultResponse) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{11}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CredentialServiceSetDefaultResponse) GetCredential() *Credential {
@@ -666,7 +764,7 @@ type CredentialServiceRotateResponse struct {
 
 func (x *CredentialServiceRotateResponse) Reset() {
 	*x = CredentialServiceRotateResponse{}
-	mi := &file_notification_v1_credential_proto_msgTypes[12]
+	mi := &file_notification_v1_credential_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -678,7 +776,7 @@ func (x *CredentialServiceRotateResponse) String() string {
 func (*CredentialServiceRotateResponse) ProtoMessage() {}
 
 func (x *CredentialServiceRotateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_notification_v1_credential_proto_msgTypes[12]
+	mi := &file_notification_v1_credential_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -691,7 +789,7 @@ func (x *CredentialServiceRotateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CredentialServiceRotateResponse.ProtoReflect.Descriptor instead.
 func (*CredentialServiceRotateResponse) Descriptor() ([]byte, []int) {
-	return file_notification_v1_credential_proto_rawDescGZIP(), []int{12}
+	return file_notification_v1_credential_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CredentialServiceRotateResponse) GetCredential() *Credential {
@@ -705,7 +803,14 @@ var File_notification_v1_credential_proto protoreflect.FileDescriptor
 
 const file_notification_v1_credential_proto_rawDesc = "" +
 	"\n" +
-	" notification/v1/credential.proto\x12\x0fnotification.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cnotification/v1/common.proto\"\xb9\x01\n" +
+	" notification/v1/credential.proto\x12\x0fnotification.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cnotification/v1/common.proto\"H\n" +
+	"\x1eCredentialServiceUpdateRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
+	"\x06config\x18\x02 \x01(\tR\x06config\"^\n" +
+	"\x1fCredentialServiceUpdateResponse\x12;\n" +
+	"\n" +
+	"credential\x18\x01 \x01(\v2\x1b.notification.v1.CredentialR\n" +
+	"credential\"\xb9\x01\n" +
 	" CredentialServiceRegisterRequest\x122\n" +
 	"\achannel\x18\x01 \x01(\x0e2\x18.notification.v1.ChannelR\achannel\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -755,7 +860,7 @@ const file_notification_v1_credential_proto_rawDesc = "" +
 	"\x1fCredentialServiceRotateResponse\x12;\n" +
 	"\n" +
 	"credential\x18\x01 \x01(\v2\x1b.notification.v1.CredentialR\n" +
-	"credential2\xbf\x05\n" +
+	"credential2\xac\x06\n" +
 	"\x11CredentialService\x12q\n" +
 	"\bRegister\x121.notification.v1.CredentialServiceRegisterRequest\x1a2.notification.v1.CredentialServiceRegisterResponse\x12e\n" +
 	"\x04List\x12-.notification.v1.CredentialServiceListRequest\x1a..notification.v1.CredentialServiceListResponse\x12w\n" +
@@ -764,7 +869,8 @@ const file_notification_v1_credential_proto_rawDesc = "" +
 	"\bActivate\x121.notification.v1.CredentialServiceActivateRequest\x1a2.notification.v1.CredentialServiceActivateResponse\x12w\n" +
 	"\n" +
 	"SetDefault\x123.notification.v1.CredentialServiceSetDefaultRequest\x1a4.notification.v1.CredentialServiceSetDefaultResponse\x12k\n" +
-	"\x06Rotate\x12/.notification.v1.CredentialServiceRotateRequest\x1a0.notification.v1.CredentialServiceRotateResponseB\xc2\x01\n" +
+	"\x06Rotate\x12/.notification.v1.CredentialServiceRotateRequest\x1a0.notification.v1.CredentialServiceRotateResponse\x12k\n" +
+	"\x06Update\x12/.notification.v1.CredentialServiceUpdateRequest\x1a0.notification.v1.CredentialServiceUpdateResponseB\xc2\x01\n" +
 	"\x13com.notification.v1B\x0fCredentialProtoP\x01Z=github.com/Serajian/srosha/gen/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
 
 var (
@@ -779,52 +885,57 @@ func file_notification_v1_credential_proto_rawDescGZIP() []byte {
 	return file_notification_v1_credential_proto_rawDescData
 }
 
-var file_notification_v1_credential_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_notification_v1_credential_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_notification_v1_credential_proto_goTypes = []any{
-	(*CredentialServiceRegisterRequest)(nil),    // 0: notification.v1.CredentialServiceRegisterRequest
-	(*CredentialServiceRegisterResponse)(nil),   // 1: notification.v1.CredentialServiceRegisterResponse
-	(*Credential)(nil),                          // 2: notification.v1.Credential
-	(*CredentialServiceListRequest)(nil),        // 3: notification.v1.CredentialServiceListRequest
-	(*CredentialServiceListResponse)(nil),       // 4: notification.v1.CredentialServiceListResponse
-	(*CredentialServiceDeactivateRequest)(nil),  // 5: notification.v1.CredentialServiceDeactivateRequest
-	(*CredentialServiceActivateRequest)(nil),    // 6: notification.v1.CredentialServiceActivateRequest
-	(*CredentialServiceSetDefaultRequest)(nil),  // 7: notification.v1.CredentialServiceSetDefaultRequest
-	(*CredentialServiceRotateRequest)(nil),      // 8: notification.v1.CredentialServiceRotateRequest
-	(*CredentialServiceDeactivateResponse)(nil), // 9: notification.v1.CredentialServiceDeactivateResponse
-	(*CredentialServiceActivateResponse)(nil),   // 10: notification.v1.CredentialServiceActivateResponse
-	(*CredentialServiceSetDefaultResponse)(nil), // 11: notification.v1.CredentialServiceSetDefaultResponse
-	(*CredentialServiceRotateResponse)(nil),     // 12: notification.v1.CredentialServiceRotateResponse
-	(Channel)(0),                                // 13: notification.v1.Channel
-	(*timestamppb.Timestamp)(nil),               // 14: google.protobuf.Timestamp
+	(*CredentialServiceUpdateRequest)(nil),      // 0: notification.v1.CredentialServiceUpdateRequest
+	(*CredentialServiceUpdateResponse)(nil),     // 1: notification.v1.CredentialServiceUpdateResponse
+	(*CredentialServiceRegisterRequest)(nil),    // 2: notification.v1.CredentialServiceRegisterRequest
+	(*CredentialServiceRegisterResponse)(nil),   // 3: notification.v1.CredentialServiceRegisterResponse
+	(*Credential)(nil),                          // 4: notification.v1.Credential
+	(*CredentialServiceListRequest)(nil),        // 5: notification.v1.CredentialServiceListRequest
+	(*CredentialServiceListResponse)(nil),       // 6: notification.v1.CredentialServiceListResponse
+	(*CredentialServiceDeactivateRequest)(nil),  // 7: notification.v1.CredentialServiceDeactivateRequest
+	(*CredentialServiceActivateRequest)(nil),    // 8: notification.v1.CredentialServiceActivateRequest
+	(*CredentialServiceSetDefaultRequest)(nil),  // 9: notification.v1.CredentialServiceSetDefaultRequest
+	(*CredentialServiceRotateRequest)(nil),      // 10: notification.v1.CredentialServiceRotateRequest
+	(*CredentialServiceDeactivateResponse)(nil), // 11: notification.v1.CredentialServiceDeactivateResponse
+	(*CredentialServiceActivateResponse)(nil),   // 12: notification.v1.CredentialServiceActivateResponse
+	(*CredentialServiceSetDefaultResponse)(nil), // 13: notification.v1.CredentialServiceSetDefaultResponse
+	(*CredentialServiceRotateResponse)(nil),     // 14: notification.v1.CredentialServiceRotateResponse
+	(Channel)(0),                                // 15: notification.v1.Channel
+	(*timestamppb.Timestamp)(nil),               // 16: google.protobuf.Timestamp
 }
 var file_notification_v1_credential_proto_depIdxs = []int32{
-	13, // 0: notification.v1.CredentialServiceRegisterRequest.channel:type_name -> notification.v1.Channel
-	2,  // 1: notification.v1.CredentialServiceRegisterResponse.credential:type_name -> notification.v1.Credential
-	13, // 2: notification.v1.Credential.channel:type_name -> notification.v1.Channel
-	14, // 3: notification.v1.Credential.created_at:type_name -> google.protobuf.Timestamp
-	13, // 4: notification.v1.CredentialServiceListRequest.channel:type_name -> notification.v1.Channel
-	2,  // 5: notification.v1.CredentialServiceListResponse.credentials:type_name -> notification.v1.Credential
-	2,  // 6: notification.v1.CredentialServiceDeactivateResponse.credential:type_name -> notification.v1.Credential
-	2,  // 7: notification.v1.CredentialServiceActivateResponse.credential:type_name -> notification.v1.Credential
-	2,  // 8: notification.v1.CredentialServiceSetDefaultResponse.credential:type_name -> notification.v1.Credential
-	2,  // 9: notification.v1.CredentialServiceRotateResponse.credential:type_name -> notification.v1.Credential
-	0,  // 10: notification.v1.CredentialService.Register:input_type -> notification.v1.CredentialServiceRegisterRequest
-	3,  // 11: notification.v1.CredentialService.List:input_type -> notification.v1.CredentialServiceListRequest
-	5,  // 12: notification.v1.CredentialService.Deactivate:input_type -> notification.v1.CredentialServiceDeactivateRequest
-	6,  // 13: notification.v1.CredentialService.Activate:input_type -> notification.v1.CredentialServiceActivateRequest
-	7,  // 14: notification.v1.CredentialService.SetDefault:input_type -> notification.v1.CredentialServiceSetDefaultRequest
-	8,  // 15: notification.v1.CredentialService.Rotate:input_type -> notification.v1.CredentialServiceRotateRequest
-	1,  // 16: notification.v1.CredentialService.Register:output_type -> notification.v1.CredentialServiceRegisterResponse
-	4,  // 17: notification.v1.CredentialService.List:output_type -> notification.v1.CredentialServiceListResponse
-	9,  // 18: notification.v1.CredentialService.Deactivate:output_type -> notification.v1.CredentialServiceDeactivateResponse
-	10, // 19: notification.v1.CredentialService.Activate:output_type -> notification.v1.CredentialServiceActivateResponse
-	11, // 20: notification.v1.CredentialService.SetDefault:output_type -> notification.v1.CredentialServiceSetDefaultResponse
-	12, // 21: notification.v1.CredentialService.Rotate:output_type -> notification.v1.CredentialServiceRotateResponse
-	16, // [16:22] is the sub-list for method output_type
-	10, // [10:16] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	4,  // 0: notification.v1.CredentialServiceUpdateResponse.credential:type_name -> notification.v1.Credential
+	15, // 1: notification.v1.CredentialServiceRegisterRequest.channel:type_name -> notification.v1.Channel
+	4,  // 2: notification.v1.CredentialServiceRegisterResponse.credential:type_name -> notification.v1.Credential
+	15, // 3: notification.v1.Credential.channel:type_name -> notification.v1.Channel
+	16, // 4: notification.v1.Credential.created_at:type_name -> google.protobuf.Timestamp
+	15, // 5: notification.v1.CredentialServiceListRequest.channel:type_name -> notification.v1.Channel
+	4,  // 6: notification.v1.CredentialServiceListResponse.credentials:type_name -> notification.v1.Credential
+	4,  // 7: notification.v1.CredentialServiceDeactivateResponse.credential:type_name -> notification.v1.Credential
+	4,  // 8: notification.v1.CredentialServiceActivateResponse.credential:type_name -> notification.v1.Credential
+	4,  // 9: notification.v1.CredentialServiceSetDefaultResponse.credential:type_name -> notification.v1.Credential
+	4,  // 10: notification.v1.CredentialServiceRotateResponse.credential:type_name -> notification.v1.Credential
+	2,  // 11: notification.v1.CredentialService.Register:input_type -> notification.v1.CredentialServiceRegisterRequest
+	5,  // 12: notification.v1.CredentialService.List:input_type -> notification.v1.CredentialServiceListRequest
+	7,  // 13: notification.v1.CredentialService.Deactivate:input_type -> notification.v1.CredentialServiceDeactivateRequest
+	8,  // 14: notification.v1.CredentialService.Activate:input_type -> notification.v1.CredentialServiceActivateRequest
+	9,  // 15: notification.v1.CredentialService.SetDefault:input_type -> notification.v1.CredentialServiceSetDefaultRequest
+	10, // 16: notification.v1.CredentialService.Rotate:input_type -> notification.v1.CredentialServiceRotateRequest
+	0,  // 17: notification.v1.CredentialService.Update:input_type -> notification.v1.CredentialServiceUpdateRequest
+	3,  // 18: notification.v1.CredentialService.Register:output_type -> notification.v1.CredentialServiceRegisterResponse
+	6,  // 19: notification.v1.CredentialService.List:output_type -> notification.v1.CredentialServiceListResponse
+	11, // 20: notification.v1.CredentialService.Deactivate:output_type -> notification.v1.CredentialServiceDeactivateResponse
+	12, // 21: notification.v1.CredentialService.Activate:output_type -> notification.v1.CredentialServiceActivateResponse
+	13, // 22: notification.v1.CredentialService.SetDefault:output_type -> notification.v1.CredentialServiceSetDefaultResponse
+	14, // 23: notification.v1.CredentialService.Rotate:output_type -> notification.v1.CredentialServiceRotateResponse
+	1,  // 24: notification.v1.CredentialService.Update:output_type -> notification.v1.CredentialServiceUpdateResponse
+	18, // [18:25] is the sub-list for method output_type
+	11, // [11:18] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_notification_v1_credential_proto_init() }
@@ -839,7 +950,7 @@ func file_notification_v1_credential_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_notification_v1_credential_proto_rawDesc), len(file_notification_v1_credential_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

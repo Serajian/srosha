@@ -120,6 +120,26 @@ func (s *CredentialServer) Rotate(
 	return &pb.CredentialServiceRotateResponse{Credential: fromCredential(c)}, nil
 }
 
+func (s *CredentialServer) Update(
+	ctx context.Context, req *pb.CredentialServiceUpdateRequest,
+) (*pb.CredentialServiceUpdateResponse, error) {
+	src, ok := SourceFrom(ctx)
+	if !ok {
+		return nil, errUnidentified()
+	}
+
+	var config []byte
+	if raw := req.GetConfig(); raw != "" {
+		config = []byte(raw)
+	}
+
+	c, err := s.credentials.Update(ctx, src.ID, shared.ID(req.GetId()), config)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.CredentialServiceUpdateResponse{Credential: fromCredential(c)}, nil
+}
+
 // act is the shape the three flag rpcs share: identify the caller, hand the id
 // to the use case scoped by them, answer with the identity as it now stands.
 func (s *CredentialServer) act(

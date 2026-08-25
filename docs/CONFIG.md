@@ -64,11 +64,19 @@ network; `ports:` is never used.
 | Service | Port | Purpose |
 | --- | --- | --- |
 | gateway | 50051 | gRPC |
-| gateway | 8080 | REST via grpc-gateway, and `/healthz` |
-| dispatcher | 8081 | `/healthz` only |
+| gateway | 8080 | `/healthz` |
+| dispatcher | 8081 | `/healthz` |
 | nats | 4222 | clients |
 | nats | 8222 | monitoring JSON — unauthenticated, never published |
 | postgres | 5432 | clients |
+
+There is no REST surface and none is planned. srosha is called by other services,
+not by browsers, and gRPC is what those speak: a second surface would be a second
+contract to keep the first one honest against, for callers that do not exist.
+
+The health ports carry no API at all. `/healthz` is there for the platform to
+decide whether a container is alive; nothing a customer writes should ever call
+it, and nothing about it is a promise to them.
 
 Services address each other by **compose service name** — `postgres`, `nats` —
 never by Dokploy's suffixed container names.

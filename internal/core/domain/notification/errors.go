@@ -18,4 +18,5 @@ var (
 
 	ErrEmptyBody      = errors.New("body is required")
 	ErrAlreadyExpired = errors.New("expiry is not in the future")
+	ErrEmptyWindow    = errors.New("the time window ends before it starts")
 )

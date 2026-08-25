@@ -19,6 +19,7 @@ type fakeSecrets struct {
 	configs [][]byte
 	cleared []shared.Channel
 	rotated []shared.ID
+	updated []shared.ID
 	err     error
 
 	// rows is where Add writes through, so the rig can read back what it
@@ -41,6 +42,18 @@ func (v *fakeSecrets) Add(
 	if v.rows != nil {
 		return v.rows.save(c)
 	}
+	return nil
+}
+
+// UpdateConfig writes through as well, so the rig can read back what changed.
+func (v *fakeSecrets) UpdateConfig(
+	_ context.Context, _ string, id shared.ID, config []byte, _ time.Time,
+) error {
+	if v.err != nil {
+		return v.err
+	}
+	v.updated = append(v.updated, id)
+	v.configs = append(v.configs, config)
 	return nil
 }
 
@@ -92,7 +105,7 @@ func newCredentialRig(t *testing.T, uow usecase.UnitOfWork) *credentialRig {
 			fakeLimiter{allow: true},
 		),
 		credential.NewService(r.rows, fixedNow(now)),
-		r.vault, r.vault, uow, seqIDs(), fixedNow(now),
+		r.vault, r.vault, r.vault, uow, seqIDs(), fixedNow(now),
 	)
 	return r
 }
@@ -388,5 +401,53 @@ func TestAnIdentityThatIsNotThere(t *testing.T) {
 	}
 	if _, err := r.creds.Rotate(context.Background(), "acme", "", "x"); !errs.IsType(err, errs.ErrInvalidInput) {
 		t.Errorf("Rotate() with no id = %v, want invalid input", err)
+	}
+}
+
+// Changing a mail server must not cost the source a code change. Update keeps
+// the name, so every message still naming it keeps working.
+func TestUpdateKeepsTheName(t *testing.T) {
+	r := newCredentialRig(t, fakeUOW{})
+	c := r.register(t, "alerts", true)
+
+	settings := []byte(`{"host":"smtp2.acme.test","port":465,"from":"srosha@acme.test"}`)
+
+	got, err := r.creds.Update(context.Background(), "acme", c.ID, settings)
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if got.Name != "alerts" || got.ID != c.ID {
+		t.Errorf("update changed the identity: %+v", got)
+	}
+	if len(r.vault.updated) != 1 || r.vault.updated[0] != c.ID {
+		t.Errorf("the settings were written for %v", r.vault.updated)
+	}
+	if last := r.vault.configs[len(r.vault.configs)-1]; string(last) != string(settings) {
+		t.Errorf("stored %s, want the new settings", last)
+	}
+}
+
+func TestUpdateRefusesSettingsThatAreNotJSON(t *testing.T) {
+	r := newCredentialRig(t, fakeUOW{})
+	c := r.register(t, "alerts", true)
+
+	if _, err := r.creds.Update(context.Background(), "acme", c.ID, []byte("host=x")); !errs.IsType(err, errs.ErrInvalidInput) {
+		t.Errorf("Update() = %v, want invalid input", err)
+	}
+	if len(r.vault.updated) != 0 {
+		t.Error("a document the database would refuse was written anyway")
+	}
+}
+
+func TestUpdateIsScopedToTheCallingSource(t *testing.T) {
+	r := newCredentialRig(t, fakeUOW{})
+	c := r.register(t, "alerts", true)
+
+	_, err := r.creds.Update(context.Background(), "somebody-else", c.ID, []byte(`{}`))
+	if err == nil {
+		t.Fatal("Update() succeeded for a source that does not own it")
+	}
+	if len(r.vault.updated) != 0 {
+		t.Error("another source's identity was written")
 	}
 }

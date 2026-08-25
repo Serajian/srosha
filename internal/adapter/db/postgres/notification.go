@@ -73,6 +73,53 @@ func (r *NotificationRepository) ReadByID(
 // the port's contract and it matters: "never seen" and "could not look" have to
 // stay distinguishable, and an error for the first would make the caller treat a
 // perfectly ordinary first request as a failure.
+// PageBySource answers "what did I send", newest first.
+//
+// Newest first, unlike every other listing here: a source asking this wants what
+// it just sent. The cursor therefore walks backwards through the ids, which is
+// backwards through time -- a ULID orders by both.
+//
+// The window is a Window rather than two arguments, so a caller cannot pass them
+// the wrong way round without saying so.
+func (r *NotificationRepository) PageBySource(
+	ctx context.Context, sourceID string, w notification.Window, c shared.Cursor,
+) (shared.Pagination[notification.Notification], error) {
+	c = c.Normalize()
+
+	var after *string
+	if c.After != nil {
+		after = optional(c.After.String())
+	}
+
+	rows, err := r.q(ctx).PageNotificationsBySource(ctx, gen.PageNotificationsBySourceParams{
+		SourceID: sourceID,
+		After:    after,
+		From:     w.From,
+		Until:    w.Until,
+		RowLimit: int32(c.Limit) + 1, //nolint:gosec // clamped by Normalize
+	})
+	if err != nil {
+		return shared.Pagination[notification.Notification]{}, failed("page notifications", err)
+	}
+
+	var next *shared.ID
+	if len(rows) > c.Limit {
+		rows = rows[:c.Limit]
+		last := shared.ID(rows[len(rows)-1].ID)
+		next = &last
+	}
+
+	items := make([]*notification.Notification, 0, len(rows))
+	for _, row := range rows {
+		n, err := toNotification(row)
+		if err != nil {
+			return shared.Pagination[notification.Notification]{}, err
+		}
+		items = append(items, n)
+	}
+	return shared.Pagination[notification.Notification]{Items: items, NextCursor: next}, nil
+}
+
 func (r *NotificationRepository) ReadByIdempotencyKey(
 	ctx context.Context, sourceID, key string,
 ) (*notification.Notification, error) {

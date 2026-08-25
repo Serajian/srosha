@@ -36,6 +36,18 @@ type CredentialSecrets interface {
 // ClearDefault is the first half of moving the default and only ever runs next
 // to Add, in one transaction -- alone, it leaves the channel with no default at
 // all and every message that names no identity fails.
+// CredentialSettings replaces the provider settings of an identity.
+//
+// A third dependency rather than a method on the vault: settings are not secret,
+// and nothing about them is sealed. It writes config and nothing else -- the
+// name is what a message asks for, so renaming would break every message still
+// asking, which is the same reason rotating a secret keeps it.
+type CredentialSettings interface {
+	UpdateConfig(
+		ctx context.Context, sourceID string, id shared.ID, config []byte, now time.Time,
+	) error
+}
+
 type CredentialDefaults interface {
 	ClearDefault(ctx context.Context, sourceID string, c shared.Channel, now time.Time) error
 }
@@ -69,6 +81,7 @@ type Credentials struct {
 	creds    *credential.Service
 	secrets  CredentialSecrets
 	defaults CredentialDefaults
+	settings CredentialSettings
 	uow      UnitOfWork
 	newID    shared.IDFunc
 	now      shared.NowFunc
@@ -79,12 +92,14 @@ func NewCredentials(
 	creds *credential.Service,
 	secrets CredentialSecrets,
 	defaults CredentialDefaults,
+	settings CredentialSettings,
 	uow UnitOfWork,
 	newID shared.IDFunc,
 	now shared.NowFunc,
 ) *Credentials {
 	return &Credentials{
-		sources: sources, creds: creds, secrets: secrets, defaults: defaults,
+		sources: sources, creds: creds, secrets: secrets,
+		defaults: defaults, settings: settings,
 		uow: uow, newID: newID, now: now,
 	}
 }
@@ -232,4 +247,29 @@ func (c *Credentials) get(
 		return nil, errs.InvalidInputErr("credential id is required").WithErr(shared.ErrInvalidID)
 	}
 	return c.creds.Get(ctx, sourceID, id)
+}
+
+// Update replaces an identity's provider settings, keeping its name.
+//
+// The name stays because a message asks for it: renaming would break every
+// message still naming it, which is the same reason Rotate keeps it. The flags
+// stay because they have methods of their own.
+//
+// What arrives is the whole settings document, not a patch. A patch would need
+// this layer to know which fields exist, and it deliberately does not -- what a
+// provider needs is the provider's business.
+func (c *Credentials) Update(
+	ctx context.Context, sourceID string, id shared.ID, config []byte,
+) (*credential.Credential, error) {
+	cred, err := c.get(ctx, sourceID, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := validConfig(config); err != nil {
+		return nil, err
+	}
+	if err := c.settings.UpdateConfig(ctx, sourceID, id, config, c.now()); err != nil {
+		return nil, err
+	}
+	return cred, nil
 }
