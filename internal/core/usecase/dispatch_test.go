@@ -178,7 +178,7 @@ func TestHandleIgnoresASettledDelivery(t *testing.T) {
 // stays pending, which is also what the sweep looks for.
 func TestHandleRetriesATransientFailure(t *testing.T) {
 	d := newDispatchRig(t, func(o *dispatchOpts) {
-		o.sender.err = &shared.SendError{Permanent: false, Detail: "connection reset"}
+		o.sender.err = &shared.SendError{Kind: shared.SendTransient, Detail: "connection reset"}
 	})
 
 	err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1)
@@ -199,7 +199,7 @@ func TestHandleRetriesATransientFailure(t *testing.T) {
 // what happened instead of the event vanishing into a dead-letter queue.
 func TestHandleRecordsTheLastAttempt(t *testing.T) {
 	d := newDispatchRig(t, func(o *dispatchOpts) {
-		o.sender.err = &shared.SendError{Permanent: false, Detail: "connection reset"}
+		o.sender.err = &shared.SendError{Kind: shared.SendTransient, Detail: "connection reset"}
 	})
 
 	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, maxAttempts); err != nil {
@@ -224,7 +224,7 @@ func TestHandleRecordsFailures(t *testing.T) {
 		{
 			name: "the provider says it will never work",
 			tweak: func(o *dispatchOpts) {
-				o.sender.err = &shared.SendError{Permanent: true, Detail: "chat not found"}
+				o.sender.err = &shared.SendError{Kind: shared.SendPermanent, Detail: "chat not found"}
 			},
 			reason: delivery.FailurePermanent,
 		},
@@ -331,7 +331,7 @@ func TestRecoverLeavesFreshDeliveriesAlone(t *testing.T) {
 // writes nothing, so the row comes back older on the next run.
 func TestRecoverLeavesAYoungFailureAlone(t *testing.T) {
 	d := newDispatchRig(t, func(o *dispatchOpts) {
-		o.sender.err = &shared.SendError{Permanent: false, Detail: "connection reset"}
+		o.sender.err = &shared.SendError{Kind: shared.SendTransient, Detail: "connection reset"}
 		o.at = now.Add(10 * time.Minute)
 	})
 
@@ -352,7 +352,7 @@ func TestRecoverLeavesAYoungFailureAlone(t *testing.T) {
 // answer instead of the row looping for ever.
 func TestRecoverGivesUpOnAnOldFailure(t *testing.T) {
 	d := newDispatchRig(t, func(o *dispatchOpts) {
-		o.sender.err = &shared.SendError{Permanent: false, Detail: "connection reset"}
+		o.sender.err = &shared.SendError{Kind: shared.SendTransient, Detail: "connection reset"}
 		o.at = now.Add(reconcileGiveUp + time.Minute)
 	})
 
@@ -519,5 +519,64 @@ func TestTheSourceIsToldOnce(t *testing.T) {
 	}
 	if got := d.notifier.count(); got != 1 {
 		t.Errorf("a redelivered event told the source again: %d", got)
+	}
+}
+
+// A recipient who blocked us is not the same answer as a message the provider
+// refused: the source can act on one and cannot act on the other.
+func TestARefusedRecipientIsRecordedAsSuch(t *testing.T) {
+	d := newDispatchRig(t, func(o *dispatchOpts) {
+		o.sender.err = &shared.SendError{
+			Kind:   shared.SendUnreachable,
+			Detail: "bot was blocked by the user",
+		}
+	})
+
+	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+
+	got := d.reload(t)
+	if got.Status() != delivery.StatusFailed {
+		t.Fatalf("status = %q, want FAILED", got.Status())
+	}
+	if got.FailureReason() != delivery.FailureNotReachable {
+		t.Errorf("reason = %q, want NOT_REACHABLE", got.FailureReason())
+	}
+}
+
+// And it stops the retries, exactly as a permanent refusal does.
+func TestARefusedRecipientIsNotTriedAgain(t *testing.T) {
+	d := newDispatchRig(t, func(o *dispatchOpts) {
+		o.sender.err = &shared.SendError{Kind: shared.SendUnreachable, Detail: "blocked"}
+	})
+
+	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	if d.sender.count() != 1 {
+		t.Errorf("sent %d times, want it to stop after the first", d.sender.count())
+	}
+}
+
+// The source's own key-values reach whoever sends, untouched. It is how a
+// channel that wants more than a title and a body gets it.
+func TestTheSourcesMetadataReachesTheSender(t *testing.T) {
+	d := newDispatchRig(t, func(o *dispatchOpts) {
+		c := cmd()
+		c.Metadata = map[string]string{"template": "order_shipped", "order": "42"}
+		o.cmd = c
+	})
+
+	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+
+	sent := d.sender.messages()
+	if len(sent) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(sent))
+	}
+	if sent[0].Metadata["template"] != "order_shipped" {
+		t.Errorf("metadata = %v, want the source's own", sent[0].Metadata)
 	}
 }

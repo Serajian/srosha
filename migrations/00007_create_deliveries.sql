@@ -27,8 +27,13 @@ CREATE TABLE deliveries (
     -- sanitised before it reaches anyone outside.
     last_error          TEXT,
 
+    -- NOT_REACHABLE is the provider refusing the RECIPIENT rather than the
+    -- message: somebody who blocked us, a conversation window that closed, a
+    -- device token no longer registered. Apart from PERMANENT because the source
+    -- can act on it and cannot act on the other.
     failure_reason      TEXT        CHECK (failure_reason IS NULL OR failure_reason IN
-                                    ('EXPIRED', 'MAX_ATTEMPTS', 'PERMANENT', 'NO_SENDER')),
+                                    ('EXPIRED', 'MAX_ATTEMPTS', 'PERMANENT', 'NO_SENDER',
+                                     'NOT_REACHABLE')),
 
     -- What the provider called it, so a support question can be traced into
     -- their system rather than stopping at ours.

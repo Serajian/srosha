@@ -21,11 +21,11 @@ func classify(err error) error {
 		// No such mailbox, message refused, relay denied, credentials wrong.
 		// Different causes, one conclusion: repeating gets the same answer
 		// until a person changes something.
-		return &shared.SendError{Permanent: true, Detail: err.Error(), Err: err}
+		return &shared.SendError{Kind: shared.SendPermanent, Detail: err.Error(), Err: err}
 
 	case code >= 400:
 		// Busy, greylisted, out of space for now. Theirs, and temporary.
-		return &shared.SendError{Permanent: false, Detail: err.Error(), Err: err}
+		return &shared.SendError{Kind: shared.SendTransient, Detail: err.Error(), Err: err}
 
 	default:
 		// No code at all: dns, dial, tls, a connection dropped mid-session.
@@ -33,7 +33,7 @@ func classify(err error) error {
 		// transient too, as shared.IsPermanentSend says -- an unknown failure
 		// is more often a blip than a dead end, and the delivery limit stops
 		// the loop either way.
-		return &shared.SendError{Permanent: false, Detail: err.Error(), Err: err}
+		return &shared.SendError{Kind: shared.SendTransient, Detail: err.Error(), Err: err}
 	}
 }
 

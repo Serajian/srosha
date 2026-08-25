@@ -162,6 +162,60 @@ names and a status.
 
 ---
 
+## What a channel is, and what adding one costs
+
+Four exist. `whatsapp` is in the enum with no sender behind it — the one case of a channel
+half here rather than not here, and it is half here because its API wants something the
+message does not carry.
+
+A channel is added **with** its sender, never before it. Six places have to agree — the
+constant and its address rule, the proto enum, the mapper, the registry, and two CHECK
+constraints — and a channel that exists without a sender is one a source can send to and
+always get `NO_SENDER` from.
+
+| | Address | What it needs beyond a sender |
+| --- | --- | --- |
+| SMS | E.164 number | nothing |
+| Matrix | user or room id | nothing |
+| FCM, APNs | device token | a structured secret |
+| RCS | E.164 number | nothing, if the provider does the SMS fallback |
+| WhatsApp | phone number | a template, outside the conversation window |
+| Instagram | scoped user id | the same, and it cannot open a conversation at all |
+| Web Push | an endpoint and two keys | an address that is not a string |
+
+### Three seams, and why they are seams rather than features
+
+**A message carries the source's own metadata, and srosha never reads it.** It is stored
+with the message and handed to whoever sends. A provider adapter may look in it for what its
+API needs — which template, which tag — and no other provider is affected, because nothing
+here defines what the keys mean. That is how a channel wanting more than a title and a body
+gets it, without every channel's needs becoming fields on `Message`.
+
+**A refusal has a kind, not a flag.** Transient, permanent, and unreachable — the last being
+the provider refusing the *recipient* rather than the message. A source can act on that and
+cannot act on the other: nothing they wrote differently would have helped. Three states
+modeled as booleans is what makes a fourth expensive.
+
+**A secret is bytes.** `pkg/crypto` seals and opens bytes, so a credential needing four
+fields — APNs wants a key, a key id, a team id — puts json inside the sealed value. Nothing
+changes for a channel whose secret is one token.
+
+### Two decisions not yet made
+
+**A conversation window is the provider's to know, not ours.** WhatsApp and Instagram refuse
+a message outside a window the recipient opened, and Instagram refuses one to anybody who
+never wrote first. Modeling that here would mean receiving their webhooks and keeping
+conversation state — an inbound path this service does not have, for a service that sends. So
+the provider is the authority and the answer comes back as `NOT_REACHABLE`.
+
+**A structured address has no home yet.** A Web Push subscription is an endpoint and two
+keys. It can be json in the address column, but then the address stops being readable for one
+channel and `ValidateAddress` parses json. The alternatives are a second column always null
+for six channels, or an address that is a type rather than a string. Nothing is decided, and
+nothing needs to be until Web Push is built.
+
+---
+
 ## A source's keys are rows, not a column
 
 Authentication is a lookup, not a comparison. There is no username to find the row by: the

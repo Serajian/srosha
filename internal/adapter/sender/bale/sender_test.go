@@ -285,3 +285,21 @@ func TestTheTokenNeverReachesAnError(t *testing.T) {
 		t.Errorf("the token is in the error: %v", err)
 	}
 }
+
+// A recipient who blocked the bot is not the same answer as a message bale
+// refused: the source can act on one and cannot act on the other.
+func TestABlockedRecipientIsItsOwnAnswer(t *testing.T) {
+	s, _ := bot(t, http.StatusForbidden,
+		`{"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}`)
+
+	_, err := s.Send(context.Background(), msg("", "hello"))
+	if err == nil {
+		t.Fatal("Send succeeded")
+	}
+	if got := shared.SendKindOf(err); got != shared.SendUnreachable {
+		t.Errorf("kind = %v, want unreachable", got)
+	}
+	if !shared.IsPermanentSend(err) {
+		t.Error("it should still stop the retries")
+	}
+}

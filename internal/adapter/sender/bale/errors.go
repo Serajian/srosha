@@ -27,24 +27,30 @@ func classify(status int, body apiResponse) error {
 	switch {
 	case status == 429:
 		return &shared.SendError{
-			Permanent:  false,
+			Kind:       shared.SendTransient,
 			RetryAfter: retryAfter(body),
 			Detail:     detail,
 		}
 
 	case status >= 500:
 		// Theirs, and theirs to fix. Nothing about this message changes it.
-		return &shared.SendError{Permanent: false, Detail: detail}
+		return &shared.SendError{Kind: shared.SendTransient, Detail: detail}
+
+	case status == 403:
+		// The recipient refused us: the bot was blocked, or it has no access to
+		// that chat. Final like any other 4xx, and separate because the source
+		// can act on it -- nothing they write differently would have helped.
+		return &shared.SendError{Kind: shared.SendUnreachable, Detail: detail}
 
 	case status >= 400:
 		// A chat that does not exist, a bot that was blocked, a token that is
 		// not one. Different causes, one conclusion: repeating the same request
 		// gets the same answer until a person changes something.
-		return &shared.SendError{Permanent: true, Detail: detail}
+		return &shared.SendError{Kind: shared.SendPermanent, Detail: detail}
 
 	default:
 		// ok:false with a 2xx. Not documented, so it is not claimed to be final.
-		return &shared.SendError{Permanent: false, Detail: detail}
+		return &shared.SendError{Kind: shared.SendTransient, Detail: detail}
 	}
 }
 
@@ -72,9 +78,9 @@ func unreachable(what, token string, err error) error {
 	}
 
 	return &shared.SendError{
-		Permanent: false,
-		Detail:    redact(fmt.Sprintf("bale %s: %v", what, err), token),
-		Err:       err,
+		Kind:   shared.SendTransient,
+		Detail: redact(fmt.Sprintf("bale %s: %v", what, err), token),
+		Err:    err,
 	}
 }
 
@@ -88,5 +94,5 @@ func redact(s, token string) string {
 
 // refused is for what this sender decides on its own, before asking.
 func refused(detail string) error {
-	return &shared.SendError{Permanent: true, Detail: detail}
+	return &shared.SendError{Kind: shared.SendPermanent, Detail: detail}
 }
