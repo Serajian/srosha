@@ -82,6 +82,39 @@ roughly six.
 Both live in config, because they are exactly the numbers someone wants to turn
 when the service is under load.
 
+### The sweep takes rather than looks
+
+Recovery **sends** rather than republishing, so nothing on the broker can stop two
+dispatchers sending the same row. Listing pending rows is therefore safe with one
+dispatcher and wrong with two: both sweeps read the same set, and somebody gets the
+message twice.
+
+So the sweep claims. One statement takes the rows and stamps `claimed_at` on them, and
+`SKIP LOCKED` inside it means two sweeps arriving together get disjoint sets. The lock
+lives only as long as that statement — the alternative, a transaction held open across
+the sends, would hold a row lock and a pooled connection for the seconds a provider
+takes.
+
+```
+SKIP LOCKED   the instant of contention        milliseconds
+claimed_at    the minutes after it             the lease
+```
+
+Deliberately **not** `updated_at`. Age is the retry counter, so claiming by touching it
+would mean the row never reaches `RECONCILE_GIVE_UP`.
+
+`RECONCILE_LEASE` covers one case and one only: a dispatcher that died holding a row. A
+send that merely failed hands the row straight back, because a row held until its lease
+expired would be retried on the lease's schedule rather than recovery's — with five
+minutes, thirty, and a ten minute lease, a row would get three attempts where the
+configuration promises six.
+
+This is not exactly-once and does not claim to be. A dispatcher that hangs past its
+lease and then completes has sent twice. The lease is set from the slowest send there
+could be, which makes that rare; the delivery row survives it either way, because the
+second `RecordSent` finds it already settled. The recipient is what the claim protects,
+not the row.
+
 ### Why not retry for ever
 
 A row that keeps failing would otherwise be picked up on every run until the end

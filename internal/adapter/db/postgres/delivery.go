@@ -85,20 +85,41 @@ func (r *DeliveryRepository) ListByNotificationID(
 	return toDeliveries(rows)
 }
 
-// ListStale finds what recovery has to deal with. The age is turned into a
-// moment here: the port asks in terms of how long a row has been waiting,
-// because that is what the policy is written in.
-func (r *DeliveryRepository) ListStale(
-	ctx context.Context, olderThan time.Duration, limit int,
+// ClaimStale takes what recovery has to deal with, and takes it exclusively.
+//
+// The ages are turned into moments here: the port asks in terms of how long a
+// row has been waiting and how long a claim is good for, because that is what
+// the policy is written in.
+//
+// Whoever calls this owns the rows it returns until the lease runs out or they
+// are released. Nothing else will pick them up in between.
+func (r *DeliveryRepository) ClaimStale(
+	ctx context.Context, olderThan, lease time.Duration, limit int,
 ) ([]delivery.Delivery, error) {
-	rows, err := r.q(ctx).ListStaleDeliveries(ctx, gen.ListStaleDeliveriesParams{
-		OlderThan: r.now().Add(-olderThan),
-		RowLimit:  int32(limit), //nolint:gosec // a batch size, bounded by config
+	now := r.now()
+
+	rows, err := r.q(ctx).ClaimStaleDeliveries(ctx, gen.ClaimStaleDeliveriesParams{
+		Now:                now,
+		OlderThan:          now.Add(-olderThan),
+		ClaimExpiredBefore: now.Add(-lease),
+		RowLimit:           int32(limit), //nolint:gosec // a batch size, bounded by config
 	})
 	if err != nil {
-		return nil, failed("list stale deliveries", err)
+		return nil, failed("claim stale deliveries", err)
 	}
 	return toDeliveries(rows)
+}
+
+// Release hands a row back before its lease is up, so a transient failure does
+// not make the lease the retry interval.
+//
+// Finding no row is not a failure: the delivery settled while this was in
+// flight, and a settled row is not one recovery looks at.
+func (r *DeliveryRepository) Release(ctx context.Context, d *delivery.Delivery) error {
+	if _, err := r.q(ctx).ReleaseDeliveryClaim(ctx, d.ID.String()); err != nil {
+		return failed("release delivery claim", err)
+	}
+	return nil
 }
 
 // PageByNotificationID asks for one row more than the caller wanted. That extra

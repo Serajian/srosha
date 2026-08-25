@@ -42,6 +42,12 @@ type Dispatcher struct {
 	after  time.Duration
 	giveUp time.Duration
 	batch  int
+
+	// lease is how long a claimed delivery stays this dispatcher's. It only ever
+	// has to cover a dispatcher that died holding one: a send that merely failed
+	// gives the row back. So it is set from the slowest send there could be, not
+	// from how often recovery runs.
+	lease time.Duration
 }
 
 func NewDispatcher(
@@ -54,7 +60,7 @@ func NewDispatcher(
 	now shared.NowFunc,
 	log *slog.Logger,
 	maxAttempts, maxWebhookFailures int,
-	after, giveUp time.Duration,
+	after, giveUp, lease time.Duration,
 	batch int,
 ) *Dispatcher {
 	return &Dispatcher{
@@ -62,7 +68,7 @@ func NewDispatcher(
 		senders: senders, notifier: notifier,
 		newID: newID, now: now, log: log,
 		maxAttempts: maxAttempts, maxWebhookFailures: maxWebhookFailures,
-		after: after, giveUp: giveUp, batch: batch,
+		after: after, giveUp: giveUp, lease: lease, batch: batch,
 	}
 }
 
@@ -99,10 +105,15 @@ func (d *Dispatcher) Handle(ctx context.Context, id shared.ID, attempt int) erro
 // Recover deals with deliveries nobody was told about: the rows written when
 // the publish never reached the broker.
 //
+// The rows are CLAIMED rather than listed, so a second dispatcher sweeping at
+// the same moment gets a different set. Recovery sends directly rather than
+// republishing, so the broker's duplicate window never sees these -- without the
+// claim, both would send and somebody would get the message twice.
+//
 // One row's failure must not stop the rest, so errors are logged and the loop
 // carries on. The next run picks up whatever is still waiting.
 func (d *Dispatcher) Recover(ctx context.Context) error {
-	stale, err := d.deliveries.ListStale(ctx, d.after, d.batch)
+	stale, err := d.deliveries.ClaimStale(ctx, d.after, d.lease, d.batch)
 	if err != nil {
 		return err
 	}
@@ -192,6 +203,17 @@ func (d *Dispatcher) sendFailed(
 	// Transient, with time left: write nothing at all and let it come back. The
 	// delivery stays pending, which is also what Recover looks for, and its age
 	// keeps growing towards the last chance.
+	//
+	// The claim is given back, though, and that matters: a row held until its
+	// lease expired would be retried on the lease's schedule rather than
+	// recovery's, and would reach GIVE_UP having had fewer attempts than the
+	// configuration promises. Failing to release only costs the difference, so
+	// it is logged rather than returned.
+	if err := d.deliveries.Release(ctx, del); err != nil {
+		d.log.WarnContext(ctx, "could not release the claim",
+			"delivery_id", del.ID, "err", err)
+	}
+
 	d.log.WarnContext(ctx, "send failed, will try again", "delivery_id", del.ID, "err", err)
 	return err
 }

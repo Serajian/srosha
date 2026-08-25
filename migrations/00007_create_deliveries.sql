@@ -36,6 +36,18 @@ CREATE TABLE deliveries (
 
     notified_at         TIMESTAMPTZ,
 
+    -- Which dispatcher is dealing with this row, and since when.
+    --
+    -- Recovery SENDS rather than republishing, so the broker's duplicate window
+    -- never sees these rows: two dispatchers sweeping at once would both send,
+    -- and somebody would get the message twice. Taking a row exclusively is what
+    -- stops that, and this is where the claim lives once the lock is gone.
+    --
+    -- Deliberately NOT updated_at. Age is the retry counter -- every failed
+    -- attempt leaves the row a little older, and RECONCILE_GIVE_UP reads that
+    -- age -- so claiming by touching it would mean the row never gives up.
+    claimed_at          TIMESTAMPTZ,
+
     -- created_at answers how long a delivery waited, which updated_at stops
     -- being able to answer the moment the row moves.
     created_at          TIMESTAMPTZ NOT NULL,
@@ -49,7 +61,12 @@ CREATE UNIQUE INDEX deliveries_notification_channel_address_key
 
 -- What recovery scans: rows that have been PENDING too long. Without it that is
 -- a sequential scan of every delivery ever sent, on a timer.
-CREATE INDEX deliveries_status_updated_at_idx ON deliveries (status, updated_at);
+-- The sweep asks for pending rows past a cutoff whose claim is absent or
+-- expired, so all three are in one index. Partial, because everything else in
+-- this table is settled and will never match.
+CREATE INDEX deliveries_pending_sweep_idx
+    ON deliveries (updated_at, claimed_at)
+    WHERE status = 'PENDING';
 
 CREATE INDEX deliveries_notification_id_idx ON deliveries (notification_id);
 

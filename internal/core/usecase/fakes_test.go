@@ -238,8 +238,13 @@ type fakeDeliveries struct {
 	byNotif   map[shared.ID][]delivery.Delivery
 	createErr error
 
-	// staleAt is "now" as far as ListStale is concerned.
+	// staleAt is "now" as far as ClaimStale is concerned.
 	staleAt time.Time
+
+	// claimed is who holds what. Kept because the use case now depends on a
+	// claimed row not coming back, and a fake that handed the same row out twice
+	// would let a broken Recover pass.
+	claimed map[shared.ID]time.Time
 }
 
 func newFakeDeliveries() *fakeDeliveries {
@@ -329,11 +334,18 @@ func (r *fakeDeliveries) ListByNotificationID(
 	return out, nil
 }
 
-func (r *fakeDeliveries) ListStale(
-	_ context.Context, olderThan time.Duration, limit int,
+// ClaimStale keeps the claims, because that is the behavior the use case now
+// depends on: a row this returns must not be returned again until it is released
+// or its lease runs out.
+func (r *fakeDeliveries) ClaimStale(
+	_ context.Context, olderThan, lease time.Duration, limit int,
 ) ([]delivery.Delivery, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if r.claimed == nil {
+		r.claimed = map[shared.ID]time.Time{}
+	}
 
 	var out []delivery.Delivery
 	for _, ds := range r.byNotif {
@@ -341,6 +353,11 @@ func (r *fakeDeliveries) ListStale(
 			if d.IsSettled() || r.staleAt.Sub(d.UpdatedAt()) < olderThan {
 				continue
 			}
+			if at, ok := r.claimed[d.ID]; ok && r.staleAt.Sub(at) < lease {
+				continue // somebody else holds it
+			}
+
+			r.claimed[d.ID] = r.staleAt
 			out = append(out, d)
 			if len(out) == limit {
 				return out, nil
@@ -348,6 +365,25 @@ func (r *fakeDeliveries) ListStale(
 		}
 	}
 	return out, nil
+}
+
+// hold claims a row on somebody else's behalf, so a test can see what a sweep
+// does when a delivery is already taken.
+func (r *fakeDeliveries) hold(id shared.ID, at time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.claimed == nil {
+		r.claimed = map[shared.ID]time.Time{}
+	}
+	r.claimed[id] = at
+}
+
+func (r *fakeDeliveries) Release(_ context.Context, d *delivery.Delivery) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.claimed, d.ID)
+	return nil
 }
 
 func (r *fakeDeliveries) all(id shared.ID) []delivery.Delivery {

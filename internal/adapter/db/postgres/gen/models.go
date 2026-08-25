@@ -44,6 +44,7 @@ type Delivery struct {
 	FailureReason     *string
 	ProviderMessageID *string
 	NotifiedAt        *time.Time
+	ClaimedAt         *time.Time
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }

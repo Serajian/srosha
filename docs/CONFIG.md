@@ -215,7 +215,7 @@ cannot share a wire.
 
 | Group | Keys | gateway | dispatcher |
 | --- | --- | --- | --- |
-| reconcile | `NOTIF_RECONCILE_AFTER`, `NOTIF_RECONCILE_GIVE_UP`, `NOTIF_RECONCILE_SCHEDULE`, `NOTIF_RECONCILE_BATCH` | — | ✅ |
+| reconcile | `NOTIF_RECONCILE_AFTER`, `NOTIF_RECONCILE_GIVE_UP`, `NOTIF_RECONCILE_SCHEDULE`, `NOTIF_RECONCILE_BATCH`, `NOTIF_RECONCILE_LEASE` | — | ✅ |
 
 `NOTIF_WEBHOOK_SECRETS` holds one signing secret per source, keyed by source id.
 Each source gets its own: with a single shared secret, any source holding it
@@ -231,6 +231,11 @@ than republishes. See `docs/ARCHITECTURE.md`.
 `RECONCILE_SCHEDULE` is a cron spec or an interval descriptor — `@every 5m`,
 `*/5 * * * *`, `0 3 * * *` — read in UTC, so a schedule means the same moment
 wherever it runs. One second is the finest interval.
+
+`RECONCILE_LEASE` is how long a claimed delivery stays the dispatcher that took
+it. It covers a dispatcher that died holding a row — a send that merely failed
+gives the row back — so it is set from the slowest send there could be, and
+loading refuses a value at or below `NOTIF_DISPATCH_ACK_WAIT`.
 
 ---
 
