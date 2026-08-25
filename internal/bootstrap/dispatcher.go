@@ -11,6 +11,7 @@ import (
 	"github.com/Serajian/srosha/internal/adapter/notifier"
 	"github.com/Serajian/srosha/internal/adapter/secret"
 	"github.com/Serajian/srosha/internal/adapter/sender"
+	"github.com/Serajian/srosha/internal/adapter/sender/email"
 	"github.com/Serajian/srosha/internal/adapter/system"
 	"github.com/Serajian/srosha/internal/config"
 	"github.com/Serajian/srosha/internal/core/domain/credential"
@@ -61,7 +62,15 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 		return abandon(ctx, res, err)
 	}
 
-	core, err := buildDispatcherCore(ctx, cfg, db.Pool(), mq.JetStream(), callbacks, providers, log)
+	// Mail is its own way out. Nothing is held open -- a mail server drops an
+	// idle session on its own schedule -- so this is a dialer and there is
+	// nothing to register a close for.
+	mail, err := registry.SMTPDialer(cfg.HTTPClient)
+	if err != nil {
+		return abandon(ctx, res, err)
+	}
+
+	core, err := buildDispatcherCore(ctx, cfg, db.Pool(), mq.JetStream(), callbacks, providers, mail, log)
 	if err != nil {
 		return abandon(ctx, res, err)
 	}
@@ -122,6 +131,7 @@ func buildDispatcherCore(
 	pool *pgxpool.Pool,
 	js jetstream.JetStream,
 	callbacks, providers *http.Client,
+	mail email.Dialer,
 	log *slog.Logger,
 ) (dispatcherCore, error) {
 	var core dispatcherCore
@@ -177,9 +187,16 @@ func buildDispatcherCore(
 		return core, err
 	}
 
-	senders, err := sender.NewRegistry(credentials, secrets, providers, sender.Fallback{
+	senders, err := sender.NewRegistry(credentials, secrets, providers, mail, sender.Fallback{
 		TelegramToken: cfg.Sender.Telegram.Reveal(),
 		BaleToken:     cfg.Sender.Bale.Reveal(),
+		SMTP: sender.SMTP{
+			Host:     cfg.Sender.SMTP.Host,
+			Port:     cfg.Sender.SMTP.Port,
+			Username: cfg.Sender.SMTP.Username,
+			From:     cfg.Sender.SMTP.From,
+			Password: cfg.Sender.SMTP.Password.Reveal(),
+		},
 	})
 	if err != nil {
 		return core, err
