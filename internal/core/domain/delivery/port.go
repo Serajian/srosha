@@ -29,6 +29,17 @@ type Repository interface {
 	// merely failed calls Release, so the lease means one thing only.
 	ClaimStale(ctx context.Context, olderThan, lease time.Duration, limit int) ([]Delivery, error)
 
+	// ClaimAnnouncement decides who tells the source that a message is finished.
+	//
+	// The callback goes out when the LAST delivery settles, and two workers
+	// settling the last two at the same moment both see a finished message. The
+	// contract is that a callback is sent once and never retried, so exactly one
+	// of them may send it -- and this is what says which.
+	//
+	// True means the announcement is this caller's. False means somebody already
+	// has it, which is an answer and not a failure.
+	ClaimAnnouncement(ctx context.Context, notificationID shared.ID, now time.Time) (bool, error)
+
 	// Release hands a claimed row back before its lease is up. A transient
 	// failure writes nothing, so without this the row would sit unclaimable
 	// until the lease expired -- and the lease would quietly become the retry

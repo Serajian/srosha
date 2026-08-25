@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/Serajian/srosha/internal/core/domain/credential"
@@ -245,6 +246,9 @@ type fakeDeliveries struct {
 	// claimed row not coming back, and a fake that handed the same row out twice
 	// would let a broken Recover pass.
 	claimed map[shared.ID]time.Time
+
+	// announced is which messages have already been told to their source.
+	announced map[shared.ID]bool
 }
 
 func newFakeDeliveries() *fakeDeliveries {
@@ -365,6 +369,42 @@ func (r *fakeDeliveries) ClaimStale(
 		}
 	}
 	return out, nil
+}
+
+// ClaimAnnouncement is a claim in the fake too, not a counter. A fake that said
+// yes every time would let two announcements of one message pass, which is the
+// whole thing it exists to prevent.
+func (r *fakeDeliveries) ClaimAnnouncement(
+	_ context.Context, notificationID shared.ID, _ time.Time,
+) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.announced == nil {
+		r.announced = map[shared.ID]bool{}
+	}
+	if r.announced[notificationID] {
+		return false, nil
+	}
+	r.announced[notificationID] = true
+	return true, nil
+}
+
+// ids is every delivery this fake holds, in a stable order.
+func (r *fakeDeliveries) ids(t *testing.T) []shared.ID {
+	t.Helper()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var out []shared.ID
+	for _, ds := range r.byNotif {
+		for i := range ds {
+			out = append(out, ds[i].ID)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // hold claims a row on somebody else's behalf, so a test can see what a sweep

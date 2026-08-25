@@ -451,3 +451,72 @@ func TestTwoSweepsAtOnceSplitTheRows(t *testing.T) {
 		}
 	}
 }
+
+// Two workers settling the last two deliveries of one message arrive here
+// together. Exactly one of them may tell the source.
+func TestOnlyOneCallerTakesTheAnnouncement(t *testing.T) {
+	repo, n, _ := fixture(t, "AN")
+	ctx := context.Background()
+
+	if err := repo.CreateByList(ctx, makeDeliveries(t, n, "a@acme.com", "b@acme.com")); err != nil {
+		t.Fatalf("CreateByList: %v", err)
+	}
+
+	const callers = 4
+	var (
+		wg  sync.WaitGroup
+		mu  sync.Mutex
+		won int
+	)
+	for range callers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			mine, err := repo.ClaimAnnouncement(ctx, n.ID, time.Now().UTC())
+			if err != nil {
+				t.Errorf("ClaimAnnouncement: %v", err)
+				return
+			}
+			if mine {
+				mu.Lock()
+				won++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+
+	if won != 1 {
+		t.Errorf("%d callers took the announcement, want exactly 1", won)
+	}
+}
+
+// Every delivery of the message carries the stamp, not just the one that
+// happened to finish it.
+func TestTheWholeMessageIsStamped(t *testing.T) {
+	repo, n, _ := fixture(t, "AS")
+	ctx := context.Background()
+
+	if err := repo.CreateByList(ctx, makeDeliveries(t, n, "a@acme.com", "b@acme.com")); err != nil {
+		t.Fatalf("CreateByList: %v", err)
+	}
+
+	mine, err := repo.ClaimAnnouncement(ctx, n.ID, time.Now().UTC())
+	if err != nil || !mine {
+		t.Fatalf("ClaimAnnouncement = %v, %v", mine, err)
+	}
+
+	got, err := repo.ListByNotificationID(ctx, n.ID)
+	if err != nil {
+		t.Fatalf("ListByNotificationID: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d deliveries, want 2", len(got))
+	}
+	for i := range got {
+		if got[i].NotifiedAt() == nil {
+			t.Errorf("delivery %s carries no stamp", got[i].ID)
+		}
+	}
+}

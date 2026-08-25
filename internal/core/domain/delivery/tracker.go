@@ -52,6 +52,12 @@ func (t *Tracker) ClaimStale(
 	return t.repo.ClaimStale(ctx, olderThan, lease, limit)
 }
 
+// ClaimAnnouncement takes the right to tell the source, so that a message whose
+// last two deliveries settled together is announced once rather than twice.
+func (t *Tracker) ClaimAnnouncement(ctx context.Context, notificationID shared.ID) (bool, error) {
+	return t.repo.ClaimAnnouncement(ctx, notificationID, t.now())
+}
+
 // Release gives a claimed row back, so a failure that changed nothing does not
 // hold it for the whole lease.
 func (t *Tracker) Release(ctx context.Context, d *Delivery) error {

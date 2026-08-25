@@ -111,7 +111,12 @@ func (d *Delivery) LastError() string            { return d.lastError }
 func (d *Delivery) FailureReason() FailureReason { return d.failureReason }
 func (d *Delivery) ProviderMessageID() string    { return d.providerMessageID }
 func (d *Delivery) UpdatedAt() time.Time         { return d.updatedAt }
-func (d *Delivery) NotifiedAt() *time.Time       { return d.notifiedAt }
+
+// NotifiedAt is when this delivery's outcome was announced to the source, or
+// nil. It is stamped by the claim in storage, not by a method here: the whole
+// message is announced at once and exactly once, which is a decision about the
+// set and not about one row.
+func (d *Delivery) NotifiedAt() *time.Time { return d.notifiedAt }
 
 // IsSettled reports whether this delivery has stopped moving.
 func (d *Delivery) IsSettled() bool { return d.status.IsSettled() }
@@ -147,10 +152,6 @@ func (d *Delivery) MarkFailed(
 	d.lastError = detail
 	d.attempts = attempts
 	return nil
-}
-
-func (d *Delivery) MarkNotified(now time.Time) {
-	d.notifiedAt = &now
 }
 
 func (d *Delivery) moveTo(next Status, now time.Time) error {
