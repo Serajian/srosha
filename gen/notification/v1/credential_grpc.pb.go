@@ -19,7 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	CredentialService_Register_FullMethodName = "/notification.v1.CredentialService/Register"
+	CredentialService_Register_FullMethodName   = "/notification.v1.CredentialService/Register"
+	CredentialService_List_FullMethodName       = "/notification.v1.CredentialService/List"
+	CredentialService_Deactivate_FullMethodName = "/notification.v1.CredentialService/Deactivate"
+	CredentialService_Activate_FullMethodName   = "/notification.v1.CredentialService/Activate"
+	CredentialService_SetDefault_FullMethodName = "/notification.v1.CredentialService/SetDefault"
+	CredentialService_Rotate_FullMethodName     = "/notification.v1.CredentialService/Rotate"
 )
 
 // CredentialServiceClient is the client API for CredentialService service.
@@ -39,6 +44,26 @@ type CredentialServiceClient interface {
 	// Register opens an identity on one channel. The name is how a message asks
 	// for it later, in SubmitRequest's Route.sender.
 	Register(ctx context.Context, in *CredentialServiceRegisterRequest, opts ...grpc.CallOption) (*CredentialServiceRegisterResponse, error)
+	// List answers "what have I registered". Switched-off identities are in it,
+	// and that is the point: without them nobody can turn one back on.
+	List(ctx context.Context, in *CredentialServiceListRequest, opts ...grpc.CallOption) (*CredentialServiceListResponse, error)
+	// Deactivate stops an identity being used without forgetting it, so turning
+	// it back on is not a re-registration. Nothing here deletes: after an incident
+	// the first question is when an identity was withdrawn, and a deleted row
+	// answers nothing.
+	//
+	// If it held the default, the channel is left with none until SetDefault names
+	// one. Guessing which should take over would move it silently.
+	Deactivate(ctx context.Context, in *CredentialServiceDeactivateRequest, opts ...grpc.CallOption) (*CredentialServiceDeactivateResponse, error)
+	// Activate is the way back. It does not hand the default back.
+	Activate(ctx context.Context, in *CredentialServiceActivateRequest, opts ...grpc.CallOption) (*CredentialServiceActivateResponse, error)
+	// SetDefault moves which identity a message that names none uses. A channel
+	// has at most one, so this takes it from whichever held it.
+	SetDefault(ctx context.Context, in *CredentialServiceSetDefaultRequest, opts ...grpc.CallOption) (*CredentialServiceSetDefaultResponse, error)
+	// Rotate replaces the secret and keeps the name, which is what a leaked token
+	// needs: registering a second identity instead would make every message still
+	// naming the old one fail, turning a leak into a code change.
+	Rotate(ctx context.Context, in *CredentialServiceRotateRequest, opts ...grpc.CallOption) (*CredentialServiceRotateResponse, error)
 }
 
 type credentialServiceClient struct {
@@ -53,6 +78,56 @@ func (c *credentialServiceClient) Register(ctx context.Context, in *CredentialSe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CredentialServiceRegisterResponse)
 	err := c.cc.Invoke(ctx, CredentialService_Register_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *credentialServiceClient) List(ctx context.Context, in *CredentialServiceListRequest, opts ...grpc.CallOption) (*CredentialServiceListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CredentialServiceListResponse)
+	err := c.cc.Invoke(ctx, CredentialService_List_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *credentialServiceClient) Deactivate(ctx context.Context, in *CredentialServiceDeactivateRequest, opts ...grpc.CallOption) (*CredentialServiceDeactivateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CredentialServiceDeactivateResponse)
+	err := c.cc.Invoke(ctx, CredentialService_Deactivate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *credentialServiceClient) Activate(ctx context.Context, in *CredentialServiceActivateRequest, opts ...grpc.CallOption) (*CredentialServiceActivateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CredentialServiceActivateResponse)
+	err := c.cc.Invoke(ctx, CredentialService_Activate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *credentialServiceClient) SetDefault(ctx context.Context, in *CredentialServiceSetDefaultRequest, opts ...grpc.CallOption) (*CredentialServiceSetDefaultResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CredentialServiceSetDefaultResponse)
+	err := c.cc.Invoke(ctx, CredentialService_SetDefault_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *credentialServiceClient) Rotate(ctx context.Context, in *CredentialServiceRotateRequest, opts ...grpc.CallOption) (*CredentialServiceRotateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CredentialServiceRotateResponse)
+	err := c.cc.Invoke(ctx, CredentialService_Rotate_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +151,26 @@ type CredentialServiceServer interface {
 	// Register opens an identity on one channel. The name is how a message asks
 	// for it later, in SubmitRequest's Route.sender.
 	Register(context.Context, *CredentialServiceRegisterRequest) (*CredentialServiceRegisterResponse, error)
+	// List answers "what have I registered". Switched-off identities are in it,
+	// and that is the point: without them nobody can turn one back on.
+	List(context.Context, *CredentialServiceListRequest) (*CredentialServiceListResponse, error)
+	// Deactivate stops an identity being used without forgetting it, so turning
+	// it back on is not a re-registration. Nothing here deletes: after an incident
+	// the first question is when an identity was withdrawn, and a deleted row
+	// answers nothing.
+	//
+	// If it held the default, the channel is left with none until SetDefault names
+	// one. Guessing which should take over would move it silently.
+	Deactivate(context.Context, *CredentialServiceDeactivateRequest) (*CredentialServiceDeactivateResponse, error)
+	// Activate is the way back. It does not hand the default back.
+	Activate(context.Context, *CredentialServiceActivateRequest) (*CredentialServiceActivateResponse, error)
+	// SetDefault moves which identity a message that names none uses. A channel
+	// has at most one, so this takes it from whichever held it.
+	SetDefault(context.Context, *CredentialServiceSetDefaultRequest) (*CredentialServiceSetDefaultResponse, error)
+	// Rotate replaces the secret and keeps the name, which is what a leaked token
+	// needs: registering a second identity instead would make every message still
+	// naming the old one fail, turning a leak into a code change.
+	Rotate(context.Context, *CredentialServiceRotateRequest) (*CredentialServiceRotateResponse, error)
 	mustEmbedUnimplementedCredentialServiceServer()
 }
 
@@ -88,6 +183,21 @@ type UnimplementedCredentialServiceServer struct{}
 
 func (UnimplementedCredentialServiceServer) Register(context.Context, *CredentialServiceRegisterRequest) (*CredentialServiceRegisterResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Register not implemented")
+}
+func (UnimplementedCredentialServiceServer) List(context.Context, *CredentialServiceListRequest) (*CredentialServiceListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedCredentialServiceServer) Deactivate(context.Context, *CredentialServiceDeactivateRequest) (*CredentialServiceDeactivateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Deactivate not implemented")
+}
+func (UnimplementedCredentialServiceServer) Activate(context.Context, *CredentialServiceActivateRequest) (*CredentialServiceActivateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Activate not implemented")
+}
+func (UnimplementedCredentialServiceServer) SetDefault(context.Context, *CredentialServiceSetDefaultRequest) (*CredentialServiceSetDefaultResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetDefault not implemented")
+}
+func (UnimplementedCredentialServiceServer) Rotate(context.Context, *CredentialServiceRotateRequest) (*CredentialServiceRotateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Rotate not implemented")
 }
 func (UnimplementedCredentialServiceServer) mustEmbedUnimplementedCredentialServiceServer() {}
 func (UnimplementedCredentialServiceServer) testEmbeddedByValue()                           {}
@@ -128,6 +238,96 @@ func _CredentialService_Register_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CredentialService_List_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CredentialServiceListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CredentialServiceServer).List(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CredentialService_List_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CredentialServiceServer).List(ctx, req.(*CredentialServiceListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CredentialService_Deactivate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CredentialServiceDeactivateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CredentialServiceServer).Deactivate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CredentialService_Deactivate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CredentialServiceServer).Deactivate(ctx, req.(*CredentialServiceDeactivateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CredentialService_Activate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CredentialServiceActivateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CredentialServiceServer).Activate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CredentialService_Activate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CredentialServiceServer).Activate(ctx, req.(*CredentialServiceActivateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CredentialService_SetDefault_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CredentialServiceSetDefaultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CredentialServiceServer).SetDefault(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CredentialService_SetDefault_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CredentialServiceServer).SetDefault(ctx, req.(*CredentialServiceSetDefaultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CredentialService_Rotate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CredentialServiceRotateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CredentialServiceServer).Rotate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CredentialService_Rotate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CredentialServiceServer).Rotate(ctx, req.(*CredentialServiceRotateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CredentialService_ServiceDesc is the grpc.ServiceDesc for CredentialService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -138,6 +338,26 @@ var CredentialService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Register",
 			Handler:    _CredentialService_Register_Handler,
+		},
+		{
+			MethodName: "List",
+			Handler:    _CredentialService_List_Handler,
+		},
+		{
+			MethodName: "Deactivate",
+			Handler:    _CredentialService_Deactivate_Handler,
+		},
+		{
+			MethodName: "Activate",
+			Handler:    _CredentialService_Activate_Handler,
+		},
+		{
+			MethodName: "SetDefault",
+			Handler:    _CredentialService_SetDefault_Handler,
+		},
+		{
+			MethodName: "Rotate",
+			Handler:    _CredentialService_Rotate_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

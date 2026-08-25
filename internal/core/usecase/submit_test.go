@@ -71,7 +71,7 @@ func newRig(t *testing.T, tweak func(*rig, *options)) *rig {
 		fakeSources{byID: map[string]*source.Source{"acme": r.src}},
 		fakeLimiter{allow: o.allow},
 	)
-	credSvc := credential.NewService(fakeCredentials{byChannel: o.creds})
+	credSvc := credential.NewService(newFakeCredentials(o.creds), fixedNow(now))
 	notifSvc := notification.NewService(r.notifs, ids, clock)
 	delSvc := delivery.NewService(r.deliveries, r.publisher, ids, clock)
 
