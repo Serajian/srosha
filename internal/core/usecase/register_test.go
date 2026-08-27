@@ -80,7 +80,11 @@ func TestRegisterMovesTheExistingCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Register() error = %v", err)
 	}
-	second, _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/new"))
+	second, _, err := r.registrar.Register(
+		context.Background(),
+		"acme",
+		reg("https://acme.com/new"),
+	)
 	if err != nil {
 		t.Fatalf("second Register() error = %v", err)
 	}
