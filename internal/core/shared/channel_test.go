@@ -42,7 +42,7 @@ func TestAllChannelsCoversEveryConstant(t *testing.T) {
 			t.Errorf("%q is listed in AllChannels but Valid() says otherwise", c)
 		}
 	}
-	if got := len(shared.AllChannels()); got != 4 {
+	if got := len(shared.AllChannels()); got != 7 {
 		t.Errorf("AllChannels has %d entries; update this test when adding a channel", got)
 	}
 }
@@ -216,4 +216,87 @@ func TestChannelJSON(t *testing.T) {
 			t.Error("Marshal accepted a channel that is not one of the four")
 		}
 	})
+}
+
+// Google promises nothing about a device token's shape, so the rule is only a
+// length: a shape invented here would one day refuse a token that works.
+func TestAnFCMAddressIsOnlyCheckedForLength(t *testing.T) {
+	good := []string{
+		strings.Repeat("a", 32),
+		strings.Repeat("z", 163),
+		"cXy_dE:APA91bH" + strings.Repeat("Q", 140),
+	}
+	for _, address := range good {
+		if err := shared.ChannelFCM.ValidateAddress(address); err != nil {
+			t.Errorf("ValidateAddress(%d chars) = %v, want it accepted", len(address), err)
+		}
+	}
+
+	bad := map[string]string{
+		"empty":     "",
+		"too short": "not-a-device-token",
+		"absurd":    strings.Repeat("a", 5000),
+	}
+	for name, address := range bad {
+		t.Run(name, func(t *testing.T) {
+			if err := shared.ChannelFCM.ValidateAddress(address); err == nil {
+				t.Errorf("ValidateAddress(%q) = nil, want a refusal", name)
+			}
+		})
+	}
+}
+
+// The APNs token goes into a url path, unlike FCM's, which is a value in a json
+// body. That is the whole reason one is checked and the other is not.
+func TestAnAPNsAddressIsHexadecimal(t *testing.T) {
+	good := []string{strings.Repeat("a1b2c3d4", 8), strings.Repeat("F0", 16)}
+	for _, address := range good {
+		if err := shared.ChannelAPNs.ValidateAddress(address); err != nil {
+			t.Errorf("ValidateAddress(%d chars) = %v, want it accepted", len(address), err)
+		}
+	}
+
+	bad := map[string]string{
+		"empty":        "",
+		"not hex":      strings.Repeat("z", 64),
+		"a path in it": strings.Repeat("a", 30) + "/../" + strings.Repeat("b", 30),
+		"too short":    "a1b2",
+		"absurd":       strings.Repeat("ab", 200),
+	}
+	for name, address := range bad {
+		t.Run(name, func(t *testing.T) {
+			if err := shared.ChannelAPNs.ValidateAddress(address); err == nil {
+				t.Errorf("ValidateAddress(%q) = nil, want a refusal", name)
+			}
+		})
+	}
+}
+
+// Matrix has no way to message a person: you write into a room. A user id would
+// be accepted here and then fail on every send, so it is refused where it can
+// still be reported as a mistake.
+func TestAMatrixAddressIsARoom(t *testing.T) {
+	good := []string{"!abcdef:matrix.org", "!x:example.test", "!a:b"}
+	for _, address := range good {
+		if err := shared.ChannelMatrix.ValidateAddress(address); err != nil {
+			t.Errorf("ValidateAddress(%q) = %v", address, err)
+		}
+	}
+
+	bad := map[string]string{
+		"a user":         "@someone:matrix.org",
+		"an alias":       "#general:matrix.org",
+		"no sigil":       "abcdef:matrix.org",
+		"no server":      "!abcdef",
+		"no local part":  "!:matrix.org",
+		"nothing at all": "",
+		"an email":       "someone@acme.test",
+	}
+	for name, address := range bad {
+		t.Run(name, func(t *testing.T) {
+			if err := shared.ChannelMatrix.ValidateAddress(address); err == nil {
+				t.Errorf("ValidateAddress(%q) was accepted", address)
+			}
+		})
+	}
 }

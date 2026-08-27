@@ -2,6 +2,13 @@ package sender_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"testing"
@@ -10,6 +17,8 @@ import (
 	"github.com/Serajian/srosha/internal/adapter/sender"
 	"github.com/Serajian/srosha/internal/core/domain/credential"
 	"github.com/Serajian/srosha/internal/core/shared"
+	"github.com/Serajian/srosha/internal/infra/appleauth"
+	"github.com/Serajian/srosha/internal/infra/googleauth"
 	"github.com/Serajian/srosha/internal/infra/smtp"
 	"github.com/Serajian/srosha/pkg/errs"
 )
@@ -110,7 +119,7 @@ func registryOn(
 		credential.NewService(rows{byChannel: map[shared.Channel][]credential.Credential{
 			c: have,
 		}}, time.Now),
-		s, http.DefaultClient, mailDialer(t), own,
+		s, http.DefaultClient, mailDialer(t), googleTokens(t), appleTokens(t), own,
 	)
 	if err != nil {
 		t.Fatalf("NewRegistry: %v", err)
@@ -193,6 +202,10 @@ func TestEveryWiredChannelResolves(t *testing.T) {
 	tests := map[shared.Channel]struct {
 		own    sender.Fallback
 		config []byte
+
+		// secret overrides the bot token every other channel uses, for the one
+		// whose credential is not a token.
+		secret string
 	}{
 		shared.ChannelTelegram: {own: sender.Fallback{TelegramToken: ours}},
 		shared.ChannelBale:     {own: sender.Fallback{BaleToken: ours}},
@@ -202,11 +215,33 @@ func TestEveryWiredChannelResolves(t *testing.T) {
 			}},
 			config: []byte(`{"host":"smtp.theirs.test","from":"them@theirs.test"}`),
 		},
+		shared.ChannelMatrix: {
+			own: sender.Fallback{Matrix: sender.Matrix{
+				Token: ours, Homeserver: "https://matrix.acme.test",
+			}},
+			config: []byte(`{"homeserver":"https://matrix.theirs.test"}`),
+		},
 		shared.ChannelWhatsApp: {
 			own: sender.Fallback{WhatsApp: sender.WhatsApp{
 				Token: ours, PhoneNumberID: "123456789",
 			}},
 			config: []byte(`{"phone_number_id":"987654321"}`),
+		},
+		// The only channel whose secret is a whole file, and the only one with
+		// no settings at all: the project is inside the file.
+		shared.ChannelFCM: {
+			own:    sender.Fallback{FCMServiceAccount: serviceAccount(t, "srosha-ours")},
+			secret: serviceAccount(t, "srosha-theirs"),
+		},
+		// The most settings of any channel, and the only one needing all four.
+		shared.ChannelAPNs: {
+			own: sender.Fallback{APNs: sender.APNs{
+				Key: signingKey(t), KeyID: "OURS123456",
+				TeamID: "TEAM000000", Topic: "com.srosha.app",
+			}},
+			config: []byte(`{"key_id":"THRS123456","team_id":"TEAM111111",` +
+				`"topic":"com.theirs.app","environment":"sandbox"}`),
+			secret: signingKey(t),
 		},
 	}
 
@@ -214,7 +249,11 @@ func TestEveryWiredChannelResolves(t *testing.T) {
 		own := tt.own
 		t.Run(c.String(), func(t *testing.T) {
 			// theirs
-			s := &secrets{secret: theirs, config: tt.config}
+			material := theirs
+			if tt.secret != "" {
+				material = tt.secret
+			}
+			s := &secrets{secret: material, config: tt.config}
 			got, err := registryOn(t, c, []credential.Credential{credOn(t, c, "alerts", true, true)}, s, own).
 				For(context.Background(), sourceID, c, "")
 			if err != nil {
@@ -267,22 +306,104 @@ func TestAVaultFailureIsNotNoSender(t *testing.T) {
 func TestARegistryRefusesToBeBuiltHalfWired(t *testing.T) {
 	creds := credential.NewService(rows{}, time.Now)
 
-	if _, err := sender.NewRegistry(nil, &secrets{}, http.DefaultClient, mailDialer(t), sender.Fallback{}); err == nil {
+	mail, google, apple := mailDialer(t), googleTokens(t), appleTokens(t)
+	none := sender.Fallback{}
+
+	if _, err := sender.NewRegistry(
+		nil, &secrets{}, http.DefaultClient, mail, google, apple, none); err == nil {
 		t.Error("NewRegistry with no credentials succeeded")
 	}
-	if _, err := sender.NewRegistry(creds, nil, http.DefaultClient, mailDialer(t), sender.Fallback{}); err == nil {
+	if _, err := sender.NewRegistry(
+		creds, nil, http.DefaultClient, mail, google, apple, none); err == nil {
 		t.Error("NewRegistry with no vault succeeded")
 	}
-	if _, err := sender.NewRegistry(creds, &secrets{}, nil, mailDialer(t), sender.Fallback{}); err == nil {
+	if _, err := sender.NewRegistry(
+		creds, &secrets{}, nil, mail, google, apple, none); err == nil {
 		t.Error("NewRegistry with no client succeeded")
 	}
-	if _, err := sender.NewRegistry(creds, &secrets{}, http.DefaultClient, nil, sender.Fallback{}); err == nil {
+	if _, err := sender.NewRegistry(
+		creds, &secrets{}, http.DefaultClient, nil, google, apple, none); err == nil {
 		t.Error("NewRegistry with no mail dialer succeeded")
+	}
+	if _, err := sender.NewRegistry(
+		creds, &secrets{}, http.DefaultClient, mail, nil, apple, none); err == nil {
+		t.Error("NewRegistry with no google minter succeeded")
+	}
+	if _, err := sender.NewRegistry(
+		creds, &secrets{}, http.DefaultClient, mail, google, nil, none); err == nil {
+		t.Error("NewRegistry with no apple minter succeeded")
 	}
 }
 
 // mailDialer is what registry opens. Mail is the one channel whose way out is
 // not the shared http client.
+// googleTokens is the real minter. It reaches nobody here: Open parses a key
+// and caches it, and only Token talks to Google.
+func googleTokens(t *testing.T) *googleauth.Minter {
+	t.Helper()
+
+	m, err := googleauth.NewMinter(http.DefaultClient, googleauth.ScopeFCM)
+	if err != nil {
+		t.Fatalf("NewMinter: %v", err)
+	}
+	return m
+}
+
+// serviceAccount writes a key file the way Google does. The key is real because
+// the registry checks that it can sign before handing the credential on.
+func serviceAccount(t *testing.T, project string) string {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
+	}
+
+	raw, err := json.Marshal(map[string]string{
+		"type":         "service_account",
+		"project_id":   project,
+		"client_email": "pusher@" + project + ".iam.gserviceaccount.com",
+		"private_key":  string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})),
+		"token_uri":    "https://oauth2.googleapis.com/token",
+	})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	return string(raw)
+}
+
+// appleTokens is the real minter. It reaches nobody: a provider token is signed
+// locally, and Open only parses the key.
+func appleTokens(t *testing.T) *appleauth.Minter {
+	t.Helper()
+
+	m, err := appleauth.NewMinter(time.Now)
+	if err != nil {
+		t.Fatalf("appleauth.NewMinter: %v", err)
+	}
+	return m
+}
+
+// signingKey writes a .p8 the way Apple does. The key is real because the
+// registry checks that it can sign before handing the credential on.
+func signingKey(t *testing.T) string {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
+}
+
 func mailDialer(t *testing.T) *smtp.Dialer {
 	t.Helper()
 

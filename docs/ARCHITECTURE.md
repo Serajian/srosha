@@ -164,24 +164,24 @@ names and a status.
 
 ## What a channel is, and what adding one costs
 
-Four exist. `whatsapp` is in the enum with no sender behind it — the one case of a channel
-half here rather than not here, and it is half here because its API wants something the
-message does not carry.
+Seven exist: `email`, `telegram`, `bale`, `whatsapp`, `matrix`, `fcm`, `apns`. Every one of
+them has a sender behind it.
 
 A channel is added **with** its sender, never before it. Six places have to agree — the
 constant and its address rule, the proto enum, the mapper, the registry, and two CHECK
 constraints — and a channel that exists without a sender is one a source can send to and
 always get `NO_SENDER` from.
 
+What is left, and what each would cost:
+
 | | Address | What it needs beyond a sender |
 | --- | --- | --- |
-| SMS | E.164 number | nothing |
-| Matrix | user or room id | nothing |
-| FCM, APNs | device token | a structured secret |
+| SMS | E.164 number | a provider, and there is no obvious one |
 | RCS | E.164 number | nothing, if the provider does the SMS fallback |
-| WhatsApp | phone number | a template, outside the conversation window |
-| Instagram | scoped user id | the same, and it cannot open a conversation at all |
-| Web Push | an endpoint and two keys | an address that is not a string |
+
+Instagram is **not on this list and will not be**. Its messaging API can only answer somebody
+who wrote first, and the id it answers to comes out of a webhook this service does not
+receive. A channel that cannot start a conversation is not a way to notify anybody.
 
 ### Three seams, and why they are seams rather than features
 
@@ -196,23 +196,50 @@ the provider refusing the *recipient* rather than the message. A source can act 
 cannot act on the other: nothing they wrote differently would have helped. Three states
 modeled as booleans is what makes a fourth expensive.
 
-**A secret is bytes.** `pkg/crypto` seals and opens bytes, so a credential needing four
-fields — APNs wants a key, a key id, a team id — puts json inside the sealed value. Nothing
-changes for a channel whose secret is one token.
+**A secret is bytes.** `pkg/crypto` seals and opens bytes, so a credential whose secret is a
+whole file needs nothing new: FCM's is a service account, json wrapped around a private key,
+stored as one sealed value.
+
+But *only* the secret is sealed. APNs needs four things — a signing key, a key id, a team id
+and a topic — and three of them are not secrets: the key id names the file, the team id names
+the account, and the topic is the app's bundle id, which ships inside every copy of the app.
+They go in the credential's settings, where five other channels keep theirs. Sealing them
+would mean holding a decryption key to read the name of an app.
+
+**A credential is not always what gets sent.** FCM's service account cannot go in a header —
+it has to be exchanged with Google for an access token that lasts about an hour. That
+exchange is a technology, so it lives in `internal/infra/googleauth`, `internal/registry`
+opens it once, and the sender is handed something that answers `Token(ctx)`. The cache is
+there and not in the registry because a resource's lifetime belongs to whoever opened it. It
+matters because `SenderRegistry.For` builds a sender **per message**: without it, every push
+would pay for an RSA signature and a round trip to Google.
+
+APNs goes further: Apple has no endpoint to ask at all, so the token is a JWT signed in
+`internal/infra/appleauth`. What makes it a resource rather than a function is Apple's clock —
+refresh at least hourly, and never more often than every twenty minutes.
 
 ### Two decisions not yet made
 
-**A conversation window is the provider's to know, not ours.** WhatsApp and Instagram refuse
-a message outside a window the recipient opened, and Instagram refuses one to anybody who
-never wrote first. Modeling that here would mean receiving their webhooks and keeping
-conversation state — an inbound path this service does not have, for a service that sends. So
-the provider is the authority and the answer comes back as `NOT_REACHABLE`.
+**A conversation window is the provider's to know, not ours.** WhatsApp refuses a message
+outside a window the recipient opened. Modeling that here would mean receiving its webhooks
+and keeping conversation state — an inbound path this service does not have, for a service
+that sends. So the provider is the authority and the answer comes back as `NOT_REACHABLE`.
 
-**A structured address has no home yet.** A Web Push subscription is an endpoint and two
-keys. It can be json in the address column, but then the address stops being readable for one
-channel and `ValidateAddress` parses json. The alternatives are a second column always null
-for six channels, or an address that is a type rather than a string. Nothing is decided, and
-nothing needs to be until Web Push is built.
+**A structured address has no home yet, and nothing needs one.** A Web Push subscription is
+an endpoint and two keys, and it was the only channel that would have forced the question. It
+is parked, so the question is parked with it — but not what looking at it produced.
+
+Json in the `address` column is the cheap answer and the wrong one. It breaks the duplicate
+guard silently: the same subscription with its keys in a different order is a different
+string, and `UNIQUE (notification_id, channel, address)` would let it through twice — no
+error, no failing test, just somebody notified twice one day. It also makes `ValidateAddress`
+a json parser for one channel, puts an unreadable blob in what the API hands a source back,
+and stores key material in a column that holds names.
+
+The shape to reach for instead is a table of its own, with a short id in `address`: the guard
+keeps working, the column stays readable, and the secret half can be sealed like a credential.
+It costs the source a registration step before it can send. Nothing is built, and nothing
+needs to be until a channel asks.
 
 ---
 

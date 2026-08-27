@@ -17,3 +17,23 @@ const (
 	minE164Digits = 8
 	maxE164Digits = 15
 )
+
+// matrixRoomSigil is what a room id begins with. Matrix puts the kind of a
+// thing in its first character: "!" a room, "@" a user, "#" an alias. Only the
+// first is an address this service can send to.
+const matrixRoomSigil = "!"
+
+// Bounds for an FCM device token. Loose on purpose: Google documents no shape
+// for them, so this catches a value pasted wrong and nothing more.
+const (
+	minDeviceTokenLen = 32
+	maxDeviceTokenLen = 4096
+)
+
+// Bounds for an APNs device token. Apple's have been 64 hexadecimal characters
+// for a long time without that being promised, so the alphabet is the rule and
+// the length is a range.
+const (
+	minAPNsTokenLen = 32
+	maxAPNsTokenLen = 200
+)

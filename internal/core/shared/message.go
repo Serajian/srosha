@@ -16,6 +16,17 @@ type DispatchEvent struct {
 // never goes on a wire as it is, and each sender builds its provider's own
 // payload from it.
 type Message struct {
+	// DeliveryID names this send, and is the same value on every attempt at it.
+	//
+	// It is here because some providers deduplicate on an id the caller chooses
+	// -- Matrix will not create a second event for a transaction it has already
+	// seen -- and a value made up per attempt throws that away. srosha already
+	// has exactly the right value: a delivery is one message to one recipient,
+	// and it keeps its id across every retry.
+	//
+	// A sender that has nothing to do with it ignores it.
+	DeliveryID ID
+
 	Recipient Recipient
 	Title     string
 	Body      string

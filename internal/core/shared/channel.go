@@ -23,6 +23,9 @@ const (
 	ChannelTelegram Channel = "telegram"
 	ChannelBale     Channel = "bale"
 	ChannelWhatsApp Channel = "whatsapp"
+	ChannelMatrix   Channel = "matrix"
+	ChannelFCM      Channel = "fcm"
+	ChannelAPNs     Channel = "apns"
 )
 
 // AllChannels returns the full set in a stable order.
@@ -31,12 +34,16 @@ const (
 // because a caller sorting or truncating a shared slice would corrupt it for
 // everyone else.
 func AllChannels() []Channel {
-	return []Channel{ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp}
+	return []Channel{
+		ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp,
+		ChannelMatrix, ChannelFCM, ChannelAPNs,
+	}
 }
 
 func (c Channel) Valid() bool {
 	switch c {
-	case ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp:
+	case ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp,
+		ChannelMatrix, ChannelFCM, ChannelAPNs:
 		return true
 	default:
 		return false
@@ -99,6 +106,34 @@ func (c Channel) ValidateAddress(address string) error {
 			return invalidAddress(c, t, "not an E.164 phone number")
 		}
 
+	case ChannelFCM:
+		// A device token, and there is no rule to check it against: Google
+		// issues them, has changed their length between versions and promises
+		// nothing about their characters. A shape invented here would one day
+		// refuse a token that works, so only the obviously-wrong is refused.
+		if len(t) < minDeviceTokenLen || len(t) > maxDeviceTokenLen {
+			return invalidAddress(c, t, "not a device token")
+		}
+
+	case ChannelAPNs:
+		// Hexadecimal, unlike FCM's, and checked -- because this one becomes
+		// part of a url rather than a value in a json body. The length is a
+		// range because Apple's have been 64 characters for a long time
+		// without that ever being promised.
+		if len(t) < minAPNsTokenLen || len(t) > maxAPNsTokenLen || !isHex(t) {
+			return invalidAddress(c, t, "not a device token")
+		}
+
+	case ChannelMatrix:
+		// A room, and only a room. Matrix has no "send to this person": you
+		// send to a room, and reaching a person means finding or creating a
+		// private one with them -- conversation state this service does not
+		// keep. A user id here would be accepted and then fail on every send,
+		// so it is refused where it can still be reported as a mistake.
+		if !isMatrixRoom(t) {
+			return invalidAddress(c, t, "not a matrix room id")
+		}
+
 	default:
 		// Reached only if a channel constant is added above without a case
 		// here. Failing loudly beats silently accepting anything.
@@ -151,6 +186,21 @@ func isUsername(s string) bool {
 	return true
 }
 
+// isMatrixRoom checks the shape of a room id: an exclamation mark, an opaque
+// local part, a colon and the server that issued it.
+//
+// The local part is not checked beyond being there: it is the homeserver's to
+// choose and nothing about it is ours to have an opinion on.
+func isMatrixRoom(s string) bool {
+	local, ok := strings.CutPrefix(s, matrixRoomSigil)
+	if !ok {
+		return false
+	}
+
+	name, server, found := strings.Cut(local, ":")
+	return found && name != "" && server != ""
+}
+
 func isE164(s string) bool {
 	digits, ok := strings.CutPrefix(s, "+")
 	if !ok || len(digits) < minE164Digits || len(digits) > maxE164Digits {
@@ -190,4 +240,17 @@ func (c *Channel) UnmarshalJSON(b []byte) error {
 	}
 	*c = parsed
 	return nil
+}
+
+// isHex reports whether every character is a hexadecimal digit. An APNs device
+// token is written that way, and it ends up in a url path.
+func isHex(s string) bool {
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'f', r >= 'A' && r <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
 }

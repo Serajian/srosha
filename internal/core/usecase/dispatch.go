@@ -171,10 +171,11 @@ func (d *Dispatcher) deliver(
 	}
 
 	providerID, err := sender.Send(ctx, shared.Message{
-		Recipient: del.Recipient,
-		Title:     n.Title,
-		Body:      n.Body,
-		Metadata:  n.Metadata(),
+		DeliveryID: del.ID,
+		Recipient:  del.Recipient,
+		Title:      n.Title,
+		Body:       n.Body,
+		Metadata:   n.Metadata(),
 	})
 	if err != nil {
 		return d.sendFailed(ctx, del, n, err, lastChance)
