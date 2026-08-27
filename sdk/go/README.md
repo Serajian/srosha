@@ -509,14 +509,31 @@ guess which should take over.
 ## 8. Being told instead of asking
 
 ```go
-c.Webhooks.Register(ctx, "https://acme.test/srosha")
+hook, secret, err := c.Webhooks.Register(ctx, "https://acme.test/srosha")
 ```
 
 srosha then POSTs each delivery's final outcome. The url must be https and must
 not point inside srosha's own network.
 
-Every callback is signed with **HMAC-SHA256 over `<timestamp>.<body>`**, using
-a secret handed to you out of band.
+**That call is the only time you are given the signing secret.** srosha keeps it
+encrypted and no other call hands it back — not `Get`, not a listing, nothing.
+Store it wherever your verifier will read it from.
+
+Registering again to change the address returns an **empty** secret: the one you
+have still stands. Rotating it silently would break every receiver that was
+already verifying.
+
+Lost it, or it leaked:
+
+```go
+secret, err := c.Webhooks.RotateSecret(ctx)
+```
+
+Every receiver still checking with the old one starts failing the moment that
+returns. That is what a rotation is — change what verifies first, or accept the
+gap.
+
+Every callback is signed with **HMAC-SHA256 over `<timestamp>.<body>`**.
 
 **Verify it before you trust it.** An unverified callback is anything anybody
 posted to that url.

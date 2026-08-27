@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	WebhookService_Register_FullMethodName   = "/notification.v1.WebhookService/Register"
-	WebhookService_Get_FullMethodName        = "/notification.v1.WebhookService/Get"
-	WebhookService_Deactivate_FullMethodName = "/notification.v1.WebhookService/Deactivate"
-	WebhookService_Activate_FullMethodName   = "/notification.v1.WebhookService/Activate"
+	WebhookService_Register_FullMethodName     = "/notification.v1.WebhookService/Register"
+	WebhookService_Get_FullMethodName          = "/notification.v1.WebhookService/Get"
+	WebhookService_Deactivate_FullMethodName   = "/notification.v1.WebhookService/Deactivate"
+	WebhookService_Activate_FullMethodName     = "/notification.v1.WebhookService/Activate"
+	WebhookService_RotateSecret_FullMethodName = "/notification.v1.WebhookService/RotateSecret"
 )
 
 // WebhookServiceClient is the client API for WebhookService service.
@@ -51,6 +52,13 @@ type WebhookServiceClient interface {
 	// switched off for being dead must not be switched off again by the first
 	// hiccup after it was fixed.
 	Activate(ctx context.Context, in *ActivateRequest, opts ...grpc.CallOption) (*ActivateResponse, error)
+	// RotateSecret issues a new signing secret and returns it once.
+	//
+	// It exists because the secret is shown once and kept sealed: without it, a
+	// source that lost theirs could never verify another callback again. Every
+	// receiver still checking with the old one starts failing the moment this
+	// returns, which is what a rotation is.
+	RotateSecret(ctx context.Context, in *RotateSecretRequest, opts ...grpc.CallOption) (*RotateSecretResponse, error)
 }
 
 type webhookServiceClient struct {
@@ -101,6 +109,16 @@ func (c *webhookServiceClient) Activate(ctx context.Context, in *ActivateRequest
 	return out, nil
 }
 
+func (c *webhookServiceClient) RotateSecret(ctx context.Context, in *RotateSecretRequest, opts ...grpc.CallOption) (*RotateSecretResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RotateSecretResponse)
+	err := c.cc.Invoke(ctx, WebhookService_RotateSecret_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WebhookServiceServer is the server API for WebhookService service.
 // All implementations must embed UnimplementedWebhookServiceServer
 // for forward compatibility.
@@ -127,6 +145,13 @@ type WebhookServiceServer interface {
 	// switched off for being dead must not be switched off again by the first
 	// hiccup after it was fixed.
 	Activate(context.Context, *ActivateRequest) (*ActivateResponse, error)
+	// RotateSecret issues a new signing secret and returns it once.
+	//
+	// It exists because the secret is shown once and kept sealed: without it, a
+	// source that lost theirs could never verify another callback again. Every
+	// receiver still checking with the old one starts failing the moment this
+	// returns, which is what a rotation is.
+	RotateSecret(context.Context, *RotateSecretRequest) (*RotateSecretResponse, error)
 	mustEmbedUnimplementedWebhookServiceServer()
 }
 
@@ -148,6 +173,9 @@ func (UnimplementedWebhookServiceServer) Deactivate(context.Context, *Deactivate
 }
 func (UnimplementedWebhookServiceServer) Activate(context.Context, *ActivateRequest) (*ActivateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Activate not implemented")
+}
+func (UnimplementedWebhookServiceServer) RotateSecret(context.Context, *RotateSecretRequest) (*RotateSecretResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RotateSecret not implemented")
 }
 func (UnimplementedWebhookServiceServer) mustEmbedUnimplementedWebhookServiceServer() {}
 func (UnimplementedWebhookServiceServer) testEmbeddedByValue()                        {}
@@ -242,6 +270,24 @@ func _WebhookService_Activate_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WebhookService_RotateSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RotateSecretRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WebhookServiceServer).RotateSecret(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WebhookService_RotateSecret_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WebhookServiceServer).RotateSecret(ctx, req.(*RotateSecretRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WebhookService_ServiceDesc is the grpc.ServiceDesc for WebhookService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -264,6 +310,10 @@ var WebhookService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Activate",
 			Handler:    _WebhookService_Activate_Handler,
+		},
+		{
+			MethodName: "RotateSecret",
+			Handler:    _WebhookService_RotateSecret_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -31,6 +31,14 @@ service WebhookService {
   // switched off for being dead must not be switched off again by the first
   // hiccup after it was fixed.
   rpc Activate(ActivateRequest) returns (ActivateResponse);
+
+  // RotateSecret issues a new signing secret and returns it once.
+  //
+  // It exists because the secret is shown once and kept sealed: without it, a
+  // source that lost theirs could never verify another callback again. Every
+  // receiver still checking with the old one starts failing the moment this
+  // returns, which is what a rotation is.
+  rpc RotateSecret(RotateSecretRequest) returns (RotateSecretResponse);
 }
 
 message RegisterRequest {
@@ -48,6 +56,13 @@ message RegisterRequest {
 // one proto package cannot hold two GetRequests.
 message WebhookServiceGetRequest {}
 
+message RotateSecretRequest {}
+
+message RotateSecretResponse {
+  // The new secret, returned exactly once. Nothing hands it back afterwards.
+  string secret = 1;
+}
+
 message DeactivateRequest {}
 
 message ActivateRequest {}
@@ -57,6 +72,15 @@ message ActivateRequest {}
 // needed every client breaks.
 message RegisterResponse {
   Webhook webhook = 1;
+
+  // The signing secret, returned ONLY on the first registration and never
+  // again -- what is stored is encrypted, and nothing reads it back except the
+  // signing itself. Keep it; a source that loses it calls RotateSecret.
+  //
+  // Empty when this call changed the address of a callback that already
+  // existed. The existing secret still stands, and rotating it silently would
+  // break every receiver that was already verifying.
+  string secret = 2;
 }
 
 message WebhookServiceGetResponse {

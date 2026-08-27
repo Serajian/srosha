@@ -122,21 +122,11 @@ func TestReconcileThresholdsMustMakeSense(t *testing.T) {
 	}
 }
 
-func TestWebhookSecretsArePerSource(t *testing.T) {
-	setMinimum(t)
-	t.Setenv("NOTIF_WEBHOOK_SECRETS", `{"acme":"a1b2","shop":"c3d4"}`)
-
-	c, err := config.LoadDispatcher()
-	if err != nil {
-		t.Fatalf("LoadDispatcher() error = %v", err)
-	}
-	if c.Webhook.Secrets["acme"].Reveal() != "a1b2" || len(c.Webhook.Secrets) != 2 {
-		t.Errorf("secrets not read: %d entries", len(c.Webhook.Secrets))
-	}
-}
-
-// Printing a config must not leak what is in it.
-func TestSecretsDoNotPrint(t *testing.T) {
+// The signing secret used to be here, as a json map in an environment
+// variable. It is in the database now, sealed, so config must not grow a way
+// to carry one back: an environment that still sets the old key is an
+// environment somebody has not finished migrating.
+func TestTheSigningSecretIsNotConfigurationAnyMore(t *testing.T) {
 	setMinimum(t)
 	t.Setenv("NOTIF_WEBHOOK_SECRETS", `{"acme":"a1b2"}`)
 
@@ -144,9 +134,21 @@ func TestSecretsDoNotPrint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadDispatcher() error = %v", err)
 	}
+	if strings.Contains(fmt.Sprintf("%+v", c), "a1b2") {
+		t.Error("a secret set in the old variable still reached the config")
+	}
+}
+
+// Printing a config must not leak what is in it.
+func TestSecretsDoNotPrint(t *testing.T) {
+	setMinimum(t)
+	c, err := config.LoadDispatcher()
+	if err != nil {
+		t.Fatalf("LoadDispatcher() error = %v", err)
+	}
 
 	printed := fmt.Sprintf("%+v", c)
-	for _, leak := range []string{"a1b2", "pw@postgres", "pw@nats"} {
+	for _, leak := range []string{"pw@postgres", "pw@nats"} {
 		if strings.Contains(printed, leak) {
 			t.Errorf("printing the config leaked %q:\n%s", leak, printed)
 		}

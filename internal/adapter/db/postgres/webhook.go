@@ -2,12 +2,15 @@ package postgres
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"github.com/Serajian/srosha/internal/adapter/db/postgres/gen"
 	"github.com/Serajian/srosha/internal/core/domain/webhook"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/pkg/errs"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -162,4 +165,40 @@ func toWebhook(row gen.Webhook) *webhook.Webhook {
 		CreatedAt:           row.CreatedAt,
 		UpdatedAt:           row.UpdatedAt,
 	})
+}
+
+// WriteSecret replaces the sealed signing secret on one source's callback.
+//
+// It knows nothing about what is in that string: whether it is encrypted, with
+// which key, and how a key change is survived all stop at the secret package.
+func (r *WebhookRepository) WriteSecret(
+	ctx context.Context, sourceID string, id shared.ID, secret string, now time.Time,
+) error {
+	rows, err := r.q(ctx).WriteWebhookSecret(ctx, gen.WriteWebhookSecretParams{
+		ID:        id.String(),
+		SourceID:  sourceID,
+		Secret:    optional(secret),
+		UpdatedAt: now,
+	})
+	return wrote(rows, err, "write webhook secret")
+}
+
+// ReadSecret hands back the sealed secret and the row it belongs to, and treats
+// a source with no callback as one with no secret rather than as an error: the
+// caller is asking whether it can sign, and "there is nothing here" is an
+// answer to that.
+func (r *WebhookRepository) ReadSecret(
+	ctx context.Context, sourceID string,
+) (shared.ID, string, error) {
+	row, err := r.q(ctx).ReadWebhookSecret(ctx, sourceID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", "", nil
+		}
+		return "", "", failed("read webhook secret", err)
+	}
+	if row.Secret == nil {
+		return shared.ID(row.ID), "", nil
+	}
+	return shared.ID(row.ID), *row.Secret, nil
 }

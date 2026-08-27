@@ -257,7 +257,17 @@ func buildDispatcherCore(
 		return core, err
 	}
 
-	callback, err := notifier.New(callbacks, cfg.Webhook, now, log)
+	// The signing secret comes from the row, sealed, rather than from config.
+	// The dispatcher holds the keyring already -- it opens sending credentials
+	// with it on every message -- so this costs it no new capability.
+	callbackSecrets, err := secret.NewWebhookKeeper(
+		postgres.NewWebhookRepository(pool), keys, now,
+	)
+	if err != nil {
+		return core, err
+	}
+
+	callback, err := notifier.New(callbacks, callbackSecrets, now, log)
 	if err != nil {
 		return core, err
 	}

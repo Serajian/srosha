@@ -98,8 +98,12 @@ func WithTolerance(d time.Duration) VerifierOption {
 	return func(v *Verifier) { v.tolerance = d }
 }
 
-// NewVerifier takes the signing secret. It is per source and handed to you out
-// of band -- srosha never returns it from any rpc.
+// NewVerifier takes the signing secret.
+//
+// It is per source, and Webhooks.Register hands it over on the call that
+// creates the callback -- the only time anything does. srosha keeps it
+// encrypted and no rpc reads it back; RotateSecret issues a new one for a
+// source that lost theirs.
 func NewVerifier(secret string, opts ...VerifierOption) (*Verifier, error) {
 	if strings.TrimSpace(secret) == "" {
 		return nil, errors.New("srosha: no signing secret")

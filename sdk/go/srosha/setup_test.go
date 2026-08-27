@@ -33,6 +33,10 @@ type setup struct {
 	lists         []*pb.CredentialServiceListRequest
 	hooks         []*pb.RegisterRequest
 
+	// noSecret is a registration that moved an address rather than creating a
+	// callback.
+	noSecret bool
+
 	err error
 }
 
@@ -108,9 +112,12 @@ func (s *setup) SetDefault(
 
 func (s *setup) RegisterWebhook(req *pb.RegisterRequest) *pb.RegisterResponse {
 	s.hooks = append(s.hooks, req)
-	return &pb.RegisterResponse{Webhook: &pb.Webhook{
-		Id: "01HOOK", CallbackUrl: req.GetCallbackUrl(), IsActive: true,
-	}}
+	return &pb.RegisterResponse{
+		Webhook: &pb.Webhook{
+			Id: "01HOOK", CallbackUrl: req.GetCallbackUrl(), IsActive: true,
+		},
+		Secret: secretOnFirst(s.noSecret),
+	}
 }
 
 // hooks is the WebhookService half, kept apart so the method names do not
@@ -133,6 +140,19 @@ func (h hooks) Get(
 		Id: "01HOOK", CallbackUrl: "https://acme.test/hook",
 		IsActive: true, ConsecutiveFailures: 3,
 	}}, nil
+}
+
+func secretOnFirst(moved bool) string {
+	if moved {
+		return ""
+	}
+	return "whsec_first"
+}
+
+func (h hooks) RotateSecret(
+	context.Context, *pb.RotateSecretRequest,
+) (*pb.RotateSecretResponse, error) {
+	return &pb.RotateSecretResponse{Secret: "whsec_rotated"}, nil
 }
 
 func (h hooks) Deactivate(
@@ -515,9 +535,12 @@ func TestAWebhookIsRegisteredAndReadBack(t *testing.T) {
 	s := &setup{}
 	c := dialSetup(t, s)
 
-	got, err := c.Webhooks.Register(context.Background(), "https://acme.test/hook")
+	got, secret, err := c.Webhooks.Register(context.Background(), "https://acme.test/hook")
 	if err != nil {
 		t.Fatalf("Register: %v", err)
+	}
+	if secret != "whsec_first" {
+		t.Errorf("secret = %q, want the one and only time it is handed over", secret)
 	}
 	if got.CallbackURL != "https://acme.test/hook" || !got.Active {
 		t.Errorf("webhook = %+v", got)
@@ -688,5 +711,35 @@ func TestWhoamiRetriesWhenSroshaIsDown(t *testing.T) {
 	}
 	if i.calls != 3 {
 		t.Errorf("tried %d times, want 3", i.calls)
+	}
+}
+
+// The secret crosses the wire on the first registration and nowhere else, so
+// the SDK must hand it straight through rather than dropping it.
+func TestRotateSecretHandsBackTheNewOne(t *testing.T) {
+	s := &setup{}
+	c := dialSetup(t, s)
+
+	got, err := c.Webhooks.RotateSecret(context.Background())
+	if err != nil {
+		t.Fatalf("RotateSecret: %v", err)
+	}
+	if got != "whsec_rotated" {
+		t.Errorf("secret = %q, want the rotated one", got)
+	}
+}
+
+// A registration that moved an address rather than creating a callback returns
+// no secret, because the existing one still stands.
+func TestMovingAnAddressReturnsNoSecret(t *testing.T) {
+	s := &setup{noSecret: true}
+	c := dialSetup(t, s)
+
+	_, secret, err := c.Webhooks.Register(context.Background(), "https://acme.test/moved")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if secret != "" {
+		t.Errorf("secret = %q, want none when the address only moved", secret)
 	}
 }

@@ -65,3 +65,24 @@ SET is_active            = @is_active,
     consecutive_failures = CASE WHEN @is_active::boolean THEN 0 ELSE consecutive_failures END,
     updated_at           = @updated_at::timestamptz
 WHERE id = @id AND is_active <> @is_active::boolean;
+
+-- WriteWebhookSecret replaces the sealed signing secret.
+--
+-- Scoped by source as well as by id, so an id belonging to somebody else writes
+-- nothing rather than overwriting their secret.
+-- name: WriteWebhookSecret :execrows
+UPDATE webhooks
+SET secret     = @secret,
+    updated_at = @updated_at
+WHERE id = @id
+  AND source_id = @source_id;
+
+-- ReadWebhookSecret hands back the sealed secret and the row it belongs to.
+--
+-- The id comes with it because the seal is bound to both, so whoever opens it
+-- needs the pair and must not have to make a second query for the half it is
+-- missing.
+-- name: ReadWebhookSecret :one
+SELECT id, secret
+FROM webhooks
+WHERE source_id = @source_id;
