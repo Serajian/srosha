@@ -4,7 +4,7 @@ package notification.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/Serajian/srosha/gen/notification/v1;notificationv1";
+option go_package = "github.com/Serajian/srosha/sdk/go/notification/v1;notificationv1";
 
 // WebhookService manages where a source wants delivery outcomes pushed to.
 //

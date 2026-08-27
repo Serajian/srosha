@@ -156,6 +156,52 @@ You *can* reach srosha by its public domain from inside the network — but that
 leaves the private network, goes out to Traefik and comes back, for TLS you do
 not need. It also breaks when the domain does, while your neighbour is fine.
 
+### Know your limits before you hit them
+
+```go
+me, err := c.Whoami(ctx)
+```
+
+Two of the things below are otherwise only learnable by getting them wrong: a
+priority ceiling shows up as a message that was quietly lowered, and a retention
+window as a listing that was refused.
+
+```go
+me.ID                  // quote this when asking for help
+me.Name
+me.MaxPriority         // asking above it is lowered, not refused
+me.AllowCustomAddress  // false means DefaultAddresses is all you can reach
+me.DefaultAddresses    // per channel, what a route with no address resolves to
+me.Retention           // a listing may not reach further back
+me.MaxWindow()         // that, as the longest Window it will accept
+me.RateLimitPerMinute  // counted per source
+```
+
+It is also the cheapest way to find out the address is right and the key works.
+A client connects lazily, so without it the first news of either being wrong
+arrives on the first message that mattered:
+
+```go
+c, err := srosha.New(ctx, addr, key)
+if err != nil {
+	return err
+}
+if me, err := c.Whoami(ctx); err != nil {
+	log.Warn("srosha unreachable at startup", "err", err)
+} else {
+	log.Info("srosha", "as", me.Name, "ceiling", me.MaxPriority)
+}
+```
+
+**Call it when a process starts, not on a timer.** It is not a health check: it
+counts against your rate limit like every other call, and a successful answer
+says nothing about the next one — keys are revoked and networks part in
+between.
+
+And **do not refuse to start when it fails.** srosha is asynchronous; an
+application that will not boot while it is briefly down is worse than one that
+logs the warning and carries on.
+
 ### The whole message
 
 Everything `Message` carries, and what each field is for:

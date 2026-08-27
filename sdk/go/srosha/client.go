@@ -39,6 +39,7 @@ type Client struct {
 	conn *grpc.ClientConn
 
 	notifications pb.NotificationServiceClient
+	sources       pb.SourceServiceClient
 
 	// Credentials is a source's sending identities: which bot, which mail
 	// account, which signing key. Registered once and then never mentioned
@@ -125,6 +126,7 @@ func New(_ context.Context, address, apiKey string, opts ...Option) (*Client, er
 	c := &Client{
 		conn:          conn,
 		notifications: pb.NewNotificationServiceClient(conn),
+		sources:       pb.NewSourceServiceClient(conn),
 		timeout:       o.timeout,
 		attempts:      o.attempts,
 	}

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Serajian/srosha/internal/adapter/api/grpcsrv"
 	"github.com/Serajian/srosha/internal/adapter/auth"
@@ -118,6 +119,7 @@ func TestReflectionIsOffUnlessAskedFor(t *testing.T) {
 				"notification.v1.NotificationService",
 				"notification.v1.WebhookService",
 				"notification.v1.CredentialService",
+				"notification.v1.SourceService",
 			} {
 				if _, ok := server.GetServiceInfo()[ours]; !ok {
 					t.Errorf("%s is not registered", ours)
@@ -149,9 +151,12 @@ func deps(t *testing.T, reflection bool) grpcsrv.Deps {
 		Notifications: notifications,
 		Webhooks:      webhooks,
 		Credentials:   credentials,
-		Authn:         &source.Authenticator{},
-		Scheme:        auth.NewScheme(),
-		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Reflection:    reflection,
+		Sources: grpcsrv.NewSourceServer(grpcsrv.Limits{
+			Retention: 30 * 24 * time.Hour, RateLimitPerMinute: 600,
+		}),
+		Authn:      &source.Authenticator{},
+		Scheme:     auth.NewScheme(),
+		Log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Reflection: reflection,
 	}
 }
