@@ -40,6 +40,26 @@ enum Channel {
   CHANNEL_APNS = 7;
 }
 
+// Window is how far back a listing reaches.
+//
+// A closed set rather than two timestamps the caller picks, because this
+// service is not an archive: past the retention age a message is deleted, and
+// a range reaching beyond it comes back short with nothing saying so. An empty
+// answer would then mean two things at once -- "you sent nothing" and "you sent
+// something we no longer have" -- and the caller cannot tell which.
+//
+// UNSPECIFIED is not "no window". It means as far back as this deployment
+// keeps, and it is the only value that is right whatever that age is set to,
+// because it names no number of its own. Any other value longer than the
+// retention age is refused, and the answer says how far back it can go.
+enum Window {
+  WINDOW_UNSPECIFIED = 0;
+  WINDOW_LAST_HOUR = 1;
+  WINDOW_LAST_DAY = 2;
+  WINDOW_LAST_WEEK = 3;
+  WINDOW_LAST_MONTH = 4;
+}
+
 // DeliveryStatus is what happened to one recipient.
 //
 // There is no RETRYING. A delivery that failed transiently stays PENDING and is

@@ -205,7 +205,7 @@ func buildDispatcherCore(
 	webhookRows := postgres.NewWebhookRepository(pool)
 
 	// --- the rules over them ------------------------------------------------
-	notifications := notification.NewService(notificationRows, ids.Generate, now)
+	notifications := notification.NewService(notificationRows, ids.Generate, now, cfg.Retention.Age)
 	deliveries := delivery.NewTracker(deliveryRows, now)
 	credentials := credential.NewService(credentialRows, now)
 	webhooks := webhook.NewService(webhookRows, ids.Generate, now, webhook.URLPolicy{

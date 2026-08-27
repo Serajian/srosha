@@ -1,6 +1,7 @@
 package grpcsrv
 
 import (
+	"fmt"
 	"time"
 
 	pb "github.com/Serajian/srosha/gen/notification/v1"
@@ -68,6 +69,32 @@ func toChannel(c pb.Channel) (shared.Channel, error) {
 	default:
 		return "", errs.InvalidInputErr("unknown channel").
 			WithErr(shared.ErrUnknownChannel)
+	}
+}
+
+// toWindow reads how far back a listing reaches.
+//
+// UNSPECIFIED is not "the caller said nothing to fall back from": it is the
+// widest window this deployment can honestly serve, which is what somebody who
+// did not choose means. A value this build does not know is refused rather than
+// treated as that -- a newer client asking for a window we cannot serve should
+// hear so, not be quietly given a different one.
+func toWindow(w pb.Window) (notification.Window, error) {
+	switch w {
+	case pb.Window_WINDOW_UNSPECIFIED:
+		return notification.WindowAll, nil
+	case pb.Window_WINDOW_LAST_HOUR:
+		return notification.WindowLastHour, nil
+	case pb.Window_WINDOW_LAST_DAY:
+		return notification.WindowLastDay, nil
+	case pb.Window_WINDOW_LAST_WEEK:
+		return notification.WindowLastWeek, nil
+	case pb.Window_WINDOW_LAST_MONTH:
+		return notification.WindowLastMonth, nil
+	default:
+		return 0, errs.InvalidInputErr("unknown time window").
+			WithErr(notification.ErrUnknownWindow).
+			WithStr(fmt.Sprintf("window %d", w))
 	}
 }
 

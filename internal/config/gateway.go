@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Serajian/srosha/internal/config/settings"
 )
@@ -17,6 +18,11 @@ type Gateway struct {
 	DB         settings.DB
 	MQ         settings.MQ
 	RateLimit  settings.RateLimit
+
+	// RetentionAge is the dispatcher's number, read here too. The gateway never
+	// deletes anything -- it refuses a listing that reaches past what is left,
+	// because serving one would hand back a short page with nothing saying so.
+	RetentionAge time.Duration
 
 	// The gateway seals a sending credential when a source registers one, and
 	// the cipher is symmetric: holding the key to seal is holding the key to
@@ -41,14 +47,15 @@ func LoadGateway() (Gateway, error) {
 
 	app := settings.LoadApp(r)
 	c := Gateway{
-		App:        app,
-		GRPC:       settings.LoadGRPC(r),
-		Auth:       settings.LoadAuth(r),
-		HTTPServer: settings.LoadHTTPServer(r),
-		DB:         settings.LoadDB(r),
-		MQ:         settings.LoadMQ(r),
-		RateLimit:  settings.LoadRateLimit(r),
-		Crypto:     settings.LoadCrypto(r),
+		App:          app,
+		RetentionAge: settings.LoadRetentionAge(r),
+		GRPC:         settings.LoadGRPC(r),
+		Auth:         settings.LoadAuth(r),
+		HTTPServer:   settings.LoadHTTPServer(r),
+		DB:           settings.LoadDB(r),
+		MQ:           settings.LoadMQ(r),
+		RateLimit:    settings.LoadRateLimit(r),
+		Crypto:       settings.LoadCrypto(r),
 
 		WebhookPolicy: settings.LoadWebhookPolicy(r, app.IsProduction()),
 		Telemetry:     settings.LoadTelemetry(r, app.IsProduction()),

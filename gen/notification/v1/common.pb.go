@@ -156,6 +156,73 @@ func (Channel) EnumDescriptor() ([]byte, []int) {
 	return file_notification_v1_common_proto_rawDescGZIP(), []int{1}
 }
 
+// Window is how far back a listing reaches.
+//
+// A closed set rather than two timestamps the caller picks, because this
+// service is not an archive: past the retention age a message is deleted, and
+// a range reaching beyond it comes back short with nothing saying so. An empty
+// answer would then mean two things at once -- "you sent nothing" and "you sent
+// something we no longer have" -- and the caller cannot tell which.
+//
+// UNSPECIFIED is not "no window". It means as far back as this deployment
+// keeps, and it is the only value that is right whatever that age is set to,
+// because it names no number of its own. Any other value longer than the
+// retention age is refused, and the answer says how far back it can go.
+type Window int32
+
+const (
+	Window_WINDOW_UNSPECIFIED Window = 0
+	Window_WINDOW_LAST_HOUR   Window = 1
+	Window_WINDOW_LAST_DAY    Window = 2
+	Window_WINDOW_LAST_WEEK   Window = 3
+	Window_WINDOW_LAST_MONTH  Window = 4
+)
+
+// Enum value maps for Window.
+var (
+	Window_name = map[int32]string{
+		0: "WINDOW_UNSPECIFIED",
+		1: "WINDOW_LAST_HOUR",
+		2: "WINDOW_LAST_DAY",
+		3: "WINDOW_LAST_WEEK",
+		4: "WINDOW_LAST_MONTH",
+	}
+	Window_value = map[string]int32{
+		"WINDOW_UNSPECIFIED": 0,
+		"WINDOW_LAST_HOUR":   1,
+		"WINDOW_LAST_DAY":    2,
+		"WINDOW_LAST_WEEK":   3,
+		"WINDOW_LAST_MONTH":  4,
+	}
+)
+
+func (x Window) Enum() *Window {
+	p := new(Window)
+	*p = x
+	return p
+}
+
+func (x Window) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Window) Descriptor() protoreflect.EnumDescriptor {
+	return file_notification_v1_common_proto_enumTypes[2].Descriptor()
+}
+
+func (Window) Type() protoreflect.EnumType {
+	return &file_notification_v1_common_proto_enumTypes[2]
+}
+
+func (x Window) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Window.Descriptor instead.
+func (Window) EnumDescriptor() ([]byte, []int) {
+	return file_notification_v1_common_proto_rawDescGZIP(), []int{2}
+}
+
 // DeliveryStatus is what happened to one recipient.
 //
 // There is no RETRYING. A delivery that failed transiently stays PENDING and is
@@ -197,11 +264,11 @@ func (x DeliveryStatus) String() string {
 }
 
 func (DeliveryStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_notification_v1_common_proto_enumTypes[2].Descriptor()
+	return file_notification_v1_common_proto_enumTypes[3].Descriptor()
 }
 
 func (DeliveryStatus) Type() protoreflect.EnumType {
-	return &file_notification_v1_common_proto_enumTypes[2]
+	return &file_notification_v1_common_proto_enumTypes[3]
 }
 
 func (x DeliveryStatus) Number() protoreflect.EnumNumber {
@@ -210,7 +277,7 @@ func (x DeliveryStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DeliveryStatus.Descriptor instead.
 func (DeliveryStatus) EnumDescriptor() ([]byte, []int) {
-	return file_notification_v1_common_proto_rawDescGZIP(), []int{2}
+	return file_notification_v1_common_proto_rawDescGZIP(), []int{3}
 }
 
 // FailureReason says why a delivery will not be retried.
@@ -275,11 +342,11 @@ func (x FailureReason) String() string {
 }
 
 func (FailureReason) Descriptor() protoreflect.EnumDescriptor {
-	return file_notification_v1_common_proto_enumTypes[3].Descriptor()
+	return file_notification_v1_common_proto_enumTypes[4].Descriptor()
 }
 
 func (FailureReason) Type() protoreflect.EnumType {
-	return &file_notification_v1_common_proto_enumTypes[3]
+	return &file_notification_v1_common_proto_enumTypes[4]
 }
 
 func (x FailureReason) Number() protoreflect.EnumNumber {
@@ -288,7 +355,7 @@ func (x FailureReason) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use FailureReason.Descriptor instead.
 func (FailureReason) EnumDescriptor() ([]byte, []int) {
-	return file_notification_v1_common_proto_rawDescGZIP(), []int{3}
+	return file_notification_v1_common_proto_rawDescGZIP(), []int{4}
 }
 
 // Page is where a listing carries on from.
@@ -372,7 +439,13 @@ const file_notification_v1_common_proto_rawDesc = "" +
 	"\x10CHANNEL_WHATSAPP\x10\x04\x12\x12\n" +
 	"\x0eCHANNEL_MATRIX\x10\x05\x12\x0f\n" +
 	"\vCHANNEL_FCM\x10\x06\x12\x10\n" +
-	"\fCHANNEL_APNS\x10\a*\x84\x01\n" +
+	"\fCHANNEL_APNS\x10\a*x\n" +
+	"\x06Window\x12\x16\n" +
+	"\x12WINDOW_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10WINDOW_LAST_HOUR\x10\x01\x12\x13\n" +
+	"\x0fWINDOW_LAST_DAY\x10\x02\x12\x14\n" +
+	"\x10WINDOW_LAST_WEEK\x10\x03\x12\x15\n" +
+	"\x11WINDOW_LAST_MONTH\x10\x04*\x84\x01\n" +
 	"\x0eDeliveryStatus\x12\x1f\n" +
 	"\x1bDELIVERY_STATUS_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17DELIVERY_STATUS_PENDING\x10\x01\x12\x18\n" +
@@ -399,14 +472,15 @@ func file_notification_v1_common_proto_rawDescGZIP() []byte {
 	return file_notification_v1_common_proto_rawDescData
 }
 
-var file_notification_v1_common_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_notification_v1_common_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
 var file_notification_v1_common_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_notification_v1_common_proto_goTypes = []any{
 	(Priority)(0),       // 0: notification.v1.Priority
 	(Channel)(0),        // 1: notification.v1.Channel
-	(DeliveryStatus)(0), // 2: notification.v1.DeliveryStatus
-	(FailureReason)(0),  // 3: notification.v1.FailureReason
-	(*Page)(nil),        // 4: notification.v1.Page
+	(Window)(0),         // 2: notification.v1.Window
+	(DeliveryStatus)(0), // 3: notification.v1.DeliveryStatus
+	(FailureReason)(0),  // 4: notification.v1.FailureReason
+	(*Page)(nil),        // 5: notification.v1.Page
 }
 var file_notification_v1_common_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -426,7 +500,7 @@ func file_notification_v1_common_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_notification_v1_common_proto_rawDesc), len(file_notification_v1_common_proto_rawDesc)),
-			NumEnums:      4,
+			NumEnums:      5,
 			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,

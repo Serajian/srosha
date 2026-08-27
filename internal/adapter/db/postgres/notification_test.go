@@ -181,7 +181,7 @@ func TestPageBySourceWalksBackwardsThroughTime(t *testing.T) {
 		ids = append(ids, n.ID)
 	}
 
-	first, err := repo.PageBySource(ctx, src.ID, notification.Window{}, shared.Cursor{Limit: 2})
+	first, err := repo.PageBySource(ctx, src.ID, time.Time{}, shared.Cursor{Limit: 2})
 	if err != nil {
 		t.Fatalf("PageBySource: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestPageBySourceWalksBackwardsThroughTime(t *testing.T) {
 		t.Errorf("first page = %s, %s, want the two newest", first.Items[0].ID, first.Items[1].ID)
 	}
 
-	second, err := repo.PageBySource(ctx, src.ID, notification.Window{},
+	second, err := repo.PageBySource(ctx, src.ID, time.Time{},
 		shared.Cursor{Limit: 2, After: first.NextCursor})
 	if err != nil {
 		t.Fatalf("PageBySource: %v", err)
@@ -202,9 +202,10 @@ func TestPageBySourceWalksBackwardsThroughTime(t *testing.T) {
 	}
 }
 
-// Both halves of the window are independent, and until is exclusive so two
-// windows that meet cannot both return the same message.
-func TestPageBySourceHonorsTheWindow(t *testing.T) {
+// The lower bound is inclusive: a message created exactly at it is in. There is
+// no upper bound -- every window reaches back from now, so there is nothing to
+// bound the other end with.
+func TestPageBySourceHonorsTheLowerBound(t *testing.T) {
 	pool := connect(t)
 	truncate(t, pool)
 	ctx := context.Background()
@@ -227,7 +228,7 @@ func TestPageBySourceHonorsTheWindow(t *testing.T) {
 	// The boundary sits between them: old is before it, recent is at or after.
 	cut := recent.CreatedAt
 
-	from, err := repo.PageBySource(ctx, src.ID, notification.Window{From: &cut}, shared.Cursor{})
+	from, err := repo.PageBySource(ctx, src.ID, cut, shared.Cursor{})
 	if err != nil {
 		t.Fatalf("PageBySource: %v", err)
 	}
@@ -235,12 +236,13 @@ func TestPageBySourceHonorsTheWindow(t *testing.T) {
 		t.Errorf("from the cut = %+v, want only the recent one", from.Items)
 	}
 
-	until, err := repo.PageBySource(ctx, src.ID, notification.Window{Until: &cut}, shared.Cursor{})
+	// A bound before both takes both, which is what the widest window becomes.
+	all, err := repo.PageBySource(ctx, src.ID, old.CreatedAt.Add(-time.Hour), shared.Cursor{})
 	if err != nil {
 		t.Fatalf("PageBySource: %v", err)
 	}
-	if len(until.Items) != 1 || until.Items[0].ID != old.ID {
-		t.Errorf("until the cut = %+v, want only the old one", until.Items)
+	if len(all.Items) != 2 {
+		t.Errorf("before both = %d items, want 2", len(all.Items))
 	}
 }
 
@@ -266,7 +268,7 @@ func TestPageBySourceShowsOnlyOneSourcesMessages(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	got, err := repo.PageBySource(ctx, mine.ID, notification.Window{}, shared.Cursor{})
+	got, err := repo.PageBySource(ctx, mine.ID, time.Time{}, shared.Cursor{})
 	if err != nil {
 		t.Fatalf("PageBySource: %v", err)
 	}

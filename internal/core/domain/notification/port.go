@@ -19,7 +19,7 @@ type Repository interface {
 	// source asking the question wants, and the opposite of every other listing
 	// here.
 	PageBySource(
-		ctx context.Context, sourceID string, w Window, c shared.Cursor,
+		ctx context.Context, sourceID string, since time.Time, c shared.Cursor,
 	) (shared.Pagination[Notification], error)
 
 	// DeleteOlderThan drops one batch of messages written before a moment and

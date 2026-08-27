@@ -213,10 +213,11 @@ func (r *fakeNotifications) ReadByID(
 	return n, nil
 }
 
-// PageBySource is newest first, as postgres is, and honors the window: a fake
-// that ignored either would let a listing that ordered or filtered wrongly pass.
+// PageBySource is newest first, as postgres is, and honors the lower bound: a
+// fake that ignored either would let a listing that ordered or filtered wrongly
+// pass.
 func (r *fakeNotifications) PageBySource(
-	_ context.Context, sourceID string, w notification.Window, c shared.Cursor,
+	_ context.Context, sourceID string, since time.Time, c shared.Cursor,
 ) (shared.Pagination[notification.Notification], error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -227,8 +228,7 @@ func (r *fakeNotifications) PageBySource(
 	for _, n := range r.byID {
 		switch {
 		case n.SourceID != sourceID:
-		case w.From != nil && n.CreatedAt.Before(*w.From):
-		case w.Until != nil && !n.CreatedAt.Before(*w.Until):
+		case n.CreatedAt.Before(since):
 		case c.After != nil && n.ID >= *c.After:
 		default:
 			all = append(all, n)

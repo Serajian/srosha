@@ -19,6 +19,10 @@ import (
 
 var now = time.Date(2026, 8, 20, 17, 30, 0, 0, time.UTC)
 
+// testRetention is deliberately shorter than a month, so a test asking for
+// WindowLastMonth is asking for more than this deployment keeps.
+const testRetention = 7 * 24 * time.Hour
+
 func acmeSource() *source.Source {
 	return &source.Source{
 		ID:                 "acme",
@@ -72,7 +76,7 @@ func newRig(t *testing.T, tweak func(*rig, *options)) *rig {
 		fakeLimiter{allow: o.allow},
 	)
 	credSvc := credential.NewService(newFakeCredentials(o.creds), fixedNow(now))
-	notifSvc := notification.NewService(r.notifs, ids, clock)
+	notifSvc := notification.NewService(r.notifs, ids, clock, testRetention)
 	delSvc := delivery.NewService(r.deliveries, r.publisher, ids, clock)
 
 	r.submitter = usecase.NewSubmitter(

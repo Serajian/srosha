@@ -255,7 +255,8 @@ cannot share a wire.
 | Group | Keys | gateway | dispatcher |
 | --- | --- | --- | --- |
 | reconcile | `NOTIF_RECONCILE_AFTER`, `NOTIF_RECONCILE_GIVE_UP`, `NOTIF_RECONCILE_SCHEDULE`, `NOTIF_RECONCILE_BATCH`, `NOTIF_RECONCILE_LEASE` | — | ✅ |
-| retention | `NOTIF_RETENTION_AGE`, `NOTIF_RETENTION_SCHEDULE`, `NOTIF_RETENTION_BATCH` | — | ✅ |
+| retention | `NOTIF_RETENTION_AGE` | ✅ | ✅ |
+| retention sweep | `NOTIF_RETENTION_SCHEDULE`, `NOTIF_RETENTION_BATCH` | — | ✅ |
 
 `NOTIF_WEBHOOK_SECRETS` holds one signing secret per source, keyed by source id.
 Each source gets its own: with a single shared secret, any source holding it
@@ -284,6 +285,14 @@ holds only while a delivery gives up long before a message is dropped: it gives
 up in minutes, so one still pending a month later is a row recovery never saw
 rather than work waiting to happen. Loading refuses an age under 24×
 `NOTIF_RECONCILE_GIVE_UP`, so that reasoning cannot quietly stop being true.
+
+`RETENTION_AGE` is read by **both** binaries, and it is the only key in this
+table split across two rows for that reason. The dispatcher deletes by it. The
+gateway never deletes anything — it refuses a `List` whose window reaches
+further back, because serving one would hand back a short page with nothing
+saying it was short, and the caller could not tell "you sent nothing then" from
+"we deleted it". Set them from one value; two that disagree means a listing
+refused for data that is still there, or served for data that is gone.
 
 ---
 
