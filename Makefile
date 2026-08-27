@@ -340,8 +340,9 @@ lint-fix: format ## [Lint] Run format then golangci-lint --fix
 # long lines that nothing complained about until somebody ran the formatter and
 # got an unrelated diff mixed into their work.
 #
-# sdk/ is absent on purpose: it is its own module, and `make sdk` checks it with
-# golangci-lint, whose formatters cover the same ground.
+# sdk/ is absent here and checked by `make sdk` instead, because it is its own
+# module. Note that golangci-lint does NOT cover this: its formatters are
+# gofumpt and gci, and neither wraps a long line.
 .PHONY: fmt-check
 fmt-check: ## [Lint] Fail if anything is unformatted. Read-only, unlike `format`.
 	@echo "$(COLOR_YELLOW)🔎 gofmt -l...$(COLOR_RESET)"
@@ -460,6 +461,15 @@ prepush: precommit lint-if-present test-race sdk ## [Lint] What the pre-push hoo
 sdk: ## [Test] Build, vet and test the SDK module
 	@echo "$(COLOR_YELLOW)📦 sdk/go...$(COLOR_RESET)"
 	@cd sdk/go && go build ./... && go vet ./... && go test -race ./...
+	@if command -v golines >/dev/null 2>&1; then \
+	   toolong=$$(cd sdk/go && golines --max-len=100 -l . 2>/dev/null || true); \
+	   if [ -n "$$toolong" ]; then \
+	      echo "$(COLOR_RED)❌ lines over 100 in sdk/go:$(COLOR_RESET)"; \
+	      echo "$$toolong" | sed 's/^/   /'; \
+	      echo "   run: make format"; \
+	      exit 1; \
+	   fi; \
+	fi
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 	   cd sdk/go && golangci-lint run; \
 	fi

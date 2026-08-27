@@ -197,7 +197,10 @@ func TestWhatIsNotASignedCallbackAtAll(t *testing.T) {
 	}
 	for name, headers := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := v.Verify(headers, []byte(callbackBody)); !errors.Is(err, srosha.ErrSignatureMissing) {
+			if _, err := v.Verify(headers, []byte(callbackBody)); !errors.Is(
+				err,
+				srosha.ErrSignatureMissing,
+			) {
 				t.Errorf("Verify = %v, want ErrSignatureMissing", err)
 			}
 		})
@@ -219,7 +222,10 @@ func TestASignatureThisBuildCannotCheck(t *testing.T) {
 			h.Set(srosha.SignatureHeader, signature)
 			h.Set(srosha.TimestampHeader, now)
 
-			if _, err := v.Verify(h, []byte(callbackBody)); !errors.Is(err, srosha.ErrSignatureInvalid) {
+			if _, err := v.Verify(h, []byte(callbackBody)); !errors.Is(
+				err,
+				srosha.ErrSignatureInvalid,
+			) {
 				t.Errorf("Verify = %v, want ErrSignatureInvalid", err)
 			}
 		})

@@ -203,7 +203,11 @@ func (v *Verifier) fresh(timestamp string) error {
 		drift = -drift
 	}
 	if drift > v.tolerance {
-		return fmt.Errorf("%w: signed %s away from now", ErrCallbackTooOld, drift.Round(time.Second))
+		return fmt.Errorf(
+			"%w: signed %s away from now",
+			ErrCallbackTooOld,
+			drift.Round(time.Second),
+		)
 	}
 	return nil
 }
