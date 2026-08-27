@@ -515,13 +515,58 @@ c.Webhooks.Register(ctx, "https://acme.test/srosha")
 هر callback با **HMAC-SHA256 روی `<timestamp>.<body>`** امضا می‌شود، با رازی که
 بیرون از این سرویس به شما داده می‌شود.
 
-> **این کتابخانه آن امضا را برایتان بررسی نمی‌کند.** تا وقتی که بکند، خودتان
-> قبل از اعتماد به یک callback بررسی‌اش کنید. یک callback ــِ بررسی‌نشده یعنی هر
-> چیزی که هرکسی به آن url فرستاده.
+**قبل از اعتماد، بررسی‌اش کنید.** یک callback ــِ بررسی‌نشده یعنی هر چیزی که هرکسی
+به آن url فرستاده.
 
-callback بهترین-تلاش است: بعد از یک حد دوباره تلاش نمی‌شود، و شکستِ کافی
-خاموشش می‌کند. `Get` و `List` مسیرِ قابلِ اتکا هستند — webhook شما را از polling
-بی‌نیاز می‌کند، جایش را نمی‌گیرد.
+```go
+// یک بار، سرِ راه‌اندازی.
+v, err := srosha.NewVerifier(os.Getenv("SROSHA_WEBHOOK_SECRET"))
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	cb, err := v.Verify(r.Header, body)
+	if err != nil {
+		// نگویید کدام بررسی شکست خورد. کسی که دارد حدس می‌زند لازم نیست
+		// بداند چقدر نزدیک شده.
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	for _, d := range cb.Deliveries {
+		fmt.Println(d.Channel, d.Address, d.Status, d.Reason)
+	}
+	w.WriteHeader(http.StatusOK)
+}
+```
+
+سه چیز را بررسی می‌کند، و هرکدام مسئلهٔ متفاوتی‌اند:
+
+| | |
+| --- | --- |
+| `ErrSignatureMissing` | اصلاً امضایی نیست. کسی که srosha نیست |
+| `ErrSignatureInvalid` | امضا نمی‌خواند. کسی که خودش را srosha جا زده، یا بدنه در راه عوض شده |
+| `ErrCallbackTooOld` | اصیل است، ولی خیلی وقت پیش امضا شده. تقریباً همیشه replay — علتِ دیگرش ساعتِ خودتان است |
+
+**بدنه را خام بخوانید و دست‌نخورده بدهید.** امضا روی دقیقاً همان بایت‌هایی است که
+srosha فرستاده، پس بدنه‌ای که دوباره encode شده، مرتب چاپ شده، یا از یک decoder
+ــِ json رد شده، تأیید نمی‌شود. این باگ نیست؛ همان کارِ امضاست.
+
+پنجرهٔ کهنگی پیش‌فرض پنج دقیقه است، و **دقیقاً همان مدتی است که یک callback ــِ
+ضبط‌شده قابلِ replay می‌ماند**. `srosha.WithTolerance(d)` بازترش می‌کند — فقط
+برای ساعتی که نمی‌توانید درستش کنید.
+
+`Verify` عمداً یک تابع است نه یک `http.Handler`: وصل کردنش به یک route سه خط
+است و مالِ همان framework ای است که استفاده می‌کنید.
+
+callback بهترین-تلاش است: بعد از یک حد دوباره تلاش نمی‌شود، و شکستِ کافی خاموشش
+می‌کند. `Get` و `List` مسیرِ قابلِ اتکا هستند — webhook شما را از polling بی‌نیاز
+می‌کند، جایش را نمی‌گیرد. به‌محضِ اینکه callback را گرفتید `2xx` بدهید، نه بعد از
+اینکه کارتان با آن تمام شد.
 
 ## ۹ — خطاها
 
