@@ -4,7 +4,6 @@ import (
 	"context"
 
 	pb "github.com/Serajian/srosha/gen/notification/v1"
-	"github.com/Serajian/srosha/internal/core/domain/notification"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/pkg/errs"
@@ -105,11 +104,13 @@ func (s *NotificationServer) List(
 		return nil, err
 	}
 
+	window, err := toWindow(req.GetWindow())
+	if err != nil {
+		return nil, err
+	}
+
 	page, err := s.querier.List(ctx, src.ID, usecase.ListQuery{
-		Window: notification.Window{
-			From:  toTime(req.GetFrom()),
-			Until: toTime(req.GetUntil()),
-		},
+		Window: window,
 		Cursor: cursor,
 	})
 	if err != nil {

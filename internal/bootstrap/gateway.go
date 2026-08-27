@@ -172,7 +172,7 @@ func buildGatewayCore(
 		return core, err
 	}
 
-	notifications := notification.NewService(notificationRows, ids.Generate, now)
+	notifications := notification.NewService(notificationRows, ids.Generate, now, cfg.RetentionAge)
 	deliveries := delivery.NewService(deliveryRows, publisher, ids.Generate, now)
 	webhooks := webhook.NewService(webhookRows, ids.Generate, now, webhook.URLPolicy{
 		AllowInsecure: cfg.WebhookPolicy.AllowInsecureURL,

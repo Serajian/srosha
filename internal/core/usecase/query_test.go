@@ -3,8 +3,8 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/Serajian/srosha/internal/core/domain/notification"
 	"github.com/Serajian/srosha/internal/core/shared"
@@ -202,16 +202,22 @@ func TestListShowsOnlyTheCallersMessages(t *testing.T) {
 	}
 }
 
-// A window that cannot contain anything is a question nobody meant to ask, and
-// an empty answer would look like an answer.
-func TestAWindowThatEndsBeforeItStarts(t *testing.T) {
+// A window reaching past what is kept would come back short and look complete.
+// The caller could not tell "you sent nothing then" from "we deleted it", so it
+// is refused -- and the refusal says how far back they can go.
+func TestAWindowLongerThanMessagesAreKept(t *testing.T) {
 	r := newRig(t, nil)
 
-	from, until := now, now.Add(-time.Hour)
 	_, err := r.querier.List(context.Background(), "acme", usecase.ListQuery{
-		Window: notification.Window{From: &from, Until: &until},
+		Window: notification.WindowLastMonth,
 	})
 	if !errs.IsType(err, errs.ErrInvalidInput) {
-		t.Errorf("List() = %v, want invalid input", err)
+		t.Fatalf("List() = %v, want invalid input", err)
+	}
+	if !errors.Is(err, notification.ErrWindowTooLong) {
+		t.Errorf("List() = %v, want ErrWindowTooLong", err)
+	}
+	if !strings.Contains(err.Error(), "7 days") {
+		t.Errorf("List() = %q, want the real limit in the message", err)
 	}
 }

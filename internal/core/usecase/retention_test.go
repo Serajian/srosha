@@ -18,7 +18,7 @@ func retentionRig(t *testing.T, age time.Duration, batch int, at time.Time) (*us
 
 	rows := newFakeNotifications()
 	return usecase.NewRetention(
-		notification.NewService(rows, seqIDs(), fixedNow(at)),
+		notification.NewService(rows, seqIDs(), fixedNow(at), testRetention),
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		age, batch,
 	), rows

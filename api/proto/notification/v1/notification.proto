@@ -32,14 +32,11 @@ service NotificationService {
 }
 
 message NotificationServiceListRequest {
-  // Both halves are optional and independent: "since yesterday" and "that week
-  // in March" are both real questions, and neither should have to invent the
-  // other's bound. until is exclusive, so two windows that meet cannot both
-  // return the same message.
-  google.protobuf.Timestamp from = 1;
-  google.protobuf.Timestamp until = 2;
+  // How far back to look. Unset means as far back as this deployment keeps,
+  // which is the only answer that is always right. See Window.
+  Window window = 1;
 
-  Page page = 3;
+  Page page = 2;
 }
 
 message NotificationServiceListResponse {

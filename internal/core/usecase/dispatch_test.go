@@ -95,7 +95,7 @@ func newDispatchRig(t *testing.T, tweak func(*dispatchOpts)) *dispatchRig {
 	}
 
 	d.dispatcher = usecase.NewDispatcher(
-		notification.NewService(r.notifs, seqIDs(), clock),
+		notification.NewService(r.notifs, seqIDs(), clock, testRetention),
 		delivery.NewTracker(r.deliveries, clock),
 		webhookSvc,
 		o.registry,

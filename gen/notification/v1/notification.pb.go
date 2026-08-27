@@ -24,13 +24,10 @@ const (
 
 type NotificationServiceListRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Both halves are optional and independent: "since yesterday" and "that week
-	// in March" are both real questions, and neither should have to invent the
-	// other's bound. until is exclusive, so two windows that meet cannot both
-	// return the same message.
-	From          *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=from,proto3" json:"from,omitempty"`
-	Until         *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=until,proto3" json:"until,omitempty"`
-	Page          *Page                  `protobuf:"bytes,3,opt,name=page,proto3" json:"page,omitempty"`
+	// How far back to look. Unset means as far back as this deployment keeps,
+	// which is the only answer that is always right. See Window.
+	Window        Window `protobuf:"varint,1,opt,name=window,proto3,enum=notification.v1.Window" json:"window,omitempty"`
+	Page          *Page  `protobuf:"bytes,2,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -65,18 +62,11 @@ func (*NotificationServiceListRequest) Descriptor() ([]byte, []int) {
 	return file_notification_v1_notification_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *NotificationServiceListRequest) GetFrom() *timestamppb.Timestamp {
+func (x *NotificationServiceListRequest) GetWindow() Window {
 	if x != nil {
-		return x.From
+		return x.Window
 	}
-	return nil
-}
-
-func (x *NotificationServiceListRequest) GetUntil() *timestamppb.Timestamp {
-	if x != nil {
-		return x.Until
-	}
-	return nil
+	return Window_WINDOW_UNSPECIFIED
 }
 
 func (x *NotificationServiceListRequest) GetPage() *Page {
@@ -724,11 +714,10 @@ var File_notification_v1_notification_proto protoreflect.FileDescriptor
 
 const file_notification_v1_notification_proto_rawDesc = "" +
 	"\n" +
-	"\"notification/v1/notification.proto\x12\x0fnotification.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cnotification/v1/common.proto\"\xad\x01\n" +
-	"\x1eNotificationServiceListRequest\x12.\n" +
-	"\x04from\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x120\n" +
-	"\x05until\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x05until\x12)\n" +
-	"\x04page\x18\x03 \x01(\v2\x15.notification.v1.PageR\x04page\"\x8e\x01\n" +
+	"\"notification/v1/notification.proto\x12\x0fnotification.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cnotification/v1/common.proto\"|\n" +
+	"\x1eNotificationServiceListRequest\x12/\n" +
+	"\x06window\x18\x01 \x01(\x0e2\x17.notification.v1.WindowR\x06window\x12)\n" +
+	"\x04page\x18\x02 \x01(\v2\x15.notification.v1.PageR\x04page\"\x8e\x01\n" +
 	"\x1fNotificationServiceListResponse\x12C\n" +
 	"\rnotifications\x18\x01 \x03(\v2\x1d.notification.v1.NotificationR\rnotifications\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"m\n" +
@@ -818,47 +807,47 @@ var file_notification_v1_notification_proto_goTypes = []any{
 	(*NotificationServiceGetResponse)(nil),  // 8: notification.v1.NotificationServiceGetResponse
 	nil,                                     // 9: notification.v1.SubmitRequest.MetadataEntry
 	nil,                                     // 10: notification.v1.Notification.MetadataEntry
-	(*timestamppb.Timestamp)(nil),           // 11: google.protobuf.Timestamp
+	(Window)(0),                             // 11: notification.v1.Window
 	(*Page)(nil),                            // 12: notification.v1.Page
 	(Channel)(0),                            // 13: notification.v1.Channel
 	(Priority)(0),                           // 14: notification.v1.Priority
-	(DeliveryStatus)(0),                     // 15: notification.v1.DeliveryStatus
-	(FailureReason)(0),                      // 16: notification.v1.FailureReason
+	(*timestamppb.Timestamp)(nil),           // 15: google.protobuf.Timestamp
+	(DeliveryStatus)(0),                     // 16: notification.v1.DeliveryStatus
+	(FailureReason)(0),                      // 17: notification.v1.FailureReason
 }
 var file_notification_v1_notification_proto_depIdxs = []int32{
-	11, // 0: notification.v1.NotificationServiceListRequest.from:type_name -> google.protobuf.Timestamp
-	11, // 1: notification.v1.NotificationServiceListRequest.until:type_name -> google.protobuf.Timestamp
-	12, // 2: notification.v1.NotificationServiceListRequest.page:type_name -> notification.v1.Page
-	7,  // 3: notification.v1.NotificationServiceListResponse.notifications:type_name -> notification.v1.Notification
-	13, // 4: notification.v1.Route.channel:type_name -> notification.v1.Channel
-	14, // 5: notification.v1.SubmitRequest.priority:type_name -> notification.v1.Priority
-	11, // 6: notification.v1.SubmitRequest.expire_at:type_name -> google.protobuf.Timestamp
-	9,  // 7: notification.v1.SubmitRequest.metadata:type_name -> notification.v1.SubmitRequest.MetadataEntry
-	2,  // 8: notification.v1.SubmitRequest.routes:type_name -> notification.v1.Route
-	14, // 9: notification.v1.SubmitResponse.effective_priority:type_name -> notification.v1.Priority
-	12, // 10: notification.v1.NotificationServiceGetRequest.page:type_name -> notification.v1.Page
-	13, // 11: notification.v1.Delivery.channel:type_name -> notification.v1.Channel
-	15, // 12: notification.v1.Delivery.status:type_name -> notification.v1.DeliveryStatus
-	16, // 13: notification.v1.Delivery.failure_reason:type_name -> notification.v1.FailureReason
-	11, // 14: notification.v1.Delivery.updated_at:type_name -> google.protobuf.Timestamp
-	14, // 15: notification.v1.Notification.requested_priority:type_name -> notification.v1.Priority
-	14, // 16: notification.v1.Notification.effective_priority:type_name -> notification.v1.Priority
-	11, // 17: notification.v1.Notification.expire_at:type_name -> google.protobuf.Timestamp
-	10, // 18: notification.v1.Notification.metadata:type_name -> notification.v1.Notification.MetadataEntry
-	11, // 19: notification.v1.Notification.created_at:type_name -> google.protobuf.Timestamp
-	7,  // 20: notification.v1.NotificationServiceGetResponse.notification:type_name -> notification.v1.Notification
-	6,  // 21: notification.v1.NotificationServiceGetResponse.deliveries:type_name -> notification.v1.Delivery
-	3,  // 22: notification.v1.NotificationService.Submit:input_type -> notification.v1.SubmitRequest
-	5,  // 23: notification.v1.NotificationService.Get:input_type -> notification.v1.NotificationServiceGetRequest
-	0,  // 24: notification.v1.NotificationService.List:input_type -> notification.v1.NotificationServiceListRequest
-	4,  // 25: notification.v1.NotificationService.Submit:output_type -> notification.v1.SubmitResponse
-	8,  // 26: notification.v1.NotificationService.Get:output_type -> notification.v1.NotificationServiceGetResponse
-	1,  // 27: notification.v1.NotificationService.List:output_type -> notification.v1.NotificationServiceListResponse
-	25, // [25:28] is the sub-list for method output_type
-	22, // [22:25] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	11, // 0: notification.v1.NotificationServiceListRequest.window:type_name -> notification.v1.Window
+	12, // 1: notification.v1.NotificationServiceListRequest.page:type_name -> notification.v1.Page
+	7,  // 2: notification.v1.NotificationServiceListResponse.notifications:type_name -> notification.v1.Notification
+	13, // 3: notification.v1.Route.channel:type_name -> notification.v1.Channel
+	14, // 4: notification.v1.SubmitRequest.priority:type_name -> notification.v1.Priority
+	15, // 5: notification.v1.SubmitRequest.expire_at:type_name -> google.protobuf.Timestamp
+	9,  // 6: notification.v1.SubmitRequest.metadata:type_name -> notification.v1.SubmitRequest.MetadataEntry
+	2,  // 7: notification.v1.SubmitRequest.routes:type_name -> notification.v1.Route
+	14, // 8: notification.v1.SubmitResponse.effective_priority:type_name -> notification.v1.Priority
+	12, // 9: notification.v1.NotificationServiceGetRequest.page:type_name -> notification.v1.Page
+	13, // 10: notification.v1.Delivery.channel:type_name -> notification.v1.Channel
+	16, // 11: notification.v1.Delivery.status:type_name -> notification.v1.DeliveryStatus
+	17, // 12: notification.v1.Delivery.failure_reason:type_name -> notification.v1.FailureReason
+	15, // 13: notification.v1.Delivery.updated_at:type_name -> google.protobuf.Timestamp
+	14, // 14: notification.v1.Notification.requested_priority:type_name -> notification.v1.Priority
+	14, // 15: notification.v1.Notification.effective_priority:type_name -> notification.v1.Priority
+	15, // 16: notification.v1.Notification.expire_at:type_name -> google.protobuf.Timestamp
+	10, // 17: notification.v1.Notification.metadata:type_name -> notification.v1.Notification.MetadataEntry
+	15, // 18: notification.v1.Notification.created_at:type_name -> google.protobuf.Timestamp
+	7,  // 19: notification.v1.NotificationServiceGetResponse.notification:type_name -> notification.v1.Notification
+	6,  // 20: notification.v1.NotificationServiceGetResponse.deliveries:type_name -> notification.v1.Delivery
+	3,  // 21: notification.v1.NotificationService.Submit:input_type -> notification.v1.SubmitRequest
+	5,  // 22: notification.v1.NotificationService.Get:input_type -> notification.v1.NotificationServiceGetRequest
+	0,  // 23: notification.v1.NotificationService.List:input_type -> notification.v1.NotificationServiceListRequest
+	4,  // 24: notification.v1.NotificationService.Submit:output_type -> notification.v1.SubmitResponse
+	8,  // 25: notification.v1.NotificationService.Get:output_type -> notification.v1.NotificationServiceGetResponse
+	1,  // 26: notification.v1.NotificationService.List:output_type -> notification.v1.NotificationServiceListResponse
+	24, // [24:27] is the sub-list for method output_type
+	21, // [21:24] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_notification_v1_notification_proto_init() }

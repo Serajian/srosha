@@ -18,5 +18,11 @@ var (
 
 	ErrEmptyBody      = errors.New("body is required")
 	ErrAlreadyExpired = errors.New("expiry is not in the future")
-	ErrEmptyWindow    = errors.New("the time window ends before it starts")
+
+	// ErrUnknownWindow is a value outside the set. With an enum a caller cannot
+	// build a nonsense range any more, only name one that does not exist.
+	ErrUnknownWindow = errors.New("unknown time window")
+
+	// ErrWindowTooLong reaches past what this deployment keeps.
+	ErrWindowTooLong = errors.New("the time window is longer than messages are kept")
 )

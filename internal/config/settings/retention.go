@@ -28,14 +28,23 @@ type Retention struct {
 	Batch int
 }
 
+// LoadRetentionAge reads how long a message is kept, and is read by **both**
+// binaries. The dispatcher deletes by it; the gateway refuses a listing that
+// reaches past it, because a short page that looks complete is worse than a
+// refusal. Two loaders for one key would be two numbers that could disagree.
+func LoadRetentionAge(r *env.Reader) time.Duration {
+	age := r.Duration("RETENTION_AGE", 30*24*time.Hour)
+	r.Check(age > 0, "NOTIF_RETENTION_AGE must be above zero")
+	return age
+}
+
 func LoadRetention(r *env.Reader, d Dispatch) Retention {
 	t := Retention{
-		Age:      r.Duration("RETENTION_AGE", 30*24*time.Hour),
+		Age:      LoadRetentionAge(r),
 		Schedule: r.Str("RETENTION_SCHEDULE", "0 3 * * *"),
 		Batch:    r.Int("RETENTION_BATCH", 1000),
 	}
 
-	r.Check(t.Age > 0, "NOTIF_RETENTION_AGE must be above zero")
 	r.Check(t.Batch > 0, "NOTIF_RETENTION_BATCH must be above zero")
 	r.Check(t.Schedule != "", "NOTIF_RETENTION_SCHEDULE must not be empty")
 

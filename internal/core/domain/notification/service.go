@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/Serajian/srosha/internal/core/shared"
@@ -12,10 +13,18 @@ type Service struct {
 	repo  Repository
 	newID shared.IDFunc
 	now   shared.NowFunc
+
+	// keeps is how long this deployment holds a message. It is here because a
+	// listing has to be refused against it, and refusing is a rule rather than
+	// a query -- the database would answer a question about deleted rows with
+	// an empty page and no complaint.
+	keeps time.Duration
 }
 
-func NewService(repo Repository, newID shared.IDFunc, now shared.NowFunc) *Service {
-	return &Service{repo: repo, newID: newID, now: now}
+func NewService(
+	repo Repository, newID shared.IDFunc, now shared.NowFunc, keeps time.Duration,
+) *Service {
+	return &Service{repo: repo, newID: newID, now: now, keeps: keeps}
 }
 
 // Create builds the message and stores it. Building and storing live together
@@ -35,17 +44,44 @@ func (s *Service) Get(ctx context.Context, id shared.ID) (*Notification, error) 
 	return s.repo.ReadByID(ctx, id)
 }
 
-// Page answers "what did I send". A window that cannot contain anything is
-// refused here rather than asked of the database: it is a question nobody meant
-// to ask, and an empty answer would look like an answer.
+// Page answers "what did I send".
+//
+// A window that reaches past what this deployment keeps is refused, and the
+// answer says how far back it can go. Serving it would return a short page
+// that looks complete: the caller cannot tell "you sent nothing then" from
+// "we deleted it".
 func (s *Service) Page(
 	ctx context.Context, sourceID string, w Window, c shared.Cursor,
 ) (shared.Pagination[Notification], error) {
 	if !w.Valid() {
 		return shared.Pagination[Notification]{},
-			errs.InvalidInputErr("the time window ends before it starts").WithErr(ErrEmptyWindow)
+			errs.InvalidInputErr("unknown time window").
+				WithErr(ErrUnknownWindow).
+				WithStr(fmt.Sprintf("window %s", w))
 	}
-	return s.repo.PageBySource(ctx, sourceID, w, c)
+	if w.Length(s.keeps) > s.keeps {
+		// The limit is in the message and not only the reason: it is the one
+		// thing the caller needs in order to ask again successfully.
+		return shared.Pagination[Notification]{},
+			errs.InvalidInputErr(fmt.Sprintf(
+				"this service keeps messages for %s", humanAge(s.keeps))).
+				WithErr(ErrWindowTooLong).
+				WithStr(fmt.Sprintf("window %s reaches back %s", w, w.Length(s.keeps)))
+	}
+	return s.repo.PageBySource(ctx, sourceID, w.Since(s.now(), s.keeps), c)
+}
+
+// humanAge renders a retention age the way somebody reading an error thinks of
+// it. time.Duration prints 168h0m0s, which is true and no help.
+func humanAge(d time.Duration) string {
+	switch {
+	case d >= 24*time.Hour:
+		return fmt.Sprintf("%d days", int(d.Hours()/24))
+	case d >= time.Hour:
+		return fmt.Sprintf("%d hours", int(d.Hours()))
+	default:
+		return d.String()
+	}
 }
 
 // GetByIdempotencyKey returns nil when the key is unused.

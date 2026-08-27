@@ -102,10 +102,13 @@ func (r *NotificationRepository) DeleteOlderThan(
 // it just sent. The cursor therefore walks backwards through the ids, which is
 // backwards through time -- a ULID orders by both.
 //
-// The window is a Window rather than two arguments, so a caller cannot pass them
-// the wrong way round without saying so.
+// A moment rather than a window: what "last week" means is a rule, and a rule
+// belongs above the statement that reads rows. This one only fetches.
+//
+// There is no upper bound. Every window reaches back from now, so there is
+// nothing to bound the other end with.
 func (r *NotificationRepository) PageBySource(
-	ctx context.Context, sourceID string, w notification.Window, c shared.Cursor,
+	ctx context.Context, sourceID string, since time.Time, c shared.Cursor,
 ) (shared.Pagination[notification.Notification], error) {
 	c = c.Normalize()
 
@@ -117,8 +120,8 @@ func (r *NotificationRepository) PageBySource(
 	rows, err := r.q(ctx).PageNotificationsBySource(ctx, gen.PageNotificationsBySourceParams{
 		SourceID: sourceID,
 		After:    after,
-		From:     w.From,
-		Until:    w.Until,
+		From:     &since,
+		Until:    nil,
 		RowLimit: int32(c.Limit) + 1, //nolint:gosec // clamped by Normalize
 	})
 	if err != nil {
