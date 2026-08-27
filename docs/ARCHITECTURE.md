@@ -178,7 +178,6 @@ What is left, and what each would cost:
 | --- | --- | --- |
 | SMS | E.164 number | a provider, and there is no obvious one |
 | RCS | E.164 number | nothing, if the provider does the SMS fallback |
-| Web Push | an endpoint and two keys | an address that is not a string |
 
 Instagram is **not on this list and will not be**. Its messaging API can only answer somebody
 who wrote first, and the id it answers to comes out of a webhook this service does not
@@ -226,11 +225,21 @@ outside a window the recipient opened. Modeling that here would mean receiving i
 and keeping conversation state — an inbound path this service does not have, for a service
 that sends. So the provider is the authority and the answer comes back as `NOT_REACHABLE`.
 
-**A structured address has no home yet.** A Web Push subscription is an endpoint and two
-keys. It can be json in the address column, but then the address stops being readable for one
-channel and `ValidateAddress` parses json. The alternatives are a second column always null
-for six channels, or an address that is a type rather than a string. Nothing is decided, and
-nothing needs to be until Web Push is built.
+**A structured address has no home yet, and nothing needs one.** A Web Push subscription is
+an endpoint and two keys, and it was the only channel that would have forced the question. It
+is parked, so the question is parked with it — but not what looking at it produced.
+
+Json in the `address` column is the cheap answer and the wrong one. It breaks the duplicate
+guard silently: the same subscription with its keys in a different order is a different
+string, and `UNIQUE (notification_id, channel, address)` would let it through twice — no
+error, no failing test, just somebody notified twice one day. It also makes `ValidateAddress`
+a json parser for one channel, puts an unreadable blob in what the API hands a source back,
+and stores key material in a column that holds names.
+
+The shape to reach for instead is a table of its own, with a short id in `address`: the guard
+keeps working, the column stays readable, and the secret half can be sealed like a credential.
+It costs the source a registration step before it can send. Nothing is built, and nothing
+needs to be until a channel asks.
 
 ---
 
