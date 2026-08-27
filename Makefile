@@ -335,6 +335,13 @@ lint-fix: format ## [Lint] Run format then golangci-lint --fix
 	@$(GOLANGCI_LINT) run --fix --timeout 2m ./...
 	@echo "$(COLOR_GREEN)✅ Lint autofix done.$(COLOR_RESET)"
 
+# Both halves of `make format`, checked rather than applied. golines is here as
+# well as gofmt because it was not, and a repository accumulated 35 files of
+# long lines that nothing complained about until somebody ran the formatter and
+# got an unrelated diff mixed into their work.
+#
+# sdk/ is absent on purpose: it is its own module, and `make sdk` checks it with
+# golangci-lint, whose formatters cover the same ground.
 .PHONY: fmt-check
 fmt-check: ## [Lint] Fail if anything is unformatted. Read-only, unlike `format`.
 	@echo "$(COLOR_YELLOW)🔎 gofmt -l...$(COLOR_RESET)"
@@ -344,6 +351,16 @@ fmt-check: ## [Lint] Fail if anything is unformatted. Read-only, unlike `format`
 	   echo "$$unformatted" | sed 's/^/   /'; \
 	   echo "   run: make format"; \
 	   exit 1; \
+	fi
+	@echo "$(COLOR_YELLOW)🔎 golines -l...$(COLOR_RESET)"
+	@if command -v golines >/dev/null 2>&1; then \
+	   toolong=$$(golines --max-len=100 -l ./cmd ./internal ./pkg 2>/dev/null || true); \
+	   if [ -n "$$toolong" ]; then \
+	      echo "$(COLOR_RED)❌ lines over 100:$(COLOR_RESET)"; \
+	      echo "$$toolong" | sed 's/^/   /'; \
+	      echo "   run: make format"; \
+	      exit 1; \
+	   fi; \
 	fi
 	@echo "$(COLOR_GREEN)✅ Formatting is clean.$(COLOR_RESET)"
 

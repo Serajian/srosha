@@ -3,7 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://go.dev"><img alt="Go 1.26" src="https://img.shields.io/badge/Go-1.26-33A5DE?labelColor=0F172A"></a>
+  <a href="https://go.dev"><img alt="Service: Go 1.26" src="https://img.shields.io/badge/service-Go%201.26-33A5DE?labelColor=0F172A"></a>
+  <a href="sdk/go/README.md"><img alt="SDK: Go 1.23" src="https://img.shields.io/badge/SDK-Go%201.23-33A5DE?labelColor=0F172A"></a>
   <img alt="Status: in development" src="https://img.shields.io/badge/status-in%20development-4934A2?labelColor=0F172A">
   <img alt="Channels: 7" src="https://img.shields.io/badge/channels-7-3256AE?labelColor=0F172A">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-317DC6?labelColor=0F172A"></a>
@@ -47,6 +48,10 @@ gRPC is the only surface, so every client library is a gRPC client and
 ```bash
 go get github.com/Serajian/srosha/sdk/go
 ```
+
+The SDK needs Go **1.23**, not the 1.26 this service is built with. That is
+deliberate: a client library should never make you upgrade your toolchain to
+call a service.
 
 ```go
 c, _ := srosha.New(ctx, "srosha.acme.test:443", apiKey)
