@@ -3,10 +3,10 @@ package grpcsrv
 import (
 	"context"
 
-	pb "github.com/Serajian/srosha/gen/notification/v1"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/pkg/errs"
+	pb "github.com/Serajian/srosha/sdk/go/notification/v1"
 )
 
 // NotificationServer is the gRPC face of the submit and query use cases. It

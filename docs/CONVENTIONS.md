@@ -261,6 +261,18 @@ The format: see `docs/changes/TEMPLATE.md`.
 - `infrastructure/` — wires **one** concrete technology and owns its lifecycle: connect,
   health-check, close. It does not know what this service does with them.
 - `internal/` — everything that knows what srosha is.
+- `sdk/` — code a **customer** imports, one directory per language. It is on the other side of
+  the wire from this service and shares nothing with it but `api/proto`. Each language SDK is
+  its own module, so a customer gets the contract and not this service's dependency tree, and
+  so its version number is its own — a server release with nothing in it for a customer must
+  not move the number they pin. It never imports `internal/`, and it may not be imported by
+  anything under `internal/` except the generated contract it carries.
+- The dependency runs **one way**: the server imports the SDK module, never the reverse. That is
+  what allows `internal/adapter/sender/contract_test.go` to hand the SDK's own settings json to
+  the parser that reads it in production — the one place an SDK and its service drift apart in
+  silence.
+- `go test ./...` does not descend into a nested module. `make prepush` runs `make sdk`
+  explicitly, and a new language SDK has to be added to it or it is never compiled.
 - There is no `utils`, `helpers`, `common`, `misc` or `shared` package. A package is named for
   what it **provides**, not for what it happens to contain. If no such name exists, the code
   belongs next to its caller.

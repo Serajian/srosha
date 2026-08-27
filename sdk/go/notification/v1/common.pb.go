@@ -457,8 +457,8 @@ const file_notification_v1_common_proto_rawDesc = "" +
 	"\x1bFAILURE_REASON_MAX_ATTEMPTS\x10\x02\x12\x1c\n" +
 	"\x18FAILURE_REASON_PERMANENT\x10\x03\x12\x1c\n" +
 	"\x18FAILURE_REASON_NO_SENDER\x10\x04\x12 \n" +
-	"\x1cFAILURE_REASON_NOT_REACHABLE\x10\x05B\xbe\x01\n" +
-	"\x13com.notification.v1B\vCommonProtoP\x01Z=github.com/Serajian/srosha/gen/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
+	"\x1cFAILURE_REASON_NOT_REACHABLE\x10\x05B\xc1\x01\n" +
+	"\x13com.notification.v1B\vCommonProtoP\x01Z@github.com/Serajian/srosha/sdk/go/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
 
 var (
 	file_notification_v1_common_proto_rawDescOnce sync.Once

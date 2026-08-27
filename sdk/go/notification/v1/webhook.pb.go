@@ -481,8 +481,8 @@ const file_notification_v1_webhook_proto_rawDesc = "" +
 	"\x03Get\x12).notification.v1.WebhookServiceGetRequest\x1a*.notification.v1.WebhookServiceGetResponse\x12U\n" +
 	"\n" +
 	"Deactivate\x12\".notification.v1.DeactivateRequest\x1a#.notification.v1.DeactivateResponse\x12O\n" +
-	"\bActivate\x12 .notification.v1.ActivateRequest\x1a!.notification.v1.ActivateResponseB\xbf\x01\n" +
-	"\x13com.notification.v1B\fWebhookProtoP\x01Z=github.com/Serajian/srosha/gen/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
+	"\bActivate\x12 .notification.v1.ActivateRequest\x1a!.notification.v1.ActivateResponseB\xc2\x01\n" +
+	"\x13com.notification.v1B\fWebhookProtoP\x01Z@github.com/Serajian/srosha/sdk/go/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
 
 var (
 	file_notification_v1_webhook_proto_rawDescOnce sync.Once

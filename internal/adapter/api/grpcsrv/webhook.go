@@ -3,10 +3,10 @@ package grpcsrv
 import (
 	"context"
 
-	pb "github.com/Serajian/srosha/gen/notification/v1"
 	"github.com/Serajian/srosha/internal/core/domain/webhook"
 	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/pkg/errs"
+	pb "github.com/Serajian/srosha/sdk/go/notification/v1"
 )
 
 // WebhookServer is the gRPC face of the registrar. One source has one callback,

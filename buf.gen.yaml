@@ -1,18 +1,22 @@
 version: v2
 
-# gen/ is committed. A fresh clone builds without protoc, buf or any plugin
-# installed, and the generated code is reviewed like anything else that ships.
+# The generated code is committed. A fresh clone builds without protoc, buf or
+# any plugin installed, and it is reviewed like anything else that ships.
+#
+# It lands in sdk/go rather than in this module, because the contract is shared:
+# customers speak it and the server implements it. Putting it in the module a
+# customer imports means they get exactly the contract and none of the service.
 managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: github.com/Serajian/srosha/gen
+      value: github.com/Serajian/srosha/sdk/go
 
 plugins:
   - local: protoc-gen-go
-    out: gen
+    out: sdk/go
     opt: paths=source_relative
 
   - local: protoc-gen-go-grpc
-    out: gen
+    out: sdk/go
     opt: paths=source_relative

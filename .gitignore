@@ -40,7 +40,10 @@ Thumbs.db
 *.seed
 *.bak
 *.sql~
+# Scratch markdown -- notes.draft.md, plan.old.md.
 *.*.md
+# ...but a translated README is not scratch. README.fa.md, README.ar.md.
+!README.*.md
 *.gob
 
 # Environment variables

@@ -4,9 +4,9 @@ import (
 	"errors"
 	"log/slog"
 
-	pb "github.com/Serajian/srosha/gen/notification/v1"
 	"github.com/Serajian/srosha/internal/core/domain/source"
 	"github.com/Serajian/srosha/pkg/errs"
+	pb "github.com/Serajian/srosha/sdk/go/notification/v1"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"

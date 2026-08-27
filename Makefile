@@ -305,7 +305,7 @@ misspell: ## [Format] Fix common misspellings (Go files only)
 	@find . -type f -name '*.go' \
 	   -not -path './vendor/*' \
 	   -not -path './build/*' \
-	   -not -path './gen/*' \
+	   -not -path './sdk/go/notification/*' \
 	   -not -path './deployment/*' \
 	   -not -path './.git/*' \
 	   -print0 | xargs -0 misspell -w
@@ -433,8 +433,20 @@ precommit: fmt-check govet arch-check sqlc-check proto-lint-if-present ## [Lint]
 	@echo "$(COLOR_GREEN)✅ Pre-commit checks passed.$(COLOR_RESET)"
 
 .PHONY: prepush
-prepush: precommit lint-if-present test-race ## [Lint] What the pre-push hook runs (read-only)
+prepush: precommit lint-if-present test-race sdk ## [Lint] What the pre-push hook runs (read-only)
 	@echo "$(COLOR_GREEN)✅ Pre-push checks passed.$(COLOR_RESET)"
+
+# sdk/go is a module of its own, and `go test ./...` does NOT descend into a
+# nested module. Without this target every check above would pass while never
+# once compiling the code customers actually import.
+.PHONY: sdk
+sdk: ## [Test] Build, vet and test the SDK module
+	@echo "$(COLOR_YELLOW)📦 sdk/go...$(COLOR_RESET)"
+	@cd sdk/go && go build ./... && go vet ./... && go test -race ./...
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+	   cd sdk/go && golangci-lint run; \
+	fi
+	@echo "$(COLOR_GREEN)✅ SDK module is clean.$(COLOR_RESET)"
 
 # --- run by hand -------------------------------------------------------------
 

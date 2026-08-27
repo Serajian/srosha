@@ -779,8 +779,8 @@ const file_notification_v1_notification_proto_rawDesc = "" +
 	"\x13NotificationService\x12I\n" +
 	"\x06Submit\x12\x1e.notification.v1.SubmitRequest\x1a\x1f.notification.v1.SubmitResponse\x12f\n" +
 	"\x03Get\x12..notification.v1.NotificationServiceGetRequest\x1a/.notification.v1.NotificationServiceGetResponse\x12i\n" +
-	"\x04List\x12/.notification.v1.NotificationServiceListRequest\x1a0.notification.v1.NotificationServiceListResponseB\xc4\x01\n" +
-	"\x13com.notification.v1B\x11NotificationProtoP\x01Z=github.com/Serajian/srosha/gen/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
+	"\x04List\x12/.notification.v1.NotificationServiceListRequest\x1a0.notification.v1.NotificationServiceListResponseB\xc7\x01\n" +
+	"\x13com.notification.v1B\x11NotificationProtoP\x01Z@github.com/Serajian/srosha/sdk/go/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
 
 var (
 	file_notification_v1_notification_proto_rawDescOnce sync.Once
