@@ -12,7 +12,7 @@ CREATE TABLE credentials (
     source_id  ulid        NOT NULL REFERENCES sources (id) ON DELETE CASCADE,
 
     channel    TEXT        NOT NULL
-                           CHECK (channel IN ('email', 'telegram', 'bale', 'whatsapp', 'matrix')),
+                           CHECK (channel IN ('email', 'telegram', 'bale', 'whatsapp', 'matrix', 'fcm')),
 
     -- What the source calls it: "marketing", "alerts". Chosen per message.
     name       TEXT        NOT NULL,

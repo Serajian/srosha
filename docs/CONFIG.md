@@ -150,7 +150,7 @@ Every key, with its defaults and which binary needs it, is documented in
 | ratelimit | `NOTIF_RATELIMIT_PER_MINUTE` | ✅ | — |
 | crypto | `NOTIF_CRYPTO_KEYS`, `NOTIF_CRYPTO_KEY_ID` | ✅ | ✅ |
 | dispatch | `NOTIF_DISPATCH_MAX_ATTEMPTS`, `NOTIF_DISPATCH_ACK_WAIT`, `NOTIF_DISPATCH_MAX_IN_FLIGHT` | — | ✅ |
-| sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN`, `NOTIF_SENDER_WHATSAPP_PHONE_NUMBER_ID`, `NOTIF_SENDER_MATRIX_TOKEN`, `NOTIF_SENDER_MATRIX_HOMESERVER` | — | ✅ |
+| sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN`, `NOTIF_SENDER_WHATSAPP_PHONE_NUMBER_ID`, `NOTIF_SENDER_MATRIX_TOKEN`, `NOTIF_SENDER_MATRIX_HOMESERVER`, `NOTIF_SENDER_FCM_SERVICE_ACCOUNT` | — | ✅ |
 | webhook policy | `NOTIF_WEBHOOK_ALLOW_INSECURE_URL`, `NOTIF_WEBHOOK_ALLOW_PRIVATE_URL` | ✅ | ✅ |
 | webhook | `NOTIF_WEBHOOK_SECRETS`, `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ |
 | telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ |
@@ -166,6 +166,16 @@ Matrix needs a homeserver as well as a token, and it is the one address in this
 service a source chooses rather than a constant somewhere: the protocol is
 federated, so there is no host that is right for everybody. It must be https —
 an access token over plain http is a token in the clear.
+
+`NOTIF_SENDER_FCM_SERVICE_ACCOUNT` is **base64 of the whole service account json**,
+and it is the only key in this file that is encoded. A service account is
+multi-line json with a PEM private key inside it, and `.env` files, compose files
+and secret managers each mangle that differently. Produce it with
+`base64 -i service-account.json | tr -d '\n'`.
+
+Nothing else is needed for FCM: the project id is inside the file. And the
+encoding is an environment concern only — a source registering its own service
+account sends the json itself.
 
 `NOTIF_CRYPTO_KEYS` is a JSON map of key id → key, one entry per key, and every
 stored value names the key that sealed it. `NOTIF_CRYPTO_KEY_ID` says which of

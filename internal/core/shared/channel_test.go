@@ -42,7 +42,7 @@ func TestAllChannelsCoversEveryConstant(t *testing.T) {
 			t.Errorf("%q is listed in AllChannels but Valid() says otherwise", c)
 		}
 	}
-	if got := len(shared.AllChannels()); got != 5 {
+	if got := len(shared.AllChannels()); got != 6 {
 		t.Errorf("AllChannels has %d entries; update this test when adding a channel", got)
 	}
 }
@@ -216,6 +216,34 @@ func TestChannelJSON(t *testing.T) {
 			t.Error("Marshal accepted a channel that is not one of the four")
 		}
 	})
+}
+
+// Google promises nothing about a device token's shape, so the rule is only a
+// length: a shape invented here would one day refuse a token that works.
+func TestAnFCMAddressIsOnlyCheckedForLength(t *testing.T) {
+	good := []string{
+		strings.Repeat("a", 32),
+		strings.Repeat("z", 163),
+		"cXy_dE:APA91bH" + strings.Repeat("Q", 140),
+	}
+	for _, address := range good {
+		if err := shared.ChannelFCM.ValidateAddress(address); err != nil {
+			t.Errorf("ValidateAddress(%d chars) = %v, want it accepted", len(address), err)
+		}
+	}
+
+	bad := map[string]string{
+		"empty":     "",
+		"too short": "not-a-device-token",
+		"absurd":    strings.Repeat("a", 5000),
+	}
+	for name, address := range bad {
+		t.Run(name, func(t *testing.T) {
+			if err := shared.ChannelFCM.ValidateAddress(address); err == nil {
+				t.Errorf("ValidateAddress(%q) = nil, want a refusal", name)
+			}
+		})
+	}
 }
 
 // Matrix has no way to message a person: you write into a room. A user id would

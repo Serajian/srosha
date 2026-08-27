@@ -58,6 +58,8 @@ func toChannel(c pb.Channel) (shared.Channel, error) {
 		return shared.ChannelWhatsApp, nil
 	case pb.Channel_CHANNEL_MATRIX:
 		return shared.ChannelMatrix, nil
+	case pb.Channel_CHANNEL_FCM:
+		return shared.ChannelFCM, nil
 	case pb.Channel_CHANNEL_UNSPECIFIED:
 		return "", errs.InvalidInputErr("channel is required").
 			WithErr(shared.ErrUnknownChannel)
@@ -173,6 +175,8 @@ func fromChannel(c shared.Channel) pb.Channel {
 		return pb.Channel_CHANNEL_WHATSAPP
 	case shared.ChannelMatrix:
 		return pb.Channel_CHANNEL_MATRIX
+	case shared.ChannelFCM:
+		return pb.Channel_CHANNEL_FCM
 	default:
 		return pb.Channel_CHANNEL_UNSPECIFIED
 	}

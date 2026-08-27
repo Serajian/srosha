@@ -164,24 +164,26 @@ names and a status.
 
 ## What a channel is, and what adding one costs
 
-Four exist. `whatsapp` is in the enum with no sender behind it — the one case of a channel
-half here rather than not here, and it is half here because its API wants something the
-message does not carry.
+Six exist: `email`, `telegram`, `bale`, `whatsapp`, `matrix`, `fcm`. Every one of them has a
+sender behind it.
 
 A channel is added **with** its sender, never before it. Six places have to agree — the
 constant and its address rule, the proto enum, the mapper, the registry, and two CHECK
 constraints — and a channel that exists without a sender is one a source can send to and
 always get `NO_SENDER` from.
 
+What is left, and what each would cost:
+
 | | Address | What it needs beyond a sender |
 | --- | --- | --- |
-| SMS | E.164 number | nothing |
-| Matrix | user or room id | nothing |
-| FCM, APNs | device token | a structured secret |
+| SMS | E.164 number | a provider, and there is no obvious one |
+| APNs | device token | a structured secret, and a p8 key rather than a json one |
 | RCS | E.164 number | nothing, if the provider does the SMS fallback |
-| WhatsApp | phone number | a template, outside the conversation window |
-| Instagram | scoped user id | the same, and it cannot open a conversation at all |
 | Web Push | an endpoint and two keys | an address that is not a string |
+
+Instagram is **not on this list and will not be**. Its messaging API can only answer somebody
+who wrote first, and the id it answers to comes out of a webhook this service does not
+receive. A channel that cannot start a conversation is not a way to notify anybody.
 
 ### Three seams, and why they are seams rather than features
 
@@ -198,15 +200,23 @@ modeled as booleans is what makes a fourth expensive.
 
 **A secret is bytes.** `pkg/crypto` seals and opens bytes, so a credential needing four
 fields — APNs wants a key, a key id, a team id — puts json inside the sealed value. Nothing
-changes for a channel whose secret is one token.
+changes for a channel whose secret is one token. FCM is the first to use this: its whole
+credential is a service account file, json and a private key, stored as one sealed value.
+
+**A credential is not always what gets sent.** FCM's service account cannot go in a header —
+it has to be exchanged with Google for an access token that lasts about an hour. That
+exchange is a technology, so it lives in `internal/infra/googleauth`, `internal/registry`
+opens it once, and the sender is handed something that answers `Token(ctx)`. The cache is
+there and not in the registry because a resource's lifetime belongs to whoever opened it. It
+matters because `SenderRegistry.For` builds a sender **per message**: without it, every push
+would pay for an RSA signature and a round trip to Google.
 
 ### Two decisions not yet made
 
-**A conversation window is the provider's to know, not ours.** WhatsApp and Instagram refuse
-a message outside a window the recipient opened, and Instagram refuses one to anybody who
-never wrote first. Modeling that here would mean receiving their webhooks and keeping
-conversation state — an inbound path this service does not have, for a service that sends. So
-the provider is the authority and the answer comes back as `NOT_REACHABLE`.
+**A conversation window is the provider's to know, not ours.** WhatsApp refuses a message
+outside a window the recipient opened. Modeling that here would mean receiving its webhooks
+and keeping conversation state — an inbound path this service does not have, for a service
+that sends. So the provider is the authority and the answer comes back as `NOT_REACHABLE`.
 
 **A structured address has no home yet.** A Web Push subscription is an endpoint and two
 keys. It can be json in the address column, but then the address stops being readable for one

@@ -8,17 +8,32 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/Serajian/srosha/internal/adapter/sender/bale"
 	"github.com/Serajian/srosha/internal/adapter/sender/email"
+	"github.com/Serajian/srosha/internal/adapter/sender/fcm"
 	"github.com/Serajian/srosha/internal/adapter/sender/matrix"
 	"github.com/Serajian/srosha/internal/adapter/sender/telegram"
 	"github.com/Serajian/srosha/internal/adapter/sender/whatsapp"
 	"github.com/Serajian/srosha/internal/core/domain/credential"
 	"github.com/Serajian/srosha/internal/core/domain/delivery"
 	"github.com/Serajian/srosha/internal/core/shared"
+	"github.com/Serajian/srosha/internal/infra/googleauth"
 	"github.com/Serajian/srosha/pkg/errs"
 )
+
+// GoogleTokens turns a service account into a supply of access tokens.
+//
+// Declared here rather than imported as a concrete type, because one adapter
+// never reaches into another. internal/infra/googleauth satisfies it, and the
+// caching that makes it worth having belongs to whoever opened it.
+//
+// It is here rather than in the fcm package because opening a credential is
+// this package's job: fcm is handed the result and never sees a private key.
+type GoogleTokens interface {
+	Open(serviceAccount []byte) (*googleauth.Source, error)
+}
 
 // Secrets opens a credential's material at the moment it is used.
 //
@@ -52,6 +67,11 @@ type Fallback struct {
 	// one address in this service that is not a constant somewhere: the protocol
 	// is federated, so there is no host that is right for everybody.
 	Matrix Matrix
+
+	// FCMServiceAccount is a private key rather than a token, because Google
+	// does not hand out tokens: a service account is exchanged for one, and it
+	// carries the project it belongs to inside it.
+	FCMServiceAccount string
 
 	// SMTP is a whole identity rather than a token, because mail is. A bot is a
 	// secret and nothing else; a mail account is a server, a user and an address,
@@ -108,12 +128,17 @@ type Registry struct {
 	// because every source may send through its own server as its own account.
 	mail email.Dialer
 
+	// tokens is what registry opened for Google. It caches, which is the point:
+	// a sender is built per message and minting a token each time would put an
+	// RSA signature and a round trip in front of every push.
+	tokens GoogleTokens
+
 	own Fallback
 }
 
 func NewRegistry(
 	creds *credential.Service, secrets Secrets,
-	client *http.Client, mail email.Dialer, own Fallback,
+	client *http.Client, mail email.Dialer, tokens GoogleTokens, own Fallback,
 ) (*Registry, error) {
 	switch {
 	case creds == nil:
@@ -124,8 +149,12 @@ func NewRegistry(
 		return nil, errs.InternalErr("sender registry has no http client")
 	case mail == nil:
 		return nil, errs.InternalErr("sender registry has no mail dialer")
+	case tokens == nil:
+		return nil, errs.InternalErr("sender registry cannot mint google tokens")
 	}
-	return &Registry{creds: creds, secrets: secrets, client: client, mail: mail, own: own}, nil
+	return &Registry{
+		creds: creds, secrets: secrets, client: client, mail: mail, tokens: tokens, own: own,
+	}, nil
 }
 
 // For hands back a sender already configured with the right identity.
@@ -194,6 +223,12 @@ func (r *Registry) ours(c shared.Channel) (delivery.Sender, error) {
 		return whatsapp.New(r.client, r.own.WhatsApp.Token,
 			whatsapp.Config{PhoneNumberID: r.own.WhatsApp.PhoneNumberID})
 
+	case shared.ChannelFCM:
+		if r.own.FCMServiceAccount == "" {
+			return nil, noSender(c)
+		}
+		return r.buildFCM(r.own.FCMServiceAccount)
+
 	default:
 		return nil, noSender(c)
 	}
@@ -249,9 +284,30 @@ func (r *Registry) build(c shared.Channel, config []byte, secret string) (delive
 		}
 		return whatsapp.New(r.client, secret, cfg)
 
+	case shared.ChannelFCM:
+		// No settings at all, and config is ignored on purpose: the whole
+		// service account is the secret, and the project is inside it.
+		return r.buildFCM(secret)
+
 	default:
 		return nil, noSender(c)
 	}
+}
+
+// buildFCM opens the service account here rather than in the sender, so that a
+// private key never reaches a provider package. What fcm gets is a project name
+// and something that answers with a token.
+func (r *Registry) buildFCM(serviceAccount string) (delivery.Sender, error) {
+	if strings.TrimSpace(serviceAccount) == "" {
+		return nil, errs.InvalidInputErr("no fcm service account for this identity")
+	}
+
+	source, err := r.tokens.Open([]byte(serviceAccount))
+	if err != nil {
+		// googleauth says what is wrong with the file and quotes nothing from it.
+		return nil, errs.InvalidInputErr("fcm service account is not usable").WithErr(err)
+	}
+	return fcm.New(r.client, source, source.Account().ProjectID)
 }
 
 func noSender(c shared.Channel) error {

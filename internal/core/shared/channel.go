@@ -24,6 +24,7 @@ const (
 	ChannelBale     Channel = "bale"
 	ChannelWhatsApp Channel = "whatsapp"
 	ChannelMatrix   Channel = "matrix"
+	ChannelFCM      Channel = "fcm"
 )
 
 // AllChannels returns the full set in a stable order.
@@ -32,12 +33,14 @@ const (
 // because a caller sorting or truncating a shared slice would corrupt it for
 // everyone else.
 func AllChannels() []Channel {
-	return []Channel{ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp, ChannelMatrix}
+	return []Channel{
+		ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp, ChannelMatrix, ChannelFCM,
+	}
 }
 
 func (c Channel) Valid() bool {
 	switch c {
-	case ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp, ChannelMatrix:
+	case ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp, ChannelMatrix, ChannelFCM:
 		return true
 	default:
 		return false
@@ -98,6 +101,15 @@ func (c Channel) ValidateAddress(address string) error {
 	case ChannelWhatsApp:
 		if !isE164(t) {
 			return invalidAddress(c, t, "not an E.164 phone number")
+		}
+
+	case ChannelFCM:
+		// A device token, and there is no rule to check it against: Google
+		// issues them, has changed their length between versions and promises
+		// nothing about their characters. A shape invented here would one day
+		// refuse a token that works, so only the obviously-wrong is refused.
+		if len(t) < minDeviceTokenLen || len(t) > maxDeviceTokenLen {
+			return invalidAddress(c, t, "not a device token")
 		}
 
 	case ChannelMatrix:

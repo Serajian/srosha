@@ -70,7 +70,18 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 		return abandon(ctx, res, err)
 	}
 
-	core, err := buildDispatcherCore(ctx, cfg, db.Pool(), mq.JetStream(), callbacks, providers, mail, log)
+	// Google is its own way out too, and for the opposite reason: a service
+	// account is a private key, not a token, so it has to be exchanged for one.
+	// This holds the result of that exchange, which is why it is opened once
+	// rather than per message.
+	tokens, err := registry.GoogleTokens(providers)
+	if err != nil {
+		return abandon(ctx, res, err)
+	}
+
+	core, err := buildDispatcherCore(
+		ctx, cfg, db.Pool(), mq.JetStream(), callbacks, providers, mail, tokens, log,
+	)
 	if err != nil {
 		return abandon(ctx, res, err)
 	}
@@ -142,6 +153,7 @@ func buildDispatcherCore(
 	js jetstream.JetStream,
 	callbacks, providers *http.Client,
 	mail email.Dialer,
+	tokens sender.GoogleTokens,
 	log *slog.Logger,
 ) (dispatcherCore, error) {
 	var core dispatcherCore
@@ -197,13 +209,14 @@ func buildDispatcherCore(
 		return core, err
 	}
 
-	senders, err := sender.NewRegistry(credentials, secrets, providers, mail, sender.Fallback{
+	senders, err := sender.NewRegistry(credentials, secrets, providers, mail, tokens, sender.Fallback{
 		TelegramToken: cfg.Sender.Telegram.Reveal(),
 		BaleToken:     cfg.Sender.Bale.Reveal(),
 		Matrix: sender.Matrix{
 			Token:      cfg.Sender.Matrix.Token.Reveal(),
 			Homeserver: cfg.Sender.Matrix.Homeserver,
 		},
+		FCMServiceAccount: cfg.Sender.FCM.Reveal(),
 		WhatsApp: sender.WhatsApp{
 			Token:         cfg.Sender.WhatsApp.Token.Reveal(),
 			PhoneNumberID: cfg.Sender.WhatsApp.PhoneNumberID,

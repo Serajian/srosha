@@ -22,3 +22,10 @@ const (
 // thing in its first character: "!" a room, "@" a user, "#" an alias. Only the
 // first is an address this service can send to.
 const matrixRoomSigil = "!"
+
+// Bounds for an FCM device token. Loose on purpose: Google documents no shape
+// for them, so this catches a value pasted wrong and nothing more.
+const (
+	minDeviceTokenLen = 32
+	maxDeviceTokenLen = 4096
+)
