@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"os"
 	"time"
 
 	"github.com/Serajian/srosha/sdk/go/srosha"
@@ -238,4 +241,48 @@ func ExampleClient_Whoami() {
 	if !me.AllowCustomAddress {
 		fmt.Println("addresses are fixed:", me.DefaultAddresses)
 	}
+}
+
+// Verifying a callback before trusting it. Without this, an endpoint accepts
+// whatever anybody posts to that url.
+func ExampleVerifier_Verify() {
+	// Once, at startup. The secret is handed to you out of band; srosha never
+	// returns it from any rpc.
+	v, err := srosha.NewVerifier(os.Getenv("SROSHA_WEBHOOK_SECRET"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	http.HandleFunc("/srosha", func(w http.ResponseWriter, r *http.Request) {
+		// Read the body raw and hand it over unchanged: the signature covers
+		// the exact bytes srosha sent.
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		cb, err := v.Verify(r.Header, body)
+		if err != nil {
+			// Do not say which check failed. Whoever is guessing does not need
+			// to be told how close they got.
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		for _, d := range cb.Deliveries {
+			switch {
+			case d.Status == srosha.StatusSent:
+				fmt.Println("delivered", d.Channel, d.ProviderMessageID)
+			case d.Reason == srosha.FailureNotReachable:
+				fmt.Println("stop sending to", d.Address)
+			default:
+				fmt.Println("failed", d.Channel, d.Reason)
+			}
+		}
+
+		// Answer 2xx once you have it. srosha stops retrying at a limit and
+		// switches a dead endpoint off.
+		w.WriteHeader(http.StatusOK)
+	})
 }

@@ -518,13 +518,59 @@ not point inside srosha's own network.
 Every callback is signed with **HMAC-SHA256 over `<timestamp>.<body>`**, using
 a secret handed to you out of band.
 
-> **This package does not verify that signature for you.** Until it does,
-> verify it yourself before trusting a callback. An unverified one is anything
-> anybody posted to that url.
+**Verify it before you trust it.** An unverified callback is anything anybody
+posted to that url.
+
+```go
+// Once, at startup.
+v, err := srosha.NewVerifier(os.Getenv("SROSHA_WEBHOOK_SECRET"))
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	cb, err := v.Verify(r.Header, body)
+	if err != nil {
+		// Do not say which check failed. Whoever is guessing does not need
+		// to be told how close they got.
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	for _, d := range cb.Deliveries {
+		fmt.Println(d.Channel, d.Address, d.Status, d.Reason)
+	}
+	w.WriteHeader(http.StatusOK)
+}
+```
+
+Three things it checks, and each is a different problem:
+
+| | |
+| --- | --- |
+| `ErrSignatureMissing` | no signature at all. Somebody who is not srosha |
+| `ErrSignatureInvalid` | the signature does not match. Somebody pretending to be, or the body changed in flight |
+| `ErrCallbackTooOld` | genuine, but signed too long ago. Almost always a replay — the other cause is your clock |
+
+**Read the body raw and pass it unchanged.** The signature covers the exact
+bytes srosha sent, so a body that has been re-encoded, pretty printed or run
+through a json decoder will not verify. That is not a bug; it is the signature
+working.
+
+The stale window is five minutes by default, and it is exactly how long a
+captured callback stays replayable. `srosha.WithTolerance(d)` widens it — do
+that only for clocks you cannot fix.
+
+`Verify` is a function and not an `http.Handler` on purpose: wiring it into a
+route is three lines and belongs to whatever framework you use.
 
 The callback is best effort: it is not retried past a limit, and enough
 failures switch it off. `Get` and `List` are the reliable path — the webhook
-saves you polling, it does not replace it.
+saves you polling, it does not replace it. Answer `2xx` once you have the
+callback in hand, not after you have finished acting on it.
 
 ## 9. Errors
 
