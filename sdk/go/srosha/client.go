@@ -40,6 +40,14 @@ type Client struct {
 
 	notifications pb.NotificationServiceClient
 
+	// Credentials is a source's sending identities: which bot, which mail
+	// account, which signing key. Registered once and then never mentioned
+	// again -- Submit names a channel, not an identity.
+	Credentials *Credentials
+
+	// Webhooks is where srosha pushes a delivery's final status.
+	Webhooks *Webhooks
+
 	timeout  time.Duration
 	attempts int
 }
@@ -114,12 +122,15 @@ func New(_ context.Context, address, apiKey string, opts ...Option) (*Client, er
 		return nil, err
 	}
 
-	return &Client{
+	c := &Client{
 		conn:          conn,
 		notifications: pb.NewNotificationServiceClient(conn),
 		timeout:       o.timeout,
 		attempts:      o.attempts,
-	}, nil
+	}
+	c.Credentials = &Credentials{client: c, api: pb.NewCredentialServiceClient(conn)}
+	c.Webhooks = &Webhooks{client: c, api: pb.NewWebhookServiceClient(conn)}
+	return c, nil
 }
 
 // Close releases the connection. A Client is finished after it.
