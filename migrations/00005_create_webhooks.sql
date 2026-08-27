@@ -15,6 +15,15 @@ CREATE TABLE webhooks (
 
     callback_url         TEXT        NOT NULL,
 
+    -- The HMAC key this source's callbacks are signed with, sealed the way a
+    -- credential's is. It lives here rather than in the environment because a
+    -- new source must not be a redeploy -- and because the source can be handed
+    -- it at the moment it registers, which is a call we have already
+    -- authenticated.
+    --
+    -- Nullable only for rows written before it existed; every new one has it.
+    secret               TEXT,
+
     is_active            BOOLEAN     NOT NULL DEFAULT TRUE,
 
     -- Reset by any success. Once it reaches the configured limit the webhook is

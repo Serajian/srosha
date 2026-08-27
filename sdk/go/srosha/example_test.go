@@ -178,11 +178,19 @@ func ExampleWebhooks_Register() {
 	c, _ := srosha.New(ctx, "srosha.acme.test:443", "srosha_your-key")
 	defer func() { _ = c.Close() }()
 
-	h, err := c.Webhooks.Register(ctx, "https://acme.test/srosha")
+	h, secret, err := c.Webhooks.Register(ctx, "https://acme.test/srosha")
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println(h.CallbackURL, h.Active)
+
+	// The only time anything hands it to you. Store it wherever your verifier
+	// reads its secret from -- srosha keeps it encrypted and will not repeat
+	// it. Empty here would mean this call moved an address rather than
+	// creating a callback.
+	if secret != "" {
+		fmt.Println("store this:", secret)
+	}
 }
 
 // Deliveries say what happened per recipient. Not every failure is the same

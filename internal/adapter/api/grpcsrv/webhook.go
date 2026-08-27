@@ -33,13 +33,31 @@ func (s *WebhookServer) Register(
 		return nil, errUnidentified()
 	}
 
-	w, err := s.registrar.Register(ctx, src.ID, webhook.Registration{
+	w, secret, err := s.registrar.Register(ctx, src.ID, webhook.Registration{
 		CallbackURL: req.GetCallbackUrl(),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &pb.RegisterResponse{Webhook: fromWebhook(w)}, nil
+	// Empty when this changed an address rather than creating a callback. The
+	// one place the secret ever crosses the wire.
+	return &pb.RegisterResponse{Webhook: fromWebhook(w), Secret: secret}, nil
+}
+
+// RotateSecret issues a new signing secret and hands it back once.
+func (s *WebhookServer) RotateSecret(
+	ctx context.Context, _ *pb.RotateSecretRequest,
+) (*pb.RotateSecretResponse, error) {
+	src, ok := SourceFrom(ctx)
+	if !ok {
+		return nil, errUnidentified()
+	}
+
+	secret, err := s.registrar.RotateSecret(ctx, src.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.RotateSecretResponse{Secret: secret}, nil
 }
 
 func (s *WebhookServer) Get(

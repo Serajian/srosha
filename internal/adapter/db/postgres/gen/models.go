@@ -78,6 +78,7 @@ type Webhook struct {
 	ID                  string
 	SourceID            string
 	CallbackUrl         string
+	Secret              *string
 	IsActive            bool
 	ConsecutiveFailures int32
 	CreatedAt           time.Time

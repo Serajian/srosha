@@ -43,20 +43,43 @@ type Webhook struct {
 // a callback makes srosha call somewhere the source chose, so without that
 // check a source could reach anything srosha can.
 //
-// Every callback is signed with HMAC-SHA256 over "<timestamp>.<body>". This
-// package does not verify that signature for you -- see the note on Webhooks
-// in the README. Accepting an unverified callback is accepting anything
-// anybody posts to that url.
-func (w *Webhooks) Register(ctx context.Context, callbackURL string) (Webhook, error) {
+// **The first registration returns your signing secret, and it is the only
+// time anything does.** srosha keeps it encrypted and never hands it back; a
+// source that loses it calls RotateSecret. Give it to NewVerifier and check
+// every callback with it.
+//
+// Registering again to change the address returns an empty secret: the one you
+// have still stands. Rotating it silently would break every receiver that was
+// already verifying.
+func (w *Webhooks) Register(
+	ctx context.Context, callbackURL string,
+) (hook Webhook, secret string, err error) {
 	var res *pb.RegisterResponse
 	if err := w.client.call(ctx, func(ctx context.Context) error {
 		var err error
 		res, err = w.api.Register(ctx, &pb.RegisterRequest{CallbackUrl: callbackURL})
 		return err
 	}); err != nil {
-		return Webhook{}, err
+		return Webhook{}, "", err
 	}
-	return fromWebhook(res.GetWebhook()), nil
+	return fromWebhook(res.GetWebhook()), res.GetSecret(), nil
+}
+
+// RotateSecret issues a new signing secret and returns it once.
+//
+// Reach for it when the old one is lost or has leaked. Every receiver still
+// checking with it starts failing the moment this returns -- that is what a
+// rotation is, so change what verifies before you call it, or accept the gap.
+func (w *Webhooks) RotateSecret(ctx context.Context) (string, error) {
+	var res *pb.RotateSecretResponse
+	if err := w.client.call(ctx, func(ctx context.Context) error {
+		var err error
+		res, err = w.api.RotateSecret(ctx, &pb.RotateSecretRequest{})
+		return err
+	}); err != nil {
+		return "", err
+	}
+	return res.GetSecret(), nil
 }
 
 // Get answers what this source's callback is, and how it is doing.

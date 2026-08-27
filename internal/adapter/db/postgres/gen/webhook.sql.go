@@ -35,7 +35,7 @@ func (q *Queries) CreateWebhook(ctx context.Context, arg CreateWebhookParams) er
 }
 
 const readWebhookBySourceID = `-- name: ReadWebhookBySourceID :one
-SELECT id, source_id, callback_url, is_active, consecutive_failures, created_at, updated_at FROM webhooks WHERE source_id = $1
+SELECT id, source_id, callback_url, secret, is_active, consecutive_failures, created_at, updated_at FROM webhooks WHERE source_id = $1
 `
 
 func (q *Queries) ReadWebhookBySourceID(ctx context.Context, sourceID string) (Webhook, error) {
@@ -45,11 +45,35 @@ func (q *Queries) ReadWebhookBySourceID(ctx context.Context, sourceID string) (W
 		&i.ID,
 		&i.SourceID,
 		&i.CallbackUrl,
+		&i.Secret,
 		&i.IsActive,
 		&i.ConsecutiveFailures,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
+	return i, err
+}
+
+const readWebhookSecret = `-- name: ReadWebhookSecret :one
+SELECT id, secret
+FROM webhooks
+WHERE source_id = $1
+`
+
+type ReadWebhookSecretRow struct {
+	ID     string
+	Secret *string
+}
+
+// ReadWebhookSecret hands back the sealed secret and the row it belongs to.
+//
+// The id comes with it because the seal is bound to both, so whoever opens it
+// needs the pair and must not have to make a second query for the half it is
+// missing.
+func (q *Queries) ReadWebhookSecret(ctx context.Context, sourceID string) (ReadWebhookSecretRow, error) {
+	row := q.db.QueryRow(ctx, readWebhookSecret, sourceID)
+	var i ReadWebhookSecretRow
+	err := row.Scan(&i.ID, &i.Secret)
 	return i, err
 }
 
@@ -158,6 +182,38 @@ type SetWebhookActiveParams struct {
 // again by the first hiccup, having never been given a fresh start.
 func (q *Queries) SetWebhookActive(ctx context.Context, arg SetWebhookActiveParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setWebhookActive, arg.IsActive, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const writeWebhookSecret = `-- name: WriteWebhookSecret :execrows
+UPDATE webhooks
+SET secret     = $1,
+    updated_at = $2
+WHERE id = $3
+  AND source_id = $4
+`
+
+type WriteWebhookSecretParams struct {
+	Secret    *string
+	UpdatedAt time.Time
+	ID        string
+	SourceID  string
+}
+
+// WriteWebhookSecret replaces the sealed signing secret.
+//
+// Scoped by source as well as by id, so an id belonging to somebody else writes
+// nothing rather than overwriting their secret.
+func (q *Queries) WriteWebhookSecret(ctx context.Context, arg WriteWebhookSecretParams) (int64, error) {
+	result, err := q.db.Exec(ctx, writeWebhookSecret,
+		arg.Secret,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.SourceID,
+	)
 	if err != nil {
 		return 0, err
 	}

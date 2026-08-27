@@ -152,7 +152,7 @@ Every key, with its defaults and which binary needs it, is documented in
 | dispatch | `NOTIF_DISPATCH_MAX_ATTEMPTS`, `NOTIF_DISPATCH_ACK_WAIT`, `NOTIF_DISPATCH_MAX_IN_FLIGHT` | — | ✅ |
 | sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN`, `NOTIF_SENDER_WHATSAPP_PHONE_NUMBER_ID`, `NOTIF_SENDER_MATRIX_TOKEN`, `NOTIF_SENDER_MATRIX_HOMESERVER`, `NOTIF_SENDER_FCM_SERVICE_ACCOUNT`, `NOTIF_SENDER_APNS_*` | — | ✅ |
 | webhook policy | `NOTIF_WEBHOOK_ALLOW_INSECURE_URL`, `NOTIF_WEBHOOK_ALLOW_PRIVATE_URL` | ✅ | ✅ |
-| webhook | `NOTIF_WEBHOOK_SECRETS`, `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ |
+| webhook | `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ |
 | telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ |
 
 `NOTIF_MQ_URL` carries a **different** NATS user per binary. Do not collapse them.
@@ -258,11 +258,16 @@ cannot share a wire.
 | retention | `NOTIF_RETENTION_AGE` | ✅ | ✅ |
 | retention sweep | `NOTIF_RETENTION_SCHEDULE`, `NOTIF_RETENTION_BATCH` | — | ✅ |
 
-`NOTIF_WEBHOOK_SECRETS` holds one signing secret per source, keyed by source id.
-Each source gets its own: with a single shared secret, any source holding it
-could forge a signed callback to another. It is never stored in the database and
-never returned by the API — it is handed to the source out of band. Adding a
-source therefore needs a redeploy.
+**There is no signing secret here, and there was until it moved into the
+database.** It was a json map of source id to secret, which made adding a source
+a redeploy, and gave the source no defined way of learning theirs at all.
+
+It is issued now on `WebhookService.Register` — a call already authenticated as
+the source that needs it — returned exactly once, and kept sealed with the same
+keyring a sending credential uses. `RotateSecret` issues a new one, which is the
+only way back for a source that lost theirs. Each source still has its own: with
+one shared secret, any source holding it could forge a signed callback to
+another.
 
 `RECONCILE_AFTER` is how long a delivery may sit pending before the scheduler
 picks it up; `RECONCILE_GIVE_UP` is the age past which its next attempt is the

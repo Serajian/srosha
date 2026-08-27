@@ -3,10 +3,12 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/Serajian/srosha/internal/core/domain/source"
 	"github.com/Serajian/srosha/internal/core/domain/webhook"
+	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/pkg/errs"
 )
@@ -14,21 +16,40 @@ import (
 type registerRig struct {
 	registrar *usecase.Registrar
 	src       *source.Source
+
+	secrets *issuer
 }
 
 func newRegisterRig(t *testing.T) *registerRig {
 	t.Helper()
 
 	src := acmeSource()
-	r := &registerRig{src: src}
+	r := &registerRig{src: src, secrets: &issuer{}}
 	r.registrar = usecase.NewRegistrar(
 		source.NewService(
 			fakeSources{byID: map[string]*source.Source{"acme": src}},
 			fakeLimiter{allow: true},
 		),
 		webhook.NewService(newFakeWebhooks(), seqIDs(), fixedNow(now), webhook.Strict),
+		r.secrets,
 	)
 	return r
+}
+
+// issuer stands in for whoever holds the encryption keys. It counts, because
+// the rule worth checking is that a secret is issued once and not on every
+// registration.
+type issuer struct {
+	issued int
+	err    error
+}
+
+func (i *issuer) Issue(_ context.Context, _ string, _ shared.ID) (string, error) {
+	i.issued++
+	if i.err != nil {
+		return "", i.err
+	}
+	return fmt.Sprintf("whsec_%d", i.issued), nil
 }
 
 func reg(u string) webhook.Registration {
@@ -38,7 +59,7 @@ func reg(u string) webhook.Registration {
 func TestRegisterStoresTheCallback(t *testing.T) {
 	r := newRegisterRig(t)
 
-	w, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/hooks"))
+	w, _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/hooks"))
 	if err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
@@ -55,11 +76,11 @@ func TestRegisterStoresTheCallback(t *testing.T) {
 func TestRegisterMovesTheExistingCallback(t *testing.T) {
 	r := newRegisterRig(t)
 
-	first, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/old"))
+	first, _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/old"))
 	if err != nil {
 		t.Fatalf("first Register() error = %v", err)
 	}
-	second, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/new"))
+	second, _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/new"))
 	if err != nil {
 		t.Fatalf("second Register() error = %v", err)
 	}
@@ -77,14 +98,14 @@ func TestRegisterMovesTheExistingCallback(t *testing.T) {
 func TestRegisterGivesANewAddressACleanStart(t *testing.T) {
 	r := newRegisterRig(t)
 
-	if _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/old")); err != nil {
+	if _, _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/old")); err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
 	if err := r.registrar.Deactivate(context.Background(), "acme"); err != nil {
 		t.Fatalf("Deactivate() error = %v", err)
 	}
 
-	w, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/new"))
+	w, _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/new"))
 	if err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
@@ -101,11 +122,11 @@ func TestRegisterGivesANewAddressACleanStart(t *testing.T) {
 func TestRegisterChecksTheURLOnEveryCall(t *testing.T) {
 	r := newRegisterRig(t)
 
-	if _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/ok")); err != nil {
+	if _, _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/ok")); err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
 
-	_, err := r.registrar.Register(context.Background(), "acme", reg("https://nats:8222/jsz"))
+	_, _, err := r.registrar.Register(context.Background(), "acme", reg("https://nats:8222/jsz"))
 	if !errors.Is(err, webhook.ErrPrivateURL) {
 		t.Errorf("error = %v, want ErrPrivateURL", err)
 	}
@@ -115,7 +136,7 @@ func TestRegisterRefusesAnInactiveSource(t *testing.T) {
 	r := newRegisterRig(t)
 	r.src.IsActive = false
 
-	_, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/hooks"))
+	_, _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/hooks"))
 
 	if !errors.Is(err, source.ErrSourceInactive) {
 		t.Fatalf("error = %v, want ErrSourceInactive", err)
@@ -139,7 +160,7 @@ func TestGetWithoutARegisteredCallback(t *testing.T) {
 func TestDeactivateKeepsTheAddress(t *testing.T) {
 	r := newRegisterRig(t)
 
-	if _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/hooks")); err != nil {
+	if _, _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/hooks")); err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
 	if err := r.registrar.Deactivate(context.Background(), "acme"); err != nil {
@@ -155,5 +176,94 @@ func TestDeactivateKeepsTheAddress(t *testing.T) {
 	}
 	if w.CallbackURL != "https://acme.com/hooks" {
 		t.Errorf("url = %q, want it kept", w.CallbackURL)
+	}
+}
+
+// The secret is handed over exactly once, on the call that creates the
+// callback. It crosses the wire there and nowhere else.
+func TestTheSigningSecretIsIssuedOnce(t *testing.T) {
+	r := newRegisterRig(t)
+
+	_, secret, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/a"))
+	if err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	if secret == "" {
+		t.Fatal("the first registration returned no secret")
+	}
+	if r.secrets.issued != 1 {
+		t.Errorf("issued %d secrets, want 1", r.secrets.issued)
+	}
+}
+
+// Registering again moves the address. Rotating the secret at the same time
+// would break every receiver that was already verifying, and none of them asked
+// for that.
+func TestChangingTheAddressKeepsTheSecret(t *testing.T) {
+	r := newRegisterRig(t)
+
+	if _, _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/a")); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+
+	w, secret, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/b"))
+	if err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	if w.CallbackURL != "https://acme.com/b" {
+		t.Errorf("callback url = %q, want it moved", w.CallbackURL)
+	}
+	if secret != "" {
+		t.Errorf("a second registration returned a secret (%q)", secret)
+	}
+	if r.secrets.issued != 1 {
+		t.Errorf("issued %d secrets, want the first one to still stand", r.secrets.issued)
+	}
+}
+
+// Without this, a source that lost its secret could never verify another
+// callback: what is stored is sealed and nothing reads it back.
+func TestRotateIssuesANewSecret(t *testing.T) {
+	r := newRegisterRig(t)
+
+	_, first, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/a"))
+	if err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+
+	second, err := r.registrar.RotateSecret(context.Background(), "acme")
+	if err != nil {
+		t.Fatalf("RotateSecret() error = %v", err)
+	}
+	if second == "" || second == first {
+		t.Errorf("rotate gave %q, want a different secret", second)
+	}
+	if r.secrets.issued != 2 {
+		t.Errorf("issued %d secrets, want 2", r.secrets.issued)
+	}
+}
+
+// Rotating for a source with no callback is a not-found, not a secret issued
+// against nothing.
+func TestRotatingWithNoCallback(t *testing.T) {
+	r := newRegisterRig(t)
+
+	if _, err := r.registrar.RotateSecret(context.Background(), "acme"); err == nil {
+		t.Fatal("RotateSecret() with no callback succeeded")
+	}
+	if r.secrets.issued != 0 {
+		t.Errorf("issued %d secrets for a callback that does not exist", r.secrets.issued)
+	}
+}
+
+// A callback with no secret cannot be signed, and the notifier refuses to send
+// one unsigned -- so a webhook that was created but never got one is a row that
+// would never fire. The registration fails instead.
+func TestARegistrationThatCannotBeGivenASecret(t *testing.T) {
+	r := newRegisterRig(t)
+	r.secrets.err = errors.New("the keyring is unreachable")
+
+	if _, _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/a")); err == nil {
+		t.Fatal("Register() succeeded with no secret issued")
 	}
 }

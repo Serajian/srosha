@@ -167,6 +167,14 @@ func buildGatewayCore(
 
 	// The rows never see a secret in the clear and the core never sees one
 	// sealed. This is the only place both are true at once.
+	// The callback's signing secret, sealed the same way a credential's is. It
+	// lives in the database rather than the environment so that a new source is
+	// not a redeploy, and so it can be handed over on the call that registers.
+	callbackSecrets, err := secret.NewWebhookKeeper(webhookRows, keys, now)
+	if err != nil {
+		return core, err
+	}
+
 	secrets, err := secret.New(credentialRows, keys, now, log)
 	if err != nil {
 		return core, err
@@ -182,7 +190,7 @@ func buildGatewayCore(
 	return gatewayCore{
 		submitter: usecase.NewSubmitter(sources, credentials, notifications, deliveries, uow, log),
 		querier:   usecase.NewQuerier(notifications, deliveries),
-		registrar: usecase.NewRegistrar(sources, webhooks),
+		registrar: usecase.NewRegistrar(sources, webhooks, callbackSecrets),
 		creds: usecase.NewCredentials(
 			sources,
 			credentials,

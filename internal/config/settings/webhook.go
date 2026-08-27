@@ -44,35 +44,24 @@ func LoadWebhookPolicy(r *env.Reader, production bool) WebhookPolicy {
 type Webhook struct {
 	WebhookPolicy
 
-	// Secrets is one signing secret per source, keyed by source id. A single
-	// shared secret would let any source holding it forge a signed callback to
-	// another.
-	Secrets map[string]env.Secret
-
 	Timeout     time.Duration
 	MaxFailures int
 }
 
-// SecretFor hands over one source's signing secret, and reports whether there
-// is one. Reading the map directly would mean passing the whole set to whoever
-// signs, and a component that holds every secret is one that can be asked for
-// any of them.
-func (w Webhook) SecretFor(sourceID string) (string, bool) {
-	s, ok := w.Secrets[sourceID]
-	if !ok || s.IsZero() {
-		return "", false
-	}
-	return s.Reveal(), true
-}
-
+// There is no signing secret here, and there was one until the callback's
+// secret moved into the database. It was a json map of source id to secret in
+// an environment variable, which meant a new source was a redeploy -- and gave
+// the source no defined way of learning theirs at all.
+//
+// It is issued now on the call that registers a callback, which is already
+// authenticated as the source that needs it, and kept sealed with the same
+// keyring a sending credential uses.
 func LoadWebhook(r *env.Reader, production bool) Webhook {
 	w := Webhook{
 		WebhookPolicy: LoadWebhookPolicy(r, production),
-		Secrets:       map[string]env.Secret{},
 		Timeout:       r.Duration("WEBHOOK_TIMEOUT", 10*time.Second),
 		MaxFailures:   r.Int("WEBHOOK_MAX_FAILURES", 20),
 	}
-	r.JSON("WEBHOOK_SECRETS", &w.Secrets)
 
 	r.Check(w.MaxFailures > 0, "NOTIF_WEBHOOK_MAX_FAILURES must be above zero")
 	return w
