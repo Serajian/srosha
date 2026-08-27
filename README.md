@@ -22,14 +22,14 @@ delivers.
 ## How it works
 
 <p align="center">
-  <img src="docs/assets/brand/architecture.svg" alt="Architecture: a client submits to the gateway over gRPC or REST; the gateway persists to PostgreSQL and publishes to NATS JetStream; the dispatcher consumes the queue, sends over the four channels, records the outcome, and fires a signed status webhook back to the client" width="100%">
+  <img src="docs/assets/brand/architecture.svg" alt="Architecture: a client submits to the gateway over gRPC; the gateway persists to PostgreSQL and publishes to NATS JetStream; the dispatcher consumes the queue, sends over the four channels, records the outcome, and fires a signed status webhook back to the client" width="100%">
 </p>
 
 Two independently deployable binaries share one core:
 
 | Binary | Responsibility |
 | --- | --- |
-| **gateway** | Accepts requests (gRPC, plus REST via grpc-gateway), authenticates, rate-limits, persists, publishes to the queue, returns an immediate ack |
+| **gateway** | Accepts requests over gRPC, authenticates, rate-limits, persists, publishes to the queue, returns an immediate ack |
 | **dispatcher** | Consumes from NATS JetStream, performs the actual send per channel, records the outcome, fires status webhooks |
 
 The split exists so intake and delivery scale and fail independently: a broken
@@ -38,6 +38,33 @@ channel integration must never stop request intake.
 Under the hood, the service follows a hexagonal architecture — the domain core
 knows nothing about gRPC, PostgreSQL or NATS, and every technology hangs off a
 port. The full design is documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Talking to it
+
+gRPC is the only surface, so every client library is a gRPC client and
+`api/proto/notification/v1` is the one contract behind all of them.
+
+```bash
+go get github.com/Serajian/srosha/sdk/go
+```
+
+```go
+c, _ := srosha.New(ctx, "srosha.acme.test:443", apiKey)
+defer c.Close()
+
+c.Submit(ctx, srosha.Message{
+    Title: "Your order shipped",
+    Body:  "Tracking: 123",
+    Routes: []srosha.Route{
+        srosha.Email("a@b.test"),
+        srosha.Telegram("123456789"),
+    },
+})
+```
+
+Sending identities are registered once and never mentioned again; a message
+names a channel, not an identity. See [`sdk/go`](sdk/go/README.md), and
+[`sdk/`](sdk/README.md) for the rule every language SDK follows.
 
 ## Getting started
 
@@ -69,6 +96,7 @@ internal/       everything that knows what srosha is
   bootstrap/    wires a binary together and shuts it down in order
   config/       environment configuration, loaded once at startup
 pkg/            generic packages with zero domain knowledge
+sdk/            what a customer imports — one module per language
 docs/           architecture, conventions, config, change reports
 ```
 

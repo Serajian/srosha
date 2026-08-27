@@ -47,12 +47,30 @@ func (r Route) From(sender string) Route {
 // earns its place here: the body is a literal, typing "srosha." lists the
 // channels, and a new channel costs a line rather than a method with logic in
 // it. Compare SendEmail/SendTelegram, which would be seven identical bodies.
-func Email(address string) Route    { return Route{Channel: ChannelEmail, Address: address} }
+
+// Email routes to a mail address.
+func Email(address string) Route { return Route{Channel: ChannelEmail, Address: address} }
+
+// Telegram routes to a numeric chat id, or an @name.
 func Telegram(address string) Route { return Route{Channel: ChannelTelegram, Address: address} }
-func Bale(address string) Route     { return Route{Channel: ChannelBale, Address: address} }
+
+// Bale routes to a numeric chat id, or an @name.
+func Bale(address string) Route { return Route{Channel: ChannelBale, Address: address} }
+
+// WhatsApp routes to a phone number in E.164 form, "+" and digits.
 func WhatsApp(address string) Route { return Route{Channel: ChannelWhatsApp, Address: address} }
-func Matrix(room string) Route      { return Route{Channel: ChannelMatrix, Address: room} }
-func FCM(deviceToken string) Route  { return Route{Channel: ChannelFCM, Address: deviceToken} }
+
+// Matrix routes to a room, and only a room: "!abc:matrix.org". The protocol has
+// no way to message a person -- reaching one means finding or creating a
+// private room with them, which is conversation state srosha does not keep.
+func Matrix(room string) Route { return Route{Channel: ChannelMatrix, Address: room} }
+
+// FCM routes to an Android device token.
+func FCM(deviceToken string) Route { return Route{Channel: ChannelFCM, Address: deviceToken} }
+
+// APNs routes to an Apple device token, which is hexadecimal. A token from a
+// development build is unknown to production and the other way round -- see
+// APNsCredential.Environment.
 func APNs(deviceToken string) Route { return Route{Channel: ChannelAPNs, Address: deviceToken} }
 
 // To is for a channel this build does not know a constructor for, which is what

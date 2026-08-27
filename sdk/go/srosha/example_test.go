@@ -95,3 +95,118 @@ func ExampleClient_List() {
 		fmt.Println(n.ID, n.Title)
 	}
 }
+
+// A source registers each identity once. After this, Submit names a channel
+// and not an identity.
+func ExampleCredentials_Register() {
+	ctx := context.Background()
+
+	c, _ := srosha.New(ctx, "srosha.acme.test:443", "srosha_your-key")
+	defer func() { _ = c.Close() }()
+
+	// A bot is a token and nothing else.
+	_, err := c.Credentials.Register(ctx, srosha.Registration{
+		Name:       "alerts",
+		Default:    true,
+		Credential: srosha.TelegramCredential{Token: "111:your-bot-token"},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Mail is a whole account.
+	_, err = c.Credentials.Register(ctx, srosha.Registration{
+		Name:    "mail",
+		Default: true,
+		Credential: srosha.SMTPCredential{
+			Host: "smtp.acme.test", Port: 587,
+			Username: "bot", From: "bot@acme.test", Password: "your-password",
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Apple wants four things, and only the key is secret. An unset
+	// environment means production, which is what a shipped app uses.
+	_, err = c.Credentials.Register(ctx, srosha.Registration{
+		Name:    "ios",
+		Default: true,
+		Credential: srosha.APNsCredential{
+			KeyID: "ABC1234567", TeamID: "TEAM123456",
+			Topic: "com.acme.app", Environment: srosha.APNsSandbox,
+			Key: "-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----\n",
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+// A leaked token needs the secret replaced and the name kept: registering a
+// second identity instead would make every message still naming the old one
+// fail, turning a leak into a code change.
+func ExampleCredentials_Rotate() {
+	ctx := context.Background()
+
+	c, _ := srosha.New(ctx, "srosha.acme.test:443", "srosha_your-key")
+	defer func() { _ = c.Close() }()
+
+	identities, err := c.Credentials.List(ctx, srosha.ChannelTelegram)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, id := range identities {
+		if id.Name != "alerts" {
+			continue
+		}
+		if _, err := c.Credentials.Rotate(ctx, id.ID, "111:the-new-token"); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+// Registering a webhook says where outcomes are pushed. Verifying the signature
+// on what arrives is not done for you -- see the note on Webhooks.
+func ExampleWebhooks_Register() {
+	ctx := context.Background()
+
+	c, _ := srosha.New(ctx, "srosha.acme.test:443", "srosha_your-key")
+	defer func() { _ = c.Close() }()
+
+	h, err := c.Webhooks.Register(ctx, "https://acme.test/srosha")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(h.CallbackURL, h.Active)
+}
+
+// Deliveries say what happened per recipient. Not every failure is the same
+// kind of failure.
+func ExampleClient_Get() {
+	ctx := context.Background()
+
+	c, _ := srosha.New(ctx, "srosha.acme.test:443", "srosha_your-key")
+	defer func() { _ = c.Close() }()
+
+	got, err := c.Get(ctx, "01M11DF6WBFTHMAHMEFS1WV08S")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, d := range got.Deliveries {
+		switch d.Reason {
+		case srosha.FailureNone:
+		case srosha.FailureNotReachable:
+			// The provider refused the recipient, not the message. Nothing
+			// written differently would have helped: stop sending there.
+			fmt.Println("stop sending to", d.Address)
+		case srosha.FailureNoSender:
+			// No identity is configured for that channel. Ours to fix.
+			fmt.Println("register an identity for", d.Channel)
+		default:
+			fmt.Println(d.Channel, "failed:", d.Reason)
+		}
+	}
+}
