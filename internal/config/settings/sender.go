@@ -8,7 +8,17 @@ type Sender struct {
 	SMTP     SMTP
 	Telegram env.Secret
 	Bale     env.Secret
-	WhatsApp env.Secret
+	WhatsApp WhatsApp
+}
+
+// WhatsApp is srosha's own business number. Two values and not one, because Meta
+// identifies the sending number separately from the account that owns it -- the
+// id goes in the url, the token in a header.
+type WhatsApp struct {
+	Token env.Secret
+
+	// PhoneNumberID is Meta's id for the sending number, not the number itself.
+	PhoneNumberID string
 }
 
 type SMTP struct {
@@ -34,6 +44,9 @@ func LoadSender(r *env.Reader) Sender {
 		},
 		Telegram: r.Secret("SENDER_TELEGRAM_TOKEN", ""),
 		Bale:     r.Secret("SENDER_BALE_TOKEN", ""),
-		WhatsApp: r.Secret("SENDER_WHATSAPP_TOKEN", ""),
+		WhatsApp: WhatsApp{
+			Token:         r.Secret("SENDER_WHATSAPP_TOKEN", ""),
+			PhoneNumberID: r.Str("SENDER_WHATSAPP_PHONE_NUMBER_ID", ""),
+		},
 	}
 }

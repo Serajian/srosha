@@ -202,6 +202,12 @@ func TestEveryWiredChannelResolves(t *testing.T) {
 			}},
 			config: []byte(`{"host":"smtp.theirs.test","from":"them@theirs.test"}`),
 		},
+		shared.ChannelWhatsApp: {
+			own: sender.Fallback{WhatsApp: sender.WhatsApp{
+				Token: ours, PhoneNumberID: "123456789",
+			}},
+			config: []byte(`{"phone_number_id":"987654321"}`),
+		},
 	}
 
 	for c, tt := range tests {
@@ -233,18 +239,15 @@ func TestEveryWiredChannelResolves(t *testing.T) {
 	}
 }
 
-// A channel with no sender written yet answers as configuration, not as a
-// fault: the delivery is reported to the source and not retried.
-func TestAChannelWithNoSenderYet(t *testing.T) {
-	for _, c := range []shared.Channel{shared.ChannelWhatsApp} {
-		t.Run(c.String(), func(t *testing.T) {
-			r := registry(t, nil, &secrets{}, sender.Fallback{TelegramToken: ours})
+// Every channel in the enum now has a sender, so the only one left without is a
+// value that should never reach here at all -- and it answers as configuration
+// rather than as a fault, so the delivery is reported and not retried for ever.
+func TestAChannelNobodyDefined(t *testing.T) {
+	r := registry(t, nil, &secrets{}, sender.Fallback{TelegramToken: ours})
 
-			_, err := r.For(context.Background(), sourceID, c, "")
-			if !errs.IsType(err, errs.ErrInvalidInput) {
-				t.Errorf("For(%q) = %v, want invalid input", c, err)
-			}
-		})
+	_, err := r.For(context.Background(), sourceID, shared.Channel("carrier-pigeon"), "")
+	if !errs.IsType(err, errs.ErrInvalidInput) {
+		t.Errorf("For() = %v, want invalid input", err)
 	}
 }
 

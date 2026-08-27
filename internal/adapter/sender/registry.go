@@ -12,6 +12,7 @@ import (
 	"github.com/Serajian/srosha/internal/adapter/sender/bale"
 	"github.com/Serajian/srosha/internal/adapter/sender/email"
 	"github.com/Serajian/srosha/internal/adapter/sender/telegram"
+	"github.com/Serajian/srosha/internal/adapter/sender/whatsapp"
 	"github.com/Serajian/srosha/internal/core/domain/credential"
 	"github.com/Serajian/srosha/internal/core/domain/delivery"
 	"github.com/Serajian/srosha/internal/core/shared"
@@ -42,11 +43,25 @@ type Fallback struct {
 	TelegramToken string
 	BaleToken     string
 
+	// WhatsApp is a token and the number it sends from, because Meta identifies
+	// the sending number separately from the account that owns it.
+	WhatsApp WhatsApp
+
 	// SMTP is a whole identity rather than a token, because mail is. A bot is a
 	// secret and nothing else; a mail account is a server, a user and an address,
 	// and any one of them wrong is a message that never arrives.
 	SMTP SMTP
 }
+
+// WhatsApp is srosha's own business number.
+type WhatsApp struct {
+	Token string
+
+	// PhoneNumberID is Meta's id for the sending number, not the number itself.
+	PhoneNumberID string
+}
+
+func (w WhatsApp) configured() bool { return w.Token != "" && w.PhoneNumberID != "" }
 
 // SMTP is srosha's own mail identity.
 type SMTP struct {
@@ -152,7 +167,11 @@ func (r *Registry) ours(c shared.Channel) (delivery.Sender, error) {
 		}, r.own.SMTP.Password)
 
 	case shared.ChannelWhatsApp:
-		return nil, noSender(c)
+		if !r.own.WhatsApp.configured() {
+			return nil, noSender(c)
+		}
+		return whatsapp.New(r.client, r.own.WhatsApp.Token,
+			whatsapp.Config{PhoneNumberID: r.own.WhatsApp.PhoneNumberID})
 
 	default:
 		return nil, noSender(c)
@@ -191,7 +210,14 @@ func (r *Registry) build(c shared.Channel, config []byte, secret string) (delive
 		return email.New(r.mail, cfg, secret)
 
 	case shared.ChannelWhatsApp:
-		return nil, noSender(c)
+		// Parsed into a type of its own, as mail is: these settings are required
+		// and interdependent, so they are checked once here rather than at the
+		// moment a message is going out.
+		cfg, err := whatsapp.ParseConfig(config)
+		if err != nil {
+			return nil, err
+		}
+		return whatsapp.New(r.client, secret, cfg)
 
 	default:
 		return nil, noSender(c)
