@@ -63,7 +63,8 @@ func replyCode(msg string) int {
 			continue
 		}
 
-		if code := int(msg[i]-'0')*100 + int(msg[i+1]-'0')*10 + int(msg[i+2]-'0'); code >= 200 && code <= 599 {
+		if code := int(msg[i]-'0')*100 + int(msg[i+1]-'0')*10 + int(msg[i+2]-'0'); code >= 200 &&
+			code <= 599 {
 			return code
 		}
 	}

@@ -564,7 +564,11 @@ func TestGetGathersEveryDeliveryPage(t *testing.T) {
 		{
 			Notification: &pb.Notification{Id: "01M11", Title: "t"},
 			Deliveries: []*pb.Delivery{
-				{Id: "d1", Channel: pb.Channel_CHANNEL_EMAIL, Status: pb.DeliveryStatus_DELIVERY_STATUS_SENT},
+				{
+					Id:      "d1",
+					Channel: pb.Channel_CHANNEL_EMAIL,
+					Status:  pb.DeliveryStatus_DELIVERY_STATUS_SENT,
+				},
 			},
 			NextPageToken: "p2",
 		},

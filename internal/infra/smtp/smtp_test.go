@@ -113,7 +113,10 @@ func TestTheReplyCodeComesBack(t *testing.T) {
 		"greylisted":      {map[string]string{"RCPT TO": "450 4.2.0 Greylisted"}, 450},
 		"service busy":    {map[string]string{"MAIL FROM": "421 4.3.2 Service not available"}, 421},
 		"mailbox full":    {map[string]string{"DATA-END": "452 4.2.2 Mailbox full"}, 452},
-		"auth refused":    {map[string]string{"AUTH": "535 5.7.8 Authentication credentials invalid"}, 535},
+		"auth refused": {
+			map[string]string{"AUTH": "535 5.7.8 Authentication credentials invalid"},
+			535,
+		},
 	}
 
 	for name, tt := range tests {

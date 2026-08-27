@@ -16,7 +16,10 @@ func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)
 func newScheduler(t *testing.T) *scheduler.Scheduler {
 	t.Helper()
 
-	s, err := scheduler.New(scheduler.Config{Location: time.UTC, StopTimeout: 5 * time.Second}, quiet())
+	s, err := scheduler.New(
+		scheduler.Config{Location: time.UTC, StopTimeout: 5 * time.Second},
+		quiet(),
+	)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

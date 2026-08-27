@@ -389,10 +389,11 @@ func fromWebhook(w *webhook.Webhook) *pb.Webhook {
 		return nil
 	}
 	return &pb.Webhook{
-		Id:                  w.ID.String(),
-		CallbackUrl:         w.CallbackURL,
-		IsActive:            w.IsActive(),
-		ConsecutiveFailures: int32(w.ConsecutiveFailures()), //nolint:gosec // a count, bounded by the configured limit
+		Id:          w.ID.String(),
+		CallbackUrl: w.CallbackURL,
+		IsActive:    w.IsActive(),
+		//nolint:gosec // a count, bounded by the configured limit
+		ConsecutiveFailures: int32(w.ConsecutiveFailures()),
 		CreatedAt:           timestamppb.New(w.CreatedAt),
 		UpdatedAt:           timestamppb.New(w.UpdatedAt),
 	}

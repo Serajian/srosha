@@ -339,7 +339,10 @@ func TestASwitchedOffIdentityCannotBecomeTheDefault(t *testing.T) {
 	if _, err := r.creds.Deactivate(context.Background(), "acme", c.ID); err != nil {
 		t.Fatalf("Deactivate() error = %v", err)
 	}
-	if _, err := r.creds.SetDefault(context.Background(), "acme", c.ID); !errs.IsType(err, errs.ErrInvalidInput) {
+	if _, err := r.creds.SetDefault(context.Background(), "acme", c.ID); !errs.IsType(
+		err,
+		errs.ErrInvalidInput,
+	) {
 		t.Errorf("SetDefault() = %v, want invalid input", err)
 	}
 }
@@ -396,10 +399,16 @@ func TestOneSourceCannotTouchAnothersIdentity(t *testing.T) {
 func TestAnIdentityThatIsNotThere(t *testing.T) {
 	r := newCredentialRig(t, fakeUOW{})
 
-	if _, err := r.creds.Deactivate(context.Background(), "acme", shared.ID("01J8XQ2M4E7N9V3B5C6D7F8999")); !errs.IsType(err, errs.ErrNotFound) {
+	if _, err := r.creds.Deactivate(context.Background(), "acme", shared.ID("01J8XQ2M4E7N9V3B5C6D7F8999")); !errs.IsType(
+		err,
+		errs.ErrNotFound,
+	) {
 		t.Errorf("Deactivate() = %v, want not found", err)
 	}
-	if _, err := r.creds.Rotate(context.Background(), "acme", "", "x"); !errs.IsType(err, errs.ErrInvalidInput) {
+	if _, err := r.creds.Rotate(context.Background(), "acme", "", "x"); !errs.IsType(
+		err,
+		errs.ErrInvalidInput,
+	) {
 		t.Errorf("Rotate() with no id = %v, want invalid input", err)
 	}
 }
@@ -431,7 +440,10 @@ func TestUpdateRefusesSettingsThatAreNotJSON(t *testing.T) {
 	r := newCredentialRig(t, fakeUOW{})
 	c := r.register(t, "alerts", true)
 
-	if _, err := r.creds.Update(context.Background(), "acme", c.ID, []byte("host=x")); !errs.IsType(err, errs.ErrInvalidInput) {
+	if _, err := r.creds.Update(context.Background(), "acme", c.ID, []byte("host=x")); !errs.IsType(
+		err,
+		errs.ErrInvalidInput,
+	) {
 		t.Errorf("Update() = %v, want invalid input", err)
 	}
 	if len(r.vault.updated) != 0 {

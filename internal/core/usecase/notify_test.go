@@ -63,7 +63,10 @@ func TestAnnounceWaitsForEveryRecipient(t *testing.T) {
 func TestAnnounceCarriesNoProviderText(t *testing.T) {
 	d := newDispatchRig(t, func(o *dispatchOpts) {
 		oneRoute(o)
-		o.sender.err = &shared.SendError{Kind: shared.SendPermanent, Detail: "chat not found: bot@internal"}
+		o.sender.err = &shared.SendError{
+			Kind:   shared.SendPermanent,
+			Detail: "chat not found: bot@internal",
+		}
 	})
 
 	if err := d.dispatcher.Handle(context.Background(), d.deliveryID, 1); err != nil {

@@ -40,7 +40,10 @@ func TestNewRefusesAnIncompleteConfig(t *testing.T) {
 		{"no addr", grpcserver.Config{StopTimeout: time.Second}},
 		{"blank addr", grpcserver.Config{Addr: "  ", StopTimeout: time.Second}},
 		{"no stop timeout", grpcserver.Config{Addr: "127.0.0.1:0"}},
-		{"negative stop timeout", grpcserver.Config{Addr: "127.0.0.1:0", StopTimeout: -time.Second}},
+		{
+			"negative stop timeout",
+			grpcserver.Config{Addr: "127.0.0.1:0", StopTimeout: -time.Second},
+		},
 	}
 
 	for _, tt := range tests {

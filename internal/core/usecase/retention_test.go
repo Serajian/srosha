@@ -13,7 +13,12 @@ import (
 	"github.com/Serajian/srosha/internal/core/usecase"
 )
 
-func retentionRig(t *testing.T, age time.Duration, batch int, at time.Time) (*usecase.Retention, *fakeNotifications) {
+func retentionRig(
+	t *testing.T,
+	age time.Duration,
+	batch int,
+	at time.Time,
+) (*usecase.Retention, *fakeNotifications) {
 	t.Helper()
 
 	rows := newFakeNotifications()
@@ -61,7 +66,12 @@ func TestPurgeKeepsGoingUntilNothingIsLeft(t *testing.T) {
 	r, rows := retentionRig(t, time.Hour, 3, at)
 
 	for i := range 10 {
-		write(t, rows, shared.ID(fmt.Sprintf("01J8XQ2M4E7N9V3B5C6D7F9%03d", i)), at.Add(-2*time.Hour))
+		write(
+			t,
+			rows,
+			shared.ID(fmt.Sprintf("01J8XQ2M4E7N9V3B5C6D7F9%03d", i)),
+			at.Add(-2*time.Hour),
+		)
 	}
 
 	if err := r.Purge(context.Background()); err != nil {
@@ -79,7 +89,12 @@ func TestPurgeStopsWhenItIsToldTo(t *testing.T) {
 	r, rows := retentionRig(t, time.Hour, 3, at)
 
 	for i := range 10 {
-		write(t, rows, shared.ID(fmt.Sprintf("01J8XQ2M4E7N9V3B5C6D7FA%02d", i)), at.Add(-2*time.Hour))
+		write(
+			t,
+			rows,
+			shared.ID(fmt.Sprintf("01J8XQ2M4E7N9V3B5C6D7FA%02d", i)),
+			at.Add(-2*time.Hour),
+		)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

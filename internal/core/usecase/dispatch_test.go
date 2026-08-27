@@ -224,7 +224,10 @@ func TestHandleRecordsFailures(t *testing.T) {
 		{
 			name: "the provider says it will never work",
 			tweak: func(o *dispatchOpts) {
-				o.sender.err = &shared.SendError{Kind: shared.SendPermanent, Detail: "chat not found"}
+				o.sender.err = &shared.SendError{
+					Kind:   shared.SendPermanent,
+					Detail: "chat not found",
+				}
 			},
 			reason: delivery.FailurePermanent,
 		},

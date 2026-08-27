@@ -74,7 +74,9 @@ func (s *Sender) Channel() shared.Channel { return shared.ChannelTelegram }
 func (s *Sender) Send(ctx context.Context, m shared.Message) (string, error) {
 	text := compose(m.Title, m.Body)
 	if utf8.RuneCountInString(text) > maxTextLen {
-		return "", refused(fmt.Sprintf("message is longer than telegram accepts (max %d)", maxTextLen))
+		return "", refused(
+			fmt.Sprintf("message is longer than telegram accepts (max %d)", maxTextLen),
+		)
 	}
 
 	payload, err := json.Marshal(sendMessageRequest{
@@ -86,7 +88,12 @@ func (s *Sender) Send(ctx context.Context, m shared.Message) (string, error) {
 		return "", refused("message could not be encoded for telegram")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint(), bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		s.endpoint(),
+		bytes.NewReader(payload),
+	)
 	if err != nil {
 		return "", unreachable("request", s.token, err)
 	}

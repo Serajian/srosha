@@ -104,7 +104,12 @@ func credOn(
 	return *c
 }
 
-func registry(t *testing.T, have []credential.Credential, s *secrets, own sender.Fallback) *sender.Registry {
+func registry(
+	t *testing.T,
+	have []credential.Credential,
+	s *secrets,
+	own sender.Fallback,
+) *sender.Registry {
 	t.Helper()
 	return registryOn(t, shared.ChannelTelegram, have, s, own)
 }
@@ -254,7 +259,13 @@ func TestEveryWiredChannelResolves(t *testing.T) {
 				material = tt.secret
 			}
 			s := &secrets{secret: material, config: tt.config}
-			got, err := registryOn(t, c, []credential.Credential{credOn(t, c, "alerts", true, true)}, s, own).
+			got, err := registryOn(
+				t,
+				c,
+				[]credential.Credential{credOn(t, c, "alerts", true, true)},
+				s,
+				own,
+			).
 				For(context.Background(), sourceID, c, "")
 			if err != nil {
 				t.Fatalf("For: %v", err)

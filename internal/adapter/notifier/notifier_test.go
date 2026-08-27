@@ -46,7 +46,11 @@ func callback(t *testing.T, status int) (*notifier.Notifier, *webhook.Webhook, *
 	return callbackWith(t, status, secrets{sourceID: secret})
 }
 
-func callbackWith(t *testing.T, status int, keys secrets) (*notifier.Notifier, *webhook.Webhook, *call) {
+func callbackWith(
+	t *testing.T,
+	status int,
+	keys secrets,
+) (*notifier.Notifier, *webhook.Webhook, *call) {
 	t.Helper()
 
 	got := &call{}

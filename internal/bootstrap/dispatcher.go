@@ -218,33 +218,41 @@ func buildDispatcherCore(
 		return core, err
 	}
 
-	senders, err := sender.NewRegistry(credentials, secrets, providers, mail, tokens, apple, sender.Fallback{
-		TelegramToken: cfg.Sender.Telegram.Reveal(),
-		BaleToken:     cfg.Sender.Bale.Reveal(),
-		Matrix: sender.Matrix{
-			Token:      cfg.Sender.Matrix.Token.Reveal(),
-			Homeserver: cfg.Sender.Matrix.Homeserver,
+	senders, err := sender.NewRegistry(
+		credentials,
+		secrets,
+		providers,
+		mail,
+		tokens,
+		apple,
+		sender.Fallback{
+			TelegramToken: cfg.Sender.Telegram.Reveal(),
+			BaleToken:     cfg.Sender.Bale.Reveal(),
+			Matrix: sender.Matrix{
+				Token:      cfg.Sender.Matrix.Token.Reveal(),
+				Homeserver: cfg.Sender.Matrix.Homeserver,
+			},
+			FCMServiceAccount: cfg.Sender.FCM.Reveal(),
+			APNs: sender.APNs{
+				Key:         cfg.Sender.APNs.Key.Reveal(),
+				KeyID:       cfg.Sender.APNs.KeyID,
+				TeamID:      cfg.Sender.APNs.TeamID,
+				Topic:       cfg.Sender.APNs.Topic,
+				Environment: cfg.Sender.APNs.Environment,
+			},
+			WhatsApp: sender.WhatsApp{
+				Token:         cfg.Sender.WhatsApp.Token.Reveal(),
+				PhoneNumberID: cfg.Sender.WhatsApp.PhoneNumberID,
+			},
+			SMTP: sender.SMTP{
+				Host:     cfg.Sender.SMTP.Host,
+				Port:     cfg.Sender.SMTP.Port,
+				Username: cfg.Sender.SMTP.Username,
+				From:     cfg.Sender.SMTP.From,
+				Password: cfg.Sender.SMTP.Password.Reveal(),
+			},
 		},
-		FCMServiceAccount: cfg.Sender.FCM.Reveal(),
-		APNs: sender.APNs{
-			Key:         cfg.Sender.APNs.Key.Reveal(),
-			KeyID:       cfg.Sender.APNs.KeyID,
-			TeamID:      cfg.Sender.APNs.TeamID,
-			Topic:       cfg.Sender.APNs.Topic,
-			Environment: cfg.Sender.APNs.Environment,
-		},
-		WhatsApp: sender.WhatsApp{
-			Token:         cfg.Sender.WhatsApp.Token.Reveal(),
-			PhoneNumberID: cfg.Sender.WhatsApp.PhoneNumberID,
-		},
-		SMTP: sender.SMTP{
-			Host:     cfg.Sender.SMTP.Host,
-			Port:     cfg.Sender.SMTP.Port,
-			Username: cfg.Sender.SMTP.Username,
-			From:     cfg.Sender.SMTP.From,
-			Password: cfg.Sender.SMTP.Password.Reveal(),
-		},
-	})
+	)
 	if err != nil {
 		return core, err
 	}

@@ -85,7 +85,12 @@ func (n *Notifier) Notify(ctx context.Context, w *webhook.Webhook, b webhook.Bat
 
 	signature, timestamp := sign(secret, n.now(), body)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.CallbackURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		w.CallbackURL,
+		bytes.NewReader(body),
+	)
 	if err != nil {
 		return errs.InvalidInputErr("the callback address cannot be called").WithErr(err)
 	}

@@ -238,7 +238,10 @@ func TestMovingTheDefaultTakesBothHalves(t *testing.T) {
 
 	t.Run("the second default alone is refused", func(t *testing.T) {
 		rival := aCredential(t, ulid("CE"), sourceID, "marketing", true)
-		if err := repo.Create(ctx, rival, nil, theSecret); !errs.IsType(err, errs.ErrDuplicateEntry) {
+		if err := repo.Create(ctx, rival, nil, theSecret); !errs.IsType(
+			err,
+			errs.ErrDuplicateEntry,
+		) {
 			t.Fatalf("Create() = %v, want a duplicate", err)
 		}
 	})
@@ -332,7 +335,8 @@ func TestResealReplacesOnlyTheSecret(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListBySourceAndChannel: %v", err)
 	}
-	if len(list) != 1 || list[0].Name != "transactional" || !list[0].IsDefault() || !list[0].IsActive() {
+	if len(list) != 1 || list[0].Name != "transactional" || !list[0].IsDefault() ||
+		!list[0].IsActive() {
 		t.Errorf("the identity moved: %+v", list)
 	}
 }
@@ -408,7 +412,10 @@ func TestOneSourceCannotReachAnothersCredential(t *testing.T) {
 	if _, err := repo.ReadByID(ctx, theirs, c.ID); !errs.IsType(err, errs.ErrNotFound) {
 		t.Errorf("ReadByID as another source = %v, want not found", err)
 	}
-	if err := repo.Rotate(ctx, theirs, c.ID, "v1.9.a.b", time.Now().UTC()); !errs.IsType(err, errs.ErrNotFound) {
+	if err := repo.Rotate(ctx, theirs, c.ID, "v1.9.a.b", time.Now().UTC()); !errs.IsType(
+		err,
+		errs.ErrNotFound,
+	) {
 		t.Errorf("Rotate as another source = %v, want not found", err)
 	}
 

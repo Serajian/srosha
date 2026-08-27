@@ -1,18 +1,18 @@
 <p align="center">
-  <img src="docs/assets/brand/srosha-hero.png" alt="Srosha — async notification delivery across Email, Telegram, Bale and WhatsApp" width="100%">
+  <img src="docs/assets/brand/srosha-hero.png" alt="Srosha — async notification delivery across Email, Telegram, Bale, WhatsApp, Matrix, FCM and APNs" width="100%">
 </p>
 
 <p align="center">
   <a href="https://go.dev"><img alt="Go 1.26" src="https://img.shields.io/badge/Go-1.26-33A5DE?labelColor=0F172A"></a>
   <img alt="Status: in development" src="https://img.shields.io/badge/status-in%20development-4934A2?labelColor=0F172A">
-  <img alt="Channels: 4" src="https://img.shields.io/badge/channels-Email%20%C2%B7%20Telegram%20%C2%B7%20Bale%20%C2%B7%20WhatsApp-3256AE?labelColor=0F172A">
+  <img alt="Channels: 7" src="https://img.shields.io/badge/channels-7-3256AE?labelColor=0F172A">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-317DC6?labelColor=0F172A"></a>
 </p>
 
 **Srosha** is an asynchronous notification service written in Go. A client submits
 a notification once; the service acknowledges immediately and delivers it out of
-band across four channels — **Email, Telegram, Bale and WhatsApp** — with
-at-least-once delivery and per-channel retry. Final status is retrieved by
+band across seven channels — **Email, Telegram, Bale, WhatsApp, Matrix, FCM and
+APNs** — with at-least-once delivery and per-channel retry. Final status is retrieved by
 polling with the returned id, or pushed to a registered webhook signed with HMAC.
 
 The name comes from *Soroush* (سروش), the messenger in Persian culture — hence
@@ -22,7 +22,7 @@ delivers.
 ## How it works
 
 <p align="center">
-  <img src="docs/assets/brand/architecture.svg" alt="Architecture: a client submits to the gateway over gRPC; the gateway persists to PostgreSQL and publishes to NATS JetStream; the dispatcher consumes the queue, sends over the four channels, records the outcome, and fires a signed status webhook back to the client" width="100%">
+  <img src="docs/assets/brand/architecture.svg" alt="Architecture: a client submits to the gateway over gRPC; the gateway persists to PostgreSQL and publishes to NATS JetStream; the dispatcher consumes the queue, sends over the seven channels, records the outcome, and fires a signed status webhook back to the client" width="100%">
 </p>
 
 Two independently deployable binaries share one core:

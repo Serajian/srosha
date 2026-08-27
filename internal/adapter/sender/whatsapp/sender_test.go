@@ -180,7 +180,10 @@ func TestATemplateComesFromMetadata(t *testing.T) {
 func TestATemplateWithoutParametersSendsNoComponents(t *testing.T) {
 	s, got := meta(t, http.StatusOK, okAnswer)
 
-	_, err := s.Send(context.Background(), msg("", "x", map[string]string{"template": "hello_world"}))
+	_, err := s.Send(
+		context.Background(),
+		msg("", "x", map[string]string{"template": "hello_world"}),
+	)
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -323,7 +326,10 @@ func TestSettingsThatCannotBeUsed(t *testing.T) {
 	}
 
 	good := whatsapp.Config{PhoneNumberID: phoneNumber}
-	if _, err := whatsapp.New(http.DefaultClient, "", good); !errs.IsType(err, errs.ErrInvalidInput) {
+	if _, err := whatsapp.New(http.DefaultClient, "", good); !errs.IsType(
+		err,
+		errs.ErrInvalidInput,
+	) {
 		t.Errorf("New() with no token = %v, want invalid input", err)
 	}
 	if _, err := whatsapp.New(nil, token, good); err == nil {

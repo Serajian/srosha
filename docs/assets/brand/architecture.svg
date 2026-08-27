@@ -11,7 +11,7 @@
   <rect x="320" y="150" width="205" height="116" rx="10" fill="#1a2440" stroke="#3256ae" stroke-width="1.5"/>
   <text x="422" y="186" text-anchor="middle" fill="#f2f5fa" font-size="22" font-weight="600">gateway</text>
   <text x="422" y="214" text-anchor="middle" fill="#8fa0bd" font-size="17">gRPC :50051</text>
-  <text x="422" y="238" text-anchor="middle" fill="#8fa0bd" font-size="17">REST :8080</text>
+  <text x="422" y="238" text-anchor="middle" fill="#8fa0bd" font-size="17">health :8080</text>
 
   <!-- nats -->
   <rect x="620" y="62" width="215" height="80" rx="10" fill="#1a2440" stroke="#4934a2" stroke-width="1.5"/>
