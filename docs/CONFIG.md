@@ -150,12 +150,17 @@ Every key, with its defaults and which binary needs it, is documented in
 | ratelimit | `NOTIF_RATELIMIT_PER_MINUTE` | ✅ | — |
 | crypto | `NOTIF_CRYPTO_KEYS`, `NOTIF_CRYPTO_KEY_ID` | ✅ | ✅ |
 | dispatch | `NOTIF_DISPATCH_MAX_ATTEMPTS`, `NOTIF_DISPATCH_ACK_WAIT`, `NOTIF_DISPATCH_MAX_IN_FLIGHT` | — | ✅ |
-| sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN` | — | ✅ |
+| sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN`, `NOTIF_SENDER_WHATSAPP_PHONE_NUMBER_ID` | — | ✅ |
 | webhook policy | `NOTIF_WEBHOOK_ALLOW_INSECURE_URL`, `NOTIF_WEBHOOK_ALLOW_PRIVATE_URL` | ✅ | ✅ |
 | webhook | `NOTIF_WEBHOOK_SECRETS`, `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ |
 | telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ |
 
 `NOTIF_MQ_URL` carries a **different** NATS user per binary. Do not collapse them.
+
+WhatsApp needs two values, not one: Meta identifies the sending number
+separately from the account that owns it. The id goes in the url and the token
+in a header, and a source registering its own supplies the id as
+`phone_number_id` in the credential's settings.
 
 `NOTIF_CRYPTO_KEYS` is a JSON map of key id → key, one entry per key, and every
 stored value names the key that sealed it. `NOTIF_CRYPTO_KEY_ID` says which of

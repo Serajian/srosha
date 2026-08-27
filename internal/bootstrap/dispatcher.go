@@ -200,6 +200,10 @@ func buildDispatcherCore(
 	senders, err := sender.NewRegistry(credentials, secrets, providers, mail, sender.Fallback{
 		TelegramToken: cfg.Sender.Telegram.Reveal(),
 		BaleToken:     cfg.Sender.Bale.Reveal(),
+		WhatsApp: sender.WhatsApp{
+			Token:         cfg.Sender.WhatsApp.Token.Reveal(),
+			PhoneNumberID: cfg.Sender.WhatsApp.PhoneNumberID,
+		},
 		SMTP: sender.SMTP{
 			Host:     cfg.Sender.SMTP.Host,
 			Port:     cfg.Sender.SMTP.Port,
