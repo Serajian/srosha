@@ -8,6 +8,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 
 	pb "github.com/Serajian/srosha/sdk/go/notification/v1"
 	"github.com/Serajian/srosha/sdk/go/srosha"
@@ -17,6 +18,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -542,5 +544,140 @@ func TestAWebhookCanBeSwitchedOffAndBackOn(t *testing.T) {
 	}
 	if !on.Active || on.ConsecutiveFailures != 0 {
 		t.Errorf("webhook = %+v, want active with a clean count", on)
+	}
+}
+
+// --- whoami ------------------------------------------------------------------
+
+type identity struct {
+	pb.UnimplementedSourceServiceServer
+
+	res   *pb.WhoamiResponse
+	err   error
+	calls int
+}
+
+func (i *identity) Whoami(
+	context.Context, *pb.WhoamiRequest,
+) (*pb.WhoamiResponse, error) {
+	i.calls++
+	if i.err != nil {
+		return nil, i.err
+	}
+	return i.res, nil
+}
+
+func dialIdentity(t *testing.T, i *identity, opts ...srosha.Option) *srosha.Client {
+	t.Helper()
+
+	lis := bufconn.Listen(1 << 20)
+	server := grpc.NewServer()
+	pb.RegisterSourceServiceServer(server, i)
+
+	go func() { _ = server.Serve(lis) }()
+	t.Cleanup(server.Stop)
+
+	opts = append(opts,
+		srosha.WithInsecure(),
+		srosha.WithDialOptions(
+			grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+				return lis.DialContext(ctx)
+			}),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		),
+	)
+
+	c, err := srosha.New(context.Background(), "passthrough:///bufnet", apiKey, opts...)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	return c
+}
+
+func TestWhoamiSaysWhoYouAreAndWhatYouMay(t *testing.T) {
+	i := &identity{res: &pb.WhoamiResponse{
+		Id:                 "01K0SRC0000000000000000000",
+		Name:               "acme",
+		MaxPriority:        pb.Priority_PRIORITY_HIGH,
+		AllowCustomAddress: false,
+		DefaultAddresses:   map[string]string{"email": "ops@acme.test"},
+		Retention:          durationpb.New(7 * 24 * time.Hour),
+		RateLimitPerMinute: 600,
+	}}
+	c := dialIdentity(t, i)
+
+	me, err := c.Whoami(context.Background())
+	if err != nil {
+		t.Fatalf("Whoami: %v", err)
+	}
+
+	if me.ID != "01K0SRC0000000000000000000" || me.Name != "acme" {
+		t.Errorf("me = %+v", me)
+	}
+	if me.MaxPriority != srosha.PriorityHigh {
+		t.Errorf("ceiling = %q, want high", me.MaxPriority)
+	}
+	if me.AllowCustomAddress {
+		t.Error("allow custom address came back true")
+	}
+	if me.DefaultAddresses[srosha.ChannelEmail] != "ops@acme.test" {
+		t.Errorf("default addresses = %v, want them keyed by Channel", me.DefaultAddresses)
+	}
+	if me.Retention != 7*24*time.Hour {
+		t.Errorf("retention = %v, want 7 days", me.Retention)
+	}
+	if me.RateLimitPerMinute != 600 {
+		t.Errorf("rate limit = %d, want 600", me.RateLimitPerMinute)
+	}
+}
+
+// The duration is what travels, because it is the honest number. This rounds it
+// down to a window the service will actually accept.
+func TestTheLongestWindowYouMayAskFor(t *testing.T) {
+	cases := []struct {
+		retention time.Duration
+		want      srosha.Window
+	}{
+		{30 * 24 * time.Hour, srosha.LastMonth},
+		{90 * 24 * time.Hour, srosha.LastMonth},
+		{10 * 24 * time.Hour, srosha.LastWeek}, // no Window says ten days
+		{7 * 24 * time.Hour, srosha.LastWeek},
+		{48 * time.Hour, srosha.LastDay},
+		{90 * time.Minute, srosha.LastHour},
+		{time.Minute, srosha.Everything}, // shorter than any window there is
+	}
+	for _, c := range cases {
+		t.Run(c.retention.String(), func(t *testing.T) {
+			me := srosha.Me{Retention: c.retention}
+			if got := me.MaxWindow(); got != c.want {
+				t.Errorf("MaxWindow() = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// A key srosha does not know arrives as the sentinel a caller can act on --
+// which is the point of calling this at startup at all.
+func TestWhoamiSurfacesABadKey(t *testing.T) {
+	i := &identity{err: status.Error(codes.Unauthenticated, "invalid credentials")}
+	c := dialIdentity(t, i, srosha.WithRetry(1))
+
+	_, err := c.Whoami(context.Background())
+	if !errors.Is(err, srosha.ErrUnauthorized) {
+		t.Errorf("Whoami = %v, want ErrUnauthorized", err)
+	}
+}
+
+// Reaching nobody is transient, and is retried like any other call.
+func TestWhoamiRetriesWhenSroshaIsDown(t *testing.T) {
+	i := &identity{err: status.Error(codes.Unavailable, "no")}
+	c := dialIdentity(t, i, srosha.WithRetry(3))
+
+	if _, err := c.Whoami(context.Background()); !errors.Is(err, srosha.ErrUnavailable) {
+		t.Errorf("Whoami = %v, want ErrUnavailable", err)
+	}
+	if i.calls != 3 {
+		t.Errorf("tried %d times, want 3", i.calls)
 	}
 }

@@ -9,7 +9,7 @@ syntax = "proto3";
 // qualified name cannot coexist on one wire.
 package notification.v1;
 
-option go_package = "github.com/Serajian/srosha/gen/notification/v1;notificationv1";
+option go_package = "github.com/Serajian/srosha/sdk/go/notification/v1;notificationv1";
 
 // Priority is how far ahead of other traffic a message goes.
 //

@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package notification.v1;
+
+import "google/protobuf/duration.proto";
+import "notification/v1/common.proto";
+
+option go_package = "github.com/Serajian/srosha/sdk/go/notification/v1;notificationv1";
+
+// SourceService answers questions a caller has about itself.
+//
+// A service of its own because it manages nothing: the others are named for the
+// noun they own -- notifications, credentials, webhooks -- and this one is
+// about whoever is asking. Filing it under any of them would put it somewhere
+// nobody would look.
+service SourceService {
+  // Whoami says who the caller is and what they are allowed.
+  //
+  // It exists because nothing else answers those questions until you get them
+  // wrong. A ceiling shows up as a priority that was lowered; a retention
+  // window shows up as a listing that was refused. Both are knowable in
+  // advance, and this is where.
+  //
+  // It also proves, in one call, that the address is right and the key works.
+  // A client connects lazily, so without this the first news of a wrong address
+  // or a bad key arrives on the first message that mattered.
+  //
+  // Not a health check. It authenticates and counts against the caller's rate
+  // limit like everything else, and a successful answer says nothing about the
+  // next call -- keys are revoked and networks part between them. Call it when
+  // a process starts, not on a timer.
+  rpc Whoami(WhoamiRequest) returns (WhoamiResponse);
+}
+
+message WhoamiRequest {}
+
+message WhoamiResponse {
+  // The caller's own id, which is what support asks for.
+  string id = 1;
+
+  string name = 2;
+
+  // The highest priority this source may send at. Asking above it is not an
+  // error: the message is accepted here and the answer says it was lowered.
+  Priority max_priority = 3;
+
+  // Whether a message may name its own recipient. When false, the only
+  // addresses this source can reach are the ones below -- which is what bounds
+  // where a leaked key can send.
+  bool allow_custom_address = 4;
+
+  // The address used on a channel when a route names none, keyed by channel
+  // name. Empty for a channel with no default.
+  //
+  // Keyed by name rather than by the Channel enum because proto3 map keys
+  // cannot be enums, and a name survives this service learning a channel the
+  // caller's build has never heard of.
+  map<string, string> default_addresses = 5;
+
+  // How long a message and its deliveries are kept. Past this they are deleted,
+  // which is why a listing window may not reach further back.
+  //
+  // A duration rather than the largest Window that fits, because it is the
+  // honest number: a deployment keeping ten days has no Window that says so,
+  // and rounding it down here would hide the four days a client could still
+  // have asked about.
+  google.protobuf.Duration retention = 6;
+
+  // Requests per minute, counted per source. Going over is ResourceExhausted
+  // and clears with time.
+  int32 rate_limit_per_minute = 7;
+}

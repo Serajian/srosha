@@ -210,3 +210,32 @@ func ExampleClient_Get() {
 		}
 	}
 }
+
+// Whoami at startup answers two things that are otherwise only learnable by
+// getting them wrong.
+func ExampleClient_Whoami() {
+	ctx := context.Background()
+
+	c, err := srosha.New(ctx, "api.srosha.acme.test", "srosha_your-key")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+
+	me, err := c.Whoami(ctx)
+	if err != nil {
+		// Not a reason to refuse to start: srosha is asynchronous, and an
+		// application that will not boot while it is briefly down is worse
+		// than one that says so and carries on.
+		log.Println("srosha unreachable at startup:", err)
+		return
+	}
+
+	fmt.Println("sending as", me.Name)
+	fmt.Println("priority ceiling", me.MaxPriority)
+	fmt.Println("history goes back", me.MaxWindow())
+
+	if !me.AllowCustomAddress {
+		fmt.Println("addresses are fixed:", me.DefaultAddresses)
+	}
+}

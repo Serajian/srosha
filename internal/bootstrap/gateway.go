@@ -219,9 +219,13 @@ func gatewayGRPC(
 		Notifications: notifications,
 		Webhooks:      webhooks,
 		Credentials:   credentials,
-		Authn:         core.authn,
-		Scheme:        auth.NewScheme(),
-		Log:           log,
+		Sources: grpcsrv.NewSourceServer(grpcsrv.Limits{
+			Retention:          cfg.RetentionAge,
+			RateLimitPerMinute: cfg.RateLimit.PerMinute,
+		}),
+		Authn:  core.authn,
+		Scheme: auth.NewScheme(),
+		Log:    log,
 
 		// Everywhere but production, so grpcurl and Postman need no proto
 		// files. On a real deployment it would publish the whole API surface
