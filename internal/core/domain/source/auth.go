@@ -24,7 +24,11 @@ type Authenticator struct {
 	touchAfter time.Duration
 }
 
-func NewAuthenticator(keys KeyRepository, now shared.NowFunc, touchAfter time.Duration) *Authenticator {
+func NewAuthenticator(
+	keys KeyRepository,
+	now shared.NowFunc,
+	touchAfter time.Duration,
+) *Authenticator {
 	return &Authenticator{keys: keys, now: now, touchAfter: touchAfter}
 }
 

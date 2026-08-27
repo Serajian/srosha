@@ -240,7 +240,9 @@ func TestListShowsEveryKeyIncludingRevokedOnes(t *testing.T) {
 		t.Error("the live key came back not live")
 	}
 	if byID[dead.ID].RevokedAt == nil {
-		t.Error("the revoked key came back with no revocation time -- rotation is a guess without it")
+		t.Error(
+			"the revoked key came back with no revocation time -- rotation is a guess without it",
+		)
 	}
 }
 
@@ -262,7 +264,10 @@ func TestRevokingTwiceIsReported(t *testing.T) {
 	if err := repo.Revoke(ctx, k.ID, keyNow()); !errs.IsType(err, errs.ErrNotFound) {
 		t.Errorf("second Revoke() = %v, want a not-found", err)
 	}
-	if err := repo.Revoke(ctx, shared.ID(ulid("ZZ")), keyNow()); !errs.IsType(err, errs.ErrNotFound) {
+	if err := repo.Revoke(ctx, shared.ID(ulid("ZZ")), keyNow()); !errs.IsType(
+		err,
+		errs.ErrNotFound,
+	) {
 		t.Errorf("Revoke() on a key that never existed = %v, want a not-found", err)
 	}
 }

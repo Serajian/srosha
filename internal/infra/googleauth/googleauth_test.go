@@ -286,7 +286,10 @@ func TestAnAccountGoogleRefusesIsFinal(t *testing.T) {
 	}
 
 	t.Run("a name we do not know", func(t *testing.T) {
-		if errors.Is(mintAgainst(t, http.StatusBadRequest, "something_new"), googleauth.ErrRejected) {
+		if errors.Is(
+			mintAgainst(t, http.StatusBadRequest, "something_new"),
+			googleauth.ErrRejected,
+		) {
 			t.Error("an unrecognized code was treated as final")
 		}
 	})

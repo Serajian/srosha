@@ -223,7 +223,10 @@ func (c *Consumer) handle(msg jetstream.Msg) {
 		return
 	}
 
-	attempt := int(meta.NumDelivered) //nolint:gosec // the broker's own count, bounded by MaxDeliver
+	// The broker's own count, bounded by MaxDeliver. On its own line so that
+	// golines cannot wrap the statement out from under it.
+	//nolint:gosec // see above
+	attempt := int(meta.NumDelivered)
 
 	// Bounded by AckWait: past that the broker has already offered this message
 	// to somebody else, and finishing would be a second send of one delivery.

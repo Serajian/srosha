@@ -118,10 +118,11 @@ func (r *DeliveryRepository) ClaimStale(
 func (r *DeliveryRepository) ClaimAnnouncement(
 	ctx context.Context, notificationID shared.ID, now time.Time,
 ) (bool, error) {
-	rows, err := r.q(ctx).ClaimNotificationAnnouncement(ctx, gen.ClaimNotificationAnnouncementParams{
-		NotificationID: notificationID.String(),
-		NotifiedAt:     now,
-	})
+	rows, err := r.q(ctx).
+		ClaimNotificationAnnouncement(ctx, gen.ClaimNotificationAnnouncementParams{
+			NotificationID: notificationID.String(),
+			NotifiedAt:     now,
+		})
 	if err != nil {
 		return false, failed("claim notification announcement", err)
 	}

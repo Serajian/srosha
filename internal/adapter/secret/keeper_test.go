@@ -26,7 +26,12 @@ type store struct {
 	fail    error
 }
 
-func (s *store) Create(_ context.Context, _ *credential.Credential, config []byte, secret string) error {
+func (s *store) Create(
+	_ context.Context,
+	_ *credential.Credential,
+	config []byte,
+	secret string,
+) error {
 	s.config, s.secret = config, secret
 	return s.fail
 }
@@ -35,7 +40,12 @@ func (s *store) ReadMaterial(context.Context, shared.ID) ([]byte, string, error)
 	return s.config, s.secret, nil
 }
 
-func (s *store) Reseal(_ context.Context, _ shared.ID, previous, secret string, _ time.Time) (bool, error) {
+func (s *store) Reseal(
+	_ context.Context,
+	_ shared.ID,
+	previous, secret string,
+	_ time.Time,
+) (bool, error) {
 	s.reseals++
 	if s.fail != nil {
 		return false, s.fail
@@ -166,7 +176,12 @@ func TestATokenReadUnderAnotherIdentityDoesNotOpen(t *testing.T) {
 		t.Fatalf("Add() = %v", err)
 	}
 
-	_, _, err := v.Material(t.Context(), "01J0OTHERSOURCE00000000000", shared.ChannelTelegram, credID)
+	_, _, err := v.Material(
+		t.Context(),
+		"01J0OTHERSOURCE00000000000",
+		shared.ChannelTelegram,
+		credID,
+	)
 	if !errors.Is(err, crypto.ErrCannotOpen) {
 		t.Errorf("Material() = %v, want ErrCannotOpen", err)
 	}

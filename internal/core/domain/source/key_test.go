@@ -115,7 +115,11 @@ func TestIsLive(t *testing.T) {
 		{"expired", source.Key{ExpiresAt: later(-time.Hour)}, false},
 		{"expires exactly now", source.Key{ExpiresAt: later(0)}, false},
 		{"revoked", source.Key{RevokedAt: &revoked, ExpiresAt: later(time.Hour)}, false},
-		{"revoked and expired", source.Key{RevokedAt: &revoked, ExpiresAt: later(-time.Hour)}, false},
+		{
+			"revoked and expired",
+			source.Key{RevokedAt: &revoked, ExpiresAt: later(-time.Hour)},
+			false,
+		},
 	}
 
 	for _, tt := range tests {

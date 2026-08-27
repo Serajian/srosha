@@ -55,7 +55,13 @@ func (s *setup) List(
 ) (*pb.CredentialServiceListResponse, error) {
 	s.lists = append(s.lists, req)
 	return &pb.CredentialServiceListResponse{Credentials: []*pb.Credential{
-		{Id: "01A", Channel: pb.Channel_CHANNEL_EMAIL, Name: "alerts", IsActive: true, IsDefault: true},
+		{
+			Id:        "01A",
+			Channel:   pb.Channel_CHANNEL_EMAIL,
+			Name:      "alerts",
+			IsActive:  true,
+			IsDefault: true,
+		},
 		{Id: "01B", Channel: pb.Channel_CHANNEL_EMAIL, Name: "old", IsActive: false},
 	}}, nil
 }
@@ -355,7 +361,10 @@ func TestNoCredentialPrintsItsSecret(t *testing.T) {
 	}
 	for _, cred := range creds {
 		t.Run(fmt.Sprintf("%T", cred), func(t *testing.T) {
-			if printed := fmt.Sprintf("%v %s %+v", cred, cred, cred); strings.Contains(printed, "SECRETVALUE") {
+			if printed := fmt.Sprintf("%v %s %+v", cred, cred, cred); strings.Contains(
+				printed,
+				"SECRETVALUE",
+			) {
 				t.Errorf("printed %q", printed)
 			}
 

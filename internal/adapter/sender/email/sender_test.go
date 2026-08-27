@@ -156,7 +156,10 @@ func TestParseConfigDefaultsTheContentType(t *testing.T) {
 		t.Errorf("Port = %d, want it left for infra to default", got.Port)
 	}
 
-	if _, err := email.ParseConfig([]byte("host=smtp.acme.test")); !errs.IsType(err, errs.ErrInvalidInput) {
+	if _, err := email.ParseConfig([]byte("host=smtp.acme.test")); !errs.IsType(
+		err,
+		errs.ErrInvalidInput,
+	) {
 		t.Errorf("ParseConfig() on rubbish = %v, want invalid input", err)
 	}
 }

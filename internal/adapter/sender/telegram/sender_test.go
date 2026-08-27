@@ -31,7 +31,12 @@ func bot(t *testing.T, status int, answer string) (*telegram.Sender, *request) {
 	return botWithConfig(t, status, answer, nil)
 }
 
-func botWithConfig(t *testing.T, status int, answer string, config []byte) (*telegram.Sender, *request) {
+func botWithConfig(
+	t *testing.T,
+	status int,
+	answer string,
+	config []byte,
+) (*telegram.Sender, *request) {
 	t.Helper()
 
 	got := &request{}
@@ -244,10 +249,16 @@ func TestAProviderWeCannotReachIsWorthAnotherTry(t *testing.T) {
 }
 
 func TestASenderNeedsATokenAndReadableSettings(t *testing.T) {
-	if _, err := telegram.New(http.DefaultClient, "", nil); !errs.IsType(err, errs.ErrInvalidInput) {
+	if _, err := telegram.New(http.DefaultClient, "", nil); !errs.IsType(
+		err,
+		errs.ErrInvalidInput,
+	) {
 		t.Errorf("New with no token = %v, want invalid input", err)
 	}
-	if _, err := telegram.New(http.DefaultClient, token, []byte("parse_mode=HTML")); !errs.IsType(err, errs.ErrInvalidInput) {
+	if _, err := telegram.New(http.DefaultClient, token, []byte("parse_mode=HTML")); !errs.IsType(
+		err,
+		errs.ErrInvalidInput,
+	) {
 		t.Errorf("New with unreadable settings = %v, want invalid input", err)
 	}
 	if _, err := telegram.New(nil, token, nil); err == nil {
@@ -259,7 +270,10 @@ func TestASenderNeedsATokenAndReadableSettings(t *testing.T) {
 // which endpoint we call.
 func TestATokenCannotChooseTheEndpoint(t *testing.T) {
 	for _, bad := range []string{"1:a/../../x", "1:a b", "1:a\nHost: evil", "1:a?x=1", "1:a#f"} {
-		if _, err := telegram.New(http.DefaultClient, bad, nil); !errs.IsType(err, errs.ErrInvalidInput) {
+		if _, err := telegram.New(http.DefaultClient, bad, nil); !errs.IsType(
+			err,
+			errs.ErrInvalidInput,
+		) {
 			t.Errorf("New(%q) = %v, want invalid input", bad, err)
 		}
 	}

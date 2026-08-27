@@ -49,7 +49,11 @@ func recipients(addresses ...string) []shared.Recipient {
 	return out
 }
 
-func makeDeliveries(t *testing.T, n *notification.Notification, addresses ...string) []delivery.Delivery {
+func makeDeliveries(
+	t *testing.T,
+	n *notification.Notification,
+	addresses ...string,
+) []delivery.Delivery {
 	t.Helper()
 
 	i := 0
@@ -352,7 +356,10 @@ func TestClaimingDoesNotAgeTheRow(t *testing.T) {
 }
 
 // staleFixture writes one delivery that already looks an hour old.
-func staleFixture(t *testing.T, suffix string) (*postgres.DeliveryRepository, *notification.Notification, string) {
+func staleFixture(
+	t *testing.T,
+	suffix string,
+) (*postgres.DeliveryRepository, *notification.Notification, string) {
 	t.Helper()
 
 	pool := connect(t)

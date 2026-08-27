@@ -90,7 +90,12 @@ func (s *Sender) Send(ctx context.Context, m shared.Message) (string, error) {
 		return "", refused("message could not be encoded for bale")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint(), bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		s.endpoint(),
+		bytes.NewReader(payload),
+	)
 	if err != nil {
 		return "", unreachable("request", s.token, err)
 	}

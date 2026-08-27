@@ -66,7 +66,9 @@ func (s *Sender) Send(ctx context.Context, m shared.Message) (string, error) {
 
 	text := compose(m.Title, m.Body)
 	if utf8.RuneCountInString(text) > maxTextLen {
-		return "", refused(fmt.Sprintf("message is longer than matrix accepts (max %d)", maxTextLen))
+		return "", refused(
+			fmt.Sprintf("message is longer than matrix accepts (max %d)", maxTextLen),
+		)
 	}
 
 	payload, err := json.Marshal(sendRequest{MsgType: messageType, Body: text})
