@@ -11,6 +11,7 @@ import (
 
 	"github.com/Serajian/srosha/internal/adapter/sender/bale"
 	"github.com/Serajian/srosha/internal/adapter/sender/email"
+	"github.com/Serajian/srosha/internal/adapter/sender/matrix"
 	"github.com/Serajian/srosha/internal/adapter/sender/telegram"
 	"github.com/Serajian/srosha/internal/adapter/sender/whatsapp"
 	"github.com/Serajian/srosha/internal/core/domain/credential"
@@ -47,6 +48,11 @@ type Fallback struct {
 	// the sending number separately from the account that owns it.
 	WhatsApp WhatsApp
 
+	// Matrix is a token and the homeserver it belongs to. The homeserver is the
+	// one address in this service that is not a constant somewhere: the protocol
+	// is federated, so there is no host that is right for everybody.
+	Matrix Matrix
+
 	// SMTP is a whole identity rather than a token, because mail is. A bot is a
 	// secret and nothing else; a mail account is a server, a user and an address,
 	// and any one of them wrong is a message that never arrives.
@@ -62,6 +68,14 @@ type WhatsApp struct {
 }
 
 func (w WhatsApp) configured() bool { return w.Token != "" && w.PhoneNumberID != "" }
+
+// Matrix is srosha's own account on a homeserver.
+type Matrix struct {
+	Token      string
+	Homeserver string
+}
+
+func (m Matrix) configured() bool { return m.Token != "" && m.Homeserver != "" }
 
 // SMTP is srosha's own mail identity.
 type SMTP struct {
@@ -166,6 +180,13 @@ func (r *Registry) ours(c shared.Channel) (delivery.Sender, error) {
 			From:     r.own.SMTP.From,
 		}, r.own.SMTP.Password)
 
+	case shared.ChannelMatrix:
+		if !r.own.Matrix.configured() {
+			return nil, noSender(c)
+		}
+		return matrix.New(r.client, r.own.Matrix.Token,
+			matrix.Config{Homeserver: r.own.Matrix.Homeserver})
+
 	case shared.ChannelWhatsApp:
 		if !r.own.WhatsApp.configured() {
 			return nil, noSender(c)
@@ -208,6 +229,15 @@ func (r *Registry) build(c shared.Channel, config []byte, secret string) (delive
 			return nil, err
 		}
 		return email.New(r.mail, cfg, secret)
+
+	case shared.ChannelMatrix:
+		// Parsed into a type of its own, as mail and whatsapp are: the
+		// homeserver is required, and it is an address somebody else chose.
+		cfg, err := matrix.ParseConfig(config)
+		if err != nil {
+			return nil, err
+		}
+		return matrix.New(r.client, secret, cfg)
 
 	case shared.ChannelWhatsApp:
 		// Parsed into a type of its own, as mail is: these settings are required

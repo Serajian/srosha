@@ -17,3 +17,8 @@ const (
 	minE164Digits = 8
 	maxE164Digits = 15
 )
+
+// matrixRoomSigil is what a room id begins with. Matrix puts the kind of a
+// thing in its first character: "!" a room, "@" a user, "#" an alias. Only the
+// first is an address this service can send to.
+const matrixRoomSigil = "!"

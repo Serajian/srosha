@@ -23,6 +23,7 @@ const (
 	ChannelTelegram Channel = "telegram"
 	ChannelBale     Channel = "bale"
 	ChannelWhatsApp Channel = "whatsapp"
+	ChannelMatrix   Channel = "matrix"
 )
 
 // AllChannels returns the full set in a stable order.
@@ -31,12 +32,12 @@ const (
 // because a caller sorting or truncating a shared slice would corrupt it for
 // everyone else.
 func AllChannels() []Channel {
-	return []Channel{ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp}
+	return []Channel{ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp, ChannelMatrix}
 }
 
 func (c Channel) Valid() bool {
 	switch c {
-	case ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp:
+	case ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp, ChannelMatrix:
 		return true
 	default:
 		return false
@@ -99,6 +100,16 @@ func (c Channel) ValidateAddress(address string) error {
 			return invalidAddress(c, t, "not an E.164 phone number")
 		}
 
+	case ChannelMatrix:
+		// A room, and only a room. Matrix has no "send to this person": you
+		// send to a room, and reaching a person means finding or creating a
+		// private one with them -- conversation state this service does not
+		// keep. A user id here would be accepted and then fail on every send,
+		// so it is refused where it can still be reported as a mistake.
+		if !isMatrixRoom(t) {
+			return invalidAddress(c, t, "not a matrix room id")
+		}
+
 	default:
 		// Reached only if a channel constant is added above without a case
 		// here. Failing loudly beats silently accepting anything.
@@ -149,6 +160,21 @@ func isUsername(s string) bool {
 		}
 	}
 	return true
+}
+
+// isMatrixRoom checks the shape of a room id: an exclamation mark, an opaque
+// local part, a colon and the server that issued it.
+//
+// The local part is not checked beyond being there: it is the homeserver's to
+// choose and nothing about it is ours to have an opinion on.
+func isMatrixRoom(s string) bool {
+	local, ok := strings.CutPrefix(s, matrixRoomSigil)
+	if !ok {
+		return false
+	}
+
+	name, server, found := strings.Cut(local, ":")
+	return found && name != "" && server != ""
 }
 
 func isE164(s string) bool {

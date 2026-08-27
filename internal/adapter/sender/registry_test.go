@@ -202,6 +202,12 @@ func TestEveryWiredChannelResolves(t *testing.T) {
 			}},
 			config: []byte(`{"host":"smtp.theirs.test","from":"them@theirs.test"}`),
 		},
+		shared.ChannelMatrix: {
+			own: sender.Fallback{Matrix: sender.Matrix{
+				Token: ours, Homeserver: "https://matrix.acme.test",
+			}},
+			config: []byte(`{"homeserver":"https://matrix.theirs.test"}`),
+		},
 		shared.ChannelWhatsApp: {
 			own: sender.Fallback{WhatsApp: sender.WhatsApp{
 				Token: ours, PhoneNumberID: "123456789",

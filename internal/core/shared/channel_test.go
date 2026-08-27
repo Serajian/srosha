@@ -42,7 +42,7 @@ func TestAllChannelsCoversEveryConstant(t *testing.T) {
 			t.Errorf("%q is listed in AllChannels but Valid() says otherwise", c)
 		}
 	}
-	if got := len(shared.AllChannels()); got != 4 {
+	if got := len(shared.AllChannels()); got != 5 {
 		t.Errorf("AllChannels has %d entries; update this test when adding a channel", got)
 	}
 }
@@ -216,4 +216,33 @@ func TestChannelJSON(t *testing.T) {
 			t.Error("Marshal accepted a channel that is not one of the four")
 		}
 	})
+}
+
+// Matrix has no way to message a person: you write into a room. A user id would
+// be accepted here and then fail on every send, so it is refused where it can
+// still be reported as a mistake.
+func TestAMatrixAddressIsARoom(t *testing.T) {
+	good := []string{"!abcdef:matrix.org", "!x:example.test", "!a:b"}
+	for _, address := range good {
+		if err := shared.ChannelMatrix.ValidateAddress(address); err != nil {
+			t.Errorf("ValidateAddress(%q) = %v", address, err)
+		}
+	}
+
+	bad := map[string]string{
+		"a user":         "@someone:matrix.org",
+		"an alias":       "#general:matrix.org",
+		"no sigil":       "abcdef:matrix.org",
+		"no server":      "!abcdef",
+		"no local part":  "!:matrix.org",
+		"nothing at all": "",
+		"an email":       "someone@acme.test",
+	}
+	for name, address := range bad {
+		t.Run(name, func(t *testing.T) {
+			if err := shared.ChannelMatrix.ValidateAddress(address); err == nil {
+				t.Errorf("ValidateAddress(%q) was accepted", address)
+			}
+		})
+	}
 }

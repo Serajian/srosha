@@ -9,6 +9,15 @@ type Sender struct {
 	Telegram env.Secret
 	Bale     env.Secret
 	WhatsApp WhatsApp
+	Matrix   Matrix
+}
+
+// Matrix is srosha's own account. Two values, because the protocol is federated
+// and there is no homeserver that is right for everybody the way there is one
+// api.telegram.org.
+type Matrix struct {
+	Token      env.Secret
+	Homeserver string
 }
 
 // WhatsApp is srosha's own business number. Two values and not one, because Meta
@@ -44,6 +53,10 @@ func LoadSender(r *env.Reader) Sender {
 		},
 		Telegram: r.Secret("SENDER_TELEGRAM_TOKEN", ""),
 		Bale:     r.Secret("SENDER_BALE_TOKEN", ""),
+		Matrix: Matrix{
+			Token:      r.Secret("SENDER_MATRIX_TOKEN", ""),
+			Homeserver: r.Str("SENDER_MATRIX_HOMESERVER", ""),
+		},
 		WhatsApp: WhatsApp{
 			Token:         r.Secret("SENDER_WHATSAPP_TOKEN", ""),
 			PhoneNumberID: r.Str("SENDER_WHATSAPP_PHONE_NUMBER_ID", ""),

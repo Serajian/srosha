@@ -100,6 +100,7 @@ const (
 	Channel_CHANNEL_TELEGRAM    Channel = 2
 	Channel_CHANNEL_BALE        Channel = 3
 	Channel_CHANNEL_WHATSAPP    Channel = 4
+	Channel_CHANNEL_MATRIX      Channel = 5
 )
 
 // Enum value maps for Channel.
@@ -110,6 +111,7 @@ var (
 		2: "CHANNEL_TELEGRAM",
 		3: "CHANNEL_BALE",
 		4: "CHANNEL_WHATSAPP",
+		5: "CHANNEL_MATRIX",
 	}
 	Channel_value = map[string]int32{
 		"CHANNEL_UNSPECIFIED": 0,
@@ -117,6 +119,7 @@ var (
 		"CHANNEL_TELEGRAM":    2,
 		"CHANNEL_BALE":        3,
 		"CHANNEL_WHATSAPP":    4,
+		"CHANNEL_MATRIX":      5,
 	}
 )
 
@@ -354,13 +357,14 @@ const file_notification_v1_common_proto_rawDesc = "" +
 	"\x14PRIORITY_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fPRIORITY_NORMAL\x10\x01\x12\x11\n" +
 	"\rPRIORITY_HIGH\x10\x02\x12\x15\n" +
-	"\x11PRIORITY_CRITICAL\x10\x03*s\n" +
+	"\x11PRIORITY_CRITICAL\x10\x03*\x87\x01\n" +
 	"\aChannel\x12\x17\n" +
 	"\x13CHANNEL_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rCHANNEL_EMAIL\x10\x01\x12\x14\n" +
 	"\x10CHANNEL_TELEGRAM\x10\x02\x12\x10\n" +
 	"\fCHANNEL_BALE\x10\x03\x12\x14\n" +
-	"\x10CHANNEL_WHATSAPP\x10\x04*\x84\x01\n" +
+	"\x10CHANNEL_WHATSAPP\x10\x04\x12\x12\n" +
+	"\x0eCHANNEL_MATRIX\x10\x05*\x84\x01\n" +
 	"\x0eDeliveryStatus\x12\x1f\n" +
 	"\x1bDELIVERY_STATUS_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17DELIVERY_STATUS_PENDING\x10\x01\x12\x18\n" +
