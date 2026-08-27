@@ -870,8 +870,8 @@ const file_notification_v1_credential_proto_rawDesc = "" +
 	"\n" +
 	"SetDefault\x123.notification.v1.CredentialServiceSetDefaultRequest\x1a4.notification.v1.CredentialServiceSetDefaultResponse\x12k\n" +
 	"\x06Rotate\x12/.notification.v1.CredentialServiceRotateRequest\x1a0.notification.v1.CredentialServiceRotateResponse\x12k\n" +
-	"\x06Update\x12/.notification.v1.CredentialServiceUpdateRequest\x1a0.notification.v1.CredentialServiceUpdateResponseB\xc2\x01\n" +
-	"\x13com.notification.v1B\x0fCredentialProtoP\x01Z=github.com/Serajian/srosha/gen/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
+	"\x06Update\x12/.notification.v1.CredentialServiceUpdateRequest\x1a0.notification.v1.CredentialServiceUpdateResponseB\xc5\x01\n" +
+	"\x13com.notification.v1B\x0fCredentialProtoP\x01Z@github.com/Serajian/srosha/sdk/go/notification/v1;notificationv1\xa2\x02\x03NXX\xaa\x02\x0fNotification.V1\xca\x02\x0fNotification\\V1\xe2\x02\x1bNotification\\V1\\GPBMetadata\xea\x02\x10Notification::V1b\x06proto3"
 
 var (
 	file_notification_v1_credential_proto_rawDescOnce sync.Once

@@ -57,7 +57,7 @@ func NewIDs(now shared.NowFunc) (*IDs, error) {
 // needs the random half to already be all ones -- and the answer to it is a
 // fresh non-monotonic id rather than a panic on a live request. That id is
 // still unique and still sorts to the right millisecond; only its order
-// against its neighbours in that millisecond is arbitrary.
+// against its neighbors in that millisecond is arbitrary.
 func (g *IDs) Generate() shared.ID {
 	at := ulid.Timestamp(g.now())
 

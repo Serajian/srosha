@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/Serajian/srosha/gen/notification/v1"
 	"github.com/Serajian/srosha/internal/core/domain/source"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/pkg/errs"
+	pb "github.com/Serajian/srosha/sdk/go/notification/v1"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
