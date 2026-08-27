@@ -2,6 +2,8 @@ package sender_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -15,6 +17,7 @@ import (
 	"github.com/Serajian/srosha/internal/adapter/sender"
 	"github.com/Serajian/srosha/internal/core/domain/credential"
 	"github.com/Serajian/srosha/internal/core/shared"
+	"github.com/Serajian/srosha/internal/infra/appleauth"
 	"github.com/Serajian/srosha/internal/infra/googleauth"
 	"github.com/Serajian/srosha/internal/infra/smtp"
 	"github.com/Serajian/srosha/pkg/errs"
@@ -116,7 +119,7 @@ func registryOn(
 		credential.NewService(rows{byChannel: map[shared.Channel][]credential.Credential{
 			c: have,
 		}}, time.Now),
-		s, http.DefaultClient, mailDialer(t), googleTokens(t), own,
+		s, http.DefaultClient, mailDialer(t), googleTokens(t), appleTokens(t), own,
 	)
 	if err != nil {
 		t.Fatalf("NewRegistry: %v", err)
@@ -230,6 +233,16 @@ func TestEveryWiredChannelResolves(t *testing.T) {
 			own:    sender.Fallback{FCMServiceAccount: serviceAccount(t, "srosha-ours")},
 			secret: serviceAccount(t, "srosha-theirs"),
 		},
+		// The most settings of any channel, and the only one needing all four.
+		shared.ChannelAPNs: {
+			own: sender.Fallback{APNs: sender.APNs{
+				Key: signingKey(t), KeyID: "OURS123456",
+				TeamID: "TEAM000000", Topic: "com.srosha.app",
+			}},
+			config: []byte(`{"key_id":"THRS123456","team_id":"TEAM111111",` +
+				`"topic":"com.theirs.app","environment":"sandbox"}`),
+			secret: signingKey(t),
+		},
 	}
 
 	for c, tt := range tests {
@@ -293,22 +306,32 @@ func TestAVaultFailureIsNotNoSender(t *testing.T) {
 func TestARegistryRefusesToBeBuiltHalfWired(t *testing.T) {
 	creds := credential.NewService(rows{}, time.Now)
 
-	mail, google, none := mailDialer(t), googleTokens(t), sender.Fallback{}
+	mail, google, apple := mailDialer(t), googleTokens(t), appleTokens(t)
+	none := sender.Fallback{}
 
-	if _, err := sender.NewRegistry(nil, &secrets{}, http.DefaultClient, mail, google, none); err == nil {
+	if _, err := sender.NewRegistry(
+		nil, &secrets{}, http.DefaultClient, mail, google, apple, none); err == nil {
 		t.Error("NewRegistry with no credentials succeeded")
 	}
-	if _, err := sender.NewRegistry(creds, nil, http.DefaultClient, mail, google, none); err == nil {
+	if _, err := sender.NewRegistry(
+		creds, nil, http.DefaultClient, mail, google, apple, none); err == nil {
 		t.Error("NewRegistry with no vault succeeded")
 	}
-	if _, err := sender.NewRegistry(creds, &secrets{}, nil, mail, google, none); err == nil {
+	if _, err := sender.NewRegistry(
+		creds, &secrets{}, nil, mail, google, apple, none); err == nil {
 		t.Error("NewRegistry with no client succeeded")
 	}
-	if _, err := sender.NewRegistry(creds, &secrets{}, http.DefaultClient, nil, google, none); err == nil {
+	if _, err := sender.NewRegistry(
+		creds, &secrets{}, http.DefaultClient, nil, google, apple, none); err == nil {
 		t.Error("NewRegistry with no mail dialer succeeded")
 	}
-	if _, err := sender.NewRegistry(creds, &secrets{}, http.DefaultClient, mail, nil, none); err == nil {
-		t.Error("NewRegistry with no token minter succeeded")
+	if _, err := sender.NewRegistry(
+		creds, &secrets{}, http.DefaultClient, mail, nil, apple, none); err == nil {
+		t.Error("NewRegistry with no google minter succeeded")
+	}
+	if _, err := sender.NewRegistry(
+		creds, &secrets{}, http.DefaultClient, mail, google, nil, none); err == nil {
+		t.Error("NewRegistry with no apple minter succeeded")
 	}
 }
 
@@ -351,6 +374,34 @@ func serviceAccount(t *testing.T, project string) string {
 		t.Fatalf("Marshal: %v", err)
 	}
 	return string(raw)
+}
+
+// appleTokens is the real minter. It reaches nobody: a provider token is signed
+// locally, and Open only parses the key.
+func appleTokens(t *testing.T) *appleauth.Minter {
+	t.Helper()
+
+	m, err := appleauth.NewMinter(time.Now)
+	if err != nil {
+		t.Fatalf("appleauth.NewMinter: %v", err)
+	}
+	return m
+}
+
+// signingKey writes a .p8 the way Apple does. The key is real because the
+// registry checks that it can sign before handing the credential on.
+func signingKey(t *testing.T) string {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
 }
 
 func mailDialer(t *testing.T) *smtp.Dialer {

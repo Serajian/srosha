@@ -17,6 +17,23 @@ type Sender struct {
 
 	// FCM is the service account json itself, already decoded. See LoadSender.
 	FCM env.Secret
+
+	APNs APNs
+}
+
+// APNs is srosha's own Apple push identity: a signing key and the three names
+// that say which key, which developer account and which app.
+//
+// Only the key is secret. The other three are on the key file's filename, in
+// the developer portal, and inside every copy of the shipped app.
+type APNs struct {
+	// Key is the p8 file's contents, already decoded. See LoadSender.
+	Key env.Secret
+
+	KeyID       string
+	TeamID      string
+	Topic       string
+	Environment string
 }
 
 // Matrix is srosha's own account. Two values, because the protocol is federated
@@ -65,6 +82,13 @@ func LoadSender(r *env.Reader) Sender {
 			Homeserver: r.Str("SENDER_MATRIX_HOMESERVER", ""),
 		},
 		FCM: fcmServiceAccount(r),
+		APNs: APNs{
+			Key:         decodeKey(r, "SENDER_APNS_KEY"),
+			KeyID:       r.Str("SENDER_APNS_KEY_ID", ""),
+			TeamID:      r.Str("SENDER_APNS_TEAM_ID", ""),
+			Topic:       r.Str("SENDER_APNS_TOPIC", ""),
+			Environment: r.Str("SENDER_APNS_ENVIRONMENT", ""),
+		},
 		WhatsApp: WhatsApp{
 			Token:         r.Secret("SENDER_WHATSAPP_TOKEN", ""),
 			PhoneNumberID: r.Str("SENDER_WHATSAPP_PHONE_NUMBER_ID", ""),
@@ -73,16 +97,22 @@ func LoadSender(r *env.Reader) Sender {
 }
 
 // fcmServiceAccount reads the service account key file.
-//
-// base64 in the environment and json everywhere else. A service account is
-// multi-line json with a PEM key inside it, and .env files, compose files and
-// secret managers each mangle that differently -- so it travels encoded and is
-// decoded here, which is the layer that can name the variable that is wrong.
-//
-// A source registering its own sends the json itself: nothing between a gRPC
-// string field and the database needs the encoding.
 func fcmServiceAccount(r *env.Reader) env.Secret {
-	raw := r.Secret("SENDER_FCM_SERVICE_ACCOUNT", "").Reveal()
+	return decodeKey(r, "SENDER_FCM_SERVICE_ACCOUNT")
+}
+
+// decodeKey reads a key file that travels as base64.
+//
+// Both push channels carry one: FCM's is multi-line json wrapped around a PEM
+// key, APNs' is a PEM key on its own. .env files, compose files and secret
+// managers each mangle multi-line values differently, so they travel encoded
+// and are decoded here -- the layer that can name the variable that is wrong.
+//
+// The encoding is an environment concern only. A source registering its own
+// sends the file itself: nothing between a gRPC string field and the database
+// needs it.
+func decodeKey(r *env.Reader, name string) env.Secret {
+	raw := r.Secret(name, "").Reveal()
 	if raw == "" {
 		return ""
 	}
@@ -90,7 +120,7 @@ func fcmServiceAccount(r *env.Reader) env.Secret {
 	key, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
 		// The name, never the value.
-		r.Check(false, "NOTIF_SENDER_FCM_SERVICE_ACCOUNT is not valid base64")
+		r.Check(false, "NOTIF_%s is not valid base64", name)
 		return ""
 	}
 	return env.Secret(key)

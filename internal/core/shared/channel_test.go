@@ -42,7 +42,7 @@ func TestAllChannelsCoversEveryConstant(t *testing.T) {
 			t.Errorf("%q is listed in AllChannels but Valid() says otherwise", c)
 		}
 	}
-	if got := len(shared.AllChannels()); got != 6 {
+	if got := len(shared.AllChannels()); got != 7 {
 		t.Errorf("AllChannels has %d entries; update this test when adding a channel", got)
 	}
 }
@@ -240,6 +240,32 @@ func TestAnFCMAddressIsOnlyCheckedForLength(t *testing.T) {
 	for name, address := range bad {
 		t.Run(name, func(t *testing.T) {
 			if err := shared.ChannelFCM.ValidateAddress(address); err == nil {
+				t.Errorf("ValidateAddress(%q) = nil, want a refusal", name)
+			}
+		})
+	}
+}
+
+// The APNs token goes into a url path, unlike FCM's, which is a value in a json
+// body. That is the whole reason one is checked and the other is not.
+func TestAnAPNsAddressIsHexadecimal(t *testing.T) {
+	good := []string{strings.Repeat("a1b2c3d4", 8), strings.Repeat("F0", 16)}
+	for _, address := range good {
+		if err := shared.ChannelAPNs.ValidateAddress(address); err != nil {
+			t.Errorf("ValidateAddress(%d chars) = %v, want it accepted", len(address), err)
+		}
+	}
+
+	bad := map[string]string{
+		"empty":        "",
+		"not hex":      strings.Repeat("z", 64),
+		"a path in it": strings.Repeat("a", 30) + "/../" + strings.Repeat("b", 30),
+		"too short":    "a1b2",
+		"absurd":       strings.Repeat("ab", 200),
+	}
+	for name, address := range bad {
+		t.Run(name, func(t *testing.T) {
+			if err := shared.ChannelAPNs.ValidateAddress(address); err == nil {
 				t.Errorf("ValidateAddress(%q) = nil, want a refusal", name)
 			}
 		})

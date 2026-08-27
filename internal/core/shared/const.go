@@ -29,3 +29,11 @@ const (
 	minDeviceTokenLen = 32
 	maxDeviceTokenLen = 4096
 )
+
+// Bounds for an APNs device token. Apple's have been 64 hexadecimal characters
+// for a long time without that being promised, so the alphabet is the rule and
+// the length is a range.
+const (
+	minAPNsTokenLen = 32
+	maxAPNsTokenLen = 200
+)

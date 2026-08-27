@@ -25,6 +25,7 @@ const (
 	ChannelWhatsApp Channel = "whatsapp"
 	ChannelMatrix   Channel = "matrix"
 	ChannelFCM      Channel = "fcm"
+	ChannelAPNs     Channel = "apns"
 )
 
 // AllChannels returns the full set in a stable order.
@@ -34,13 +35,15 @@ const (
 // everyone else.
 func AllChannels() []Channel {
 	return []Channel{
-		ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp, ChannelMatrix, ChannelFCM,
+		ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp,
+		ChannelMatrix, ChannelFCM, ChannelAPNs,
 	}
 }
 
 func (c Channel) Valid() bool {
 	switch c {
-	case ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp, ChannelMatrix, ChannelFCM:
+	case ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp,
+		ChannelMatrix, ChannelFCM, ChannelAPNs:
 		return true
 	default:
 		return false
@@ -109,6 +112,15 @@ func (c Channel) ValidateAddress(address string) error {
 		// nothing about their characters. A shape invented here would one day
 		// refuse a token that works, so only the obviously-wrong is refused.
 		if len(t) < minDeviceTokenLen || len(t) > maxDeviceTokenLen {
+			return invalidAddress(c, t, "not a device token")
+		}
+
+	case ChannelAPNs:
+		// Hexadecimal, unlike FCM's, and checked -- because this one becomes
+		// part of a url rather than a value in a json body. The length is a
+		// range because Apple's have been 64 characters for a long time
+		// without that ever being promised.
+		if len(t) < minAPNsTokenLen || len(t) > maxAPNsTokenLen || !isHex(t) {
 			return invalidAddress(c, t, "not a device token")
 		}
 
@@ -228,4 +240,17 @@ func (c *Channel) UnmarshalJSON(b []byte) error {
 	}
 	*c = parsed
 	return nil
+}
+
+// isHex reports whether every character is a hexadecimal digit. An APNs device
+// token is written that way, and it ends up in a url path.
+func isHex(s string) bool {
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'f', r >= 'A' && r <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
 }

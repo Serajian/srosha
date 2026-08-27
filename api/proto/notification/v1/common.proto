@@ -37,6 +37,7 @@ enum Channel {
   CHANNEL_WHATSAPP = 4;
   CHANNEL_MATRIX = 5;
   CHANNEL_FCM = 6;
+  CHANNEL_APNS = 7;
 }
 
 // DeliveryStatus is what happened to one recipient.

@@ -164,8 +164,8 @@ names and a status.
 
 ## What a channel is, and what adding one costs
 
-Six exist: `email`, `telegram`, `bale`, `whatsapp`, `matrix`, `fcm`. Every one of them has a
-sender behind it.
+Seven exist: `email`, `telegram`, `bale`, `whatsapp`, `matrix`, `fcm`, `apns`. Every one of
+them has a sender behind it.
 
 A channel is added **with** its sender, never before it. Six places have to agree — the
 constant and its address rule, the proto enum, the mapper, the registry, and two CHECK
@@ -177,7 +177,6 @@ What is left, and what each would cost:
 | | Address | What it needs beyond a sender |
 | --- | --- | --- |
 | SMS | E.164 number | a provider, and there is no obvious one |
-| APNs | device token | a structured secret, and a p8 key rather than a json one |
 | RCS | E.164 number | nothing, if the provider does the SMS fallback |
 | Web Push | an endpoint and two keys | an address that is not a string |
 
@@ -198,10 +197,15 @@ the provider refusing the *recipient* rather than the message. A source can act 
 cannot act on the other: nothing they wrote differently would have helped. Three states
 modeled as booleans is what makes a fourth expensive.
 
-**A secret is bytes.** `pkg/crypto` seals and opens bytes, so a credential needing four
-fields — APNs wants a key, a key id, a team id — puts json inside the sealed value. Nothing
-changes for a channel whose secret is one token. FCM is the first to use this: its whole
-credential is a service account file, json and a private key, stored as one sealed value.
+**A secret is bytes.** `pkg/crypto` seals and opens bytes, so a credential whose secret is a
+whole file needs nothing new: FCM's is a service account, json wrapped around a private key,
+stored as one sealed value.
+
+But *only* the secret is sealed. APNs needs four things — a signing key, a key id, a team id
+and a topic — and three of them are not secrets: the key id names the file, the team id names
+the account, and the topic is the app's bundle id, which ships inside every copy of the app.
+They go in the credential's settings, where five other channels keep theirs. Sealing them
+would mean holding a decryption key to read the name of an app.
 
 **A credential is not always what gets sent.** FCM's service account cannot go in a header —
 it has to be exchanged with Google for an access token that lasts about an hour. That
@@ -210,6 +214,10 @@ opens it once, and the sender is handed something that answers `Token(ctx)`. The
 there and not in the registry because a resource's lifetime belongs to whoever opened it. It
 matters because `SenderRegistry.For` builds a sender **per message**: without it, every push
 would pay for an RSA signature and a round trip to Google.
+
+APNs goes further: Apple has no endpoint to ask at all, so the token is a JWT signed in
+`internal/infra/appleauth`. What makes it a resource rather than a function is Apple's clock —
+refresh at least hourly, and never more often than every twenty minutes.
 
 ### Two decisions not yet made
 

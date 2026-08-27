@@ -150,7 +150,7 @@ Every key, with its defaults and which binary needs it, is documented in
 | ratelimit | `NOTIF_RATELIMIT_PER_MINUTE` | ✅ | — |
 | crypto | `NOTIF_CRYPTO_KEYS`, `NOTIF_CRYPTO_KEY_ID` | ✅ | ✅ |
 | dispatch | `NOTIF_DISPATCH_MAX_ATTEMPTS`, `NOTIF_DISPATCH_ACK_WAIT`, `NOTIF_DISPATCH_MAX_IN_FLIGHT` | — | ✅ |
-| sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN`, `NOTIF_SENDER_WHATSAPP_PHONE_NUMBER_ID`, `NOTIF_SENDER_MATRIX_TOKEN`, `NOTIF_SENDER_MATRIX_HOMESERVER`, `NOTIF_SENDER_FCM_SERVICE_ACCOUNT` | — | ✅ |
+| sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN`, `NOTIF_SENDER_WHATSAPP_PHONE_NUMBER_ID`, `NOTIF_SENDER_MATRIX_TOKEN`, `NOTIF_SENDER_MATRIX_HOMESERVER`, `NOTIF_SENDER_FCM_SERVICE_ACCOUNT`, `NOTIF_SENDER_APNS_*` | — | ✅ |
 | webhook policy | `NOTIF_WEBHOOK_ALLOW_INSECURE_URL`, `NOTIF_WEBHOOK_ALLOW_PRIVATE_URL` | ✅ | ✅ |
 | webhook | `NOTIF_WEBHOOK_SECRETS`, `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ |
 | telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ |
@@ -176,6 +176,17 @@ and secret managers each mangle that differently. Produce it with
 Nothing else is needed for FCM: the project id is inside the file. And the
 encoding is an environment concern only — a source registering its own service
 account sends the json itself.
+
+APNs needs five: `NOTIF_SENDER_APNS_KEY` (base64 of the `.p8` file, for the same
+reason), plus `_KEY_ID`, `_TEAM_ID`, `_TOPIC` and `_ENVIRONMENT`. Only the key is
+secret — the key id is in the file's name, the team id names the developer
+account, and the topic is the app's bundle id, which ships inside every copy of
+the app.
+
+`_ENVIRONMENT` is `production` or `sandbox`, defaulting to `production`. They are
+**separate services with separate device tokens**: a token from a development
+build is unknown to production, and the answer is `BadDeviceToken`, which reads
+as a problem with the device when the mistake was the address of the service.
 
 `NOTIF_CRYPTO_KEYS` is a JSON map of key id → key, one entry per key, and every
 stored value names the key that sealed it. `NOTIF_CRYPTO_KEY_ID` says which of
