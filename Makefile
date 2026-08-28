@@ -6,7 +6,7 @@ APP_NAME := srosha
 MODULE   := github.com/Serajian/srosha
 
 # Two independently deployable binaries over one shared core.
-BINARIES  := gateway dispatcher
+BINARIES  := gateway dispatcher console
 BUILD_DIR := build
 CMD_DIR   := ./cmd
 
@@ -180,6 +180,12 @@ build-dispatcher: ## [Build] Build only the dispatcher binary
 	@go build -o $(BUILD_DIR)/dispatcher $(CMD_DIR)/dispatcher
 	@echo "$(COLOR_GREEN)✅ dispatcher built.$(COLOR_RESET)"
 
+.PHONY: build-console
+build-console: ## [Build] Build only the console binary (the pages people sign in to)
+	@mkdir -p $(BUILD_DIR)
+	@go build -o $(BUILD_DIR)/console $(CMD_DIR)/console
+	@echo "$(COLOR_GREEN)✅ console built.$(COLOR_RESET)"
+
 .PHONY: clean
 clean: ## [Build] Remove build artifacts and coverage output
 	@rm -rf $(BUILD_DIR) coverage.out
@@ -200,6 +206,11 @@ run-gateway: build-gateway ## [Run] Run the gateway locally
 run-dispatcher: build-dispatcher ## [Run] Run the dispatcher locally
 	@echo "$(COLOR_YELLOW)🚀 Running dispatcher...$(COLOR_RESET)"
 	@$(BUILD_DIR)/dispatcher
+
+.PHONY: run-console
+run-console: build-console ## [Run] Run the console locally
+	@echo "$(COLOR_YELLOW)🚀 Running console...$(COLOR_RESET)"
+	@$(BUILD_DIR)/console
 
 .PHONY: free-port
 free-port: ## [Run] Free GRPC_PORT by stopping whatever is listening on it

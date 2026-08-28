@@ -65,7 +65,7 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 	// Mail is its own way out. Nothing is held open -- a mail server drops an
 	// idle session on its own schedule -- so this is a dialer and there is
 	// nothing to register a close for.
-	mail, err := registry.SMTPDialer(cfg.HTTPClient)
+	mail, err := registry.SMTPDialer(cfg.HTTPClient.Timeout)
 	if err != nil {
 		return abandon(ctx, res, err)
 	}

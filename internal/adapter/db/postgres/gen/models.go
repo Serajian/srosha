@@ -19,6 +19,16 @@ type ApiKey struct {
 	RevokedAt  *time.Time
 }
 
+type AuditLog struct {
+	ID         string
+	At         time.Time
+	ActorID    string
+	ActorEmail string
+	Verb       string
+	TargetType string
+	TargetID   string
+}
+
 type Credential struct {
 	ID        string
 	SourceID  string
@@ -49,6 +59,16 @@ type Delivery struct {
 	UpdatedAt         time.Time
 }
 
+type LoginCode struct {
+	ID        string
+	UserID    string
+	Code      string
+	ExpiresAt time.Time
+	Attempts  int32
+	UsedAt    *time.Time
+	CreatedAt time.Time
+}
+
 type Notification struct {
 	ID                string
 	SourceID          string
@@ -63,6 +83,14 @@ type Notification struct {
 	CreatedAt         time.Time
 }
 
+type Session struct {
+	ID         string
+	UserID     string
+	ExpiresAt  time.Time
+	LastSeenAt time.Time
+	CreatedAt  time.Time
+}
+
 type Source struct {
 	ID                 string
 	Name               string
@@ -72,6 +100,15 @@ type Source struct {
 	DefaultAddresses   []byte
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
+}
+
+type User struct {
+	ID        string
+	Email     string
+	Role      string
+	IsActive  bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type Webhook struct {

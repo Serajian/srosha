@@ -1,0 +1,15 @@
+{{define "content"}}
+<h2 class="head">Sign in</h2>
+<p class="sub">We'll send a six-digit code. If you've never been here, this makes your account.</p>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+<form method="post" action="/signin">
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email" value="{{.Email}}"
+         placeholder="you@company.com" autocomplete="email" autofocus required>
+  <button type="submit">Send the code</button>
+</form>
+
+<p class="fine">Codes last ten minutes, work once, and allow three guesses.</p>
+{{end}}

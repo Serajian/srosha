@@ -5,4 +5,5 @@ package bootstrap
 const (
 	binaryGateway    = "gateway"
 	binaryDispatcher = "dispatcher"
+	binaryConsole    = "console"
 )

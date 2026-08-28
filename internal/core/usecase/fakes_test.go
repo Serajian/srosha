@@ -11,8 +11,11 @@ import (
 
 	"github.com/Serajian/srosha/internal/core/domain/credential"
 	"github.com/Serajian/srosha/internal/core/domain/delivery"
+	"github.com/Serajian/srosha/internal/core/domain/logincode"
 	"github.com/Serajian/srosha/internal/core/domain/notification"
+	"github.com/Serajian/srosha/internal/core/domain/session"
 	"github.com/Serajian/srosha/internal/core/domain/source"
+	"github.com/Serajian/srosha/internal/core/domain/user"
 	"github.com/Serajian/srosha/internal/core/domain/webhook"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/pkg/errs"
@@ -691,4 +694,143 @@ func (n *fakeNotifier) last() webhook.Batch {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return n.batches[len(n.batches)-1]
+}
+
+// --- sign-in ------------------------------------------------------------------
+
+// fakeUsers behaves like postgres in the one way that matters here: an address
+// nobody has used comes back as ErrNotFound, never as a nil with no error.
+type fakeUsers struct {
+	mu   sync.Mutex
+	rows map[string]*user.User
+}
+
+func newFakeUsers() *fakeUsers { return &fakeUsers{rows: map[string]*user.User{}} }
+
+func (f *fakeUsers) Create(_ context.Context, u *user.User) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, taken := f.rows[u.Email]; taken {
+		return errs.DuplicateErr("that address is already an account")
+	}
+	f.rows[u.Email] = u
+	return nil
+}
+
+func (f *fakeUsers) ReadByEmail(_ context.Context, email string) (*user.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if u, ok := f.rows[email]; ok {
+		return u, nil
+	}
+	return nil, errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
+}
+
+func (f *fakeUsers) ReadByID(_ context.Context, id shared.ID) (*user.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, u := range f.rows {
+		if u.ID == id {
+			return u, nil
+		}
+	}
+	return nil, errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
+}
+
+type fakeCodes struct {
+	mu   sync.Mutex
+	rows []*logincode.LoginCode
+}
+
+func (f *fakeCodes) Create(_ context.Context, c *logincode.LoginCode) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rows = append(f.rows, c)
+	return nil
+}
+
+func (f *fakeCodes) ReadNewest(
+	_ context.Context, userID shared.ID,
+) (*logincode.LoginCode, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := len(f.rows) - 1; i >= 0; i-- {
+		if f.rows[i].UserID == userID {
+			return f.rows[i], nil
+		}
+	}
+	return nil, errs.NotFoundErr("no sign-in code").WithErr(logincode.ErrNotFound)
+}
+
+// Spend is a no-op because ReadNewest hands back the stored pointer, so Check
+// has already written to the row this would update.
+func (f *fakeCodes) Spend(_ context.Context, _ *logincode.LoginCode) error { return nil }
+
+func (f *fakeCodes) CountSince(
+	_ context.Context, userID shared.ID, since time.Time,
+) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, c := range f.rows {
+		if c.UserID == userID && !c.CreatedAt.Before(since) {
+			n++
+		}
+	}
+	return n, nil
+}
+
+type fakeSessions struct {
+	mu   sync.Mutex
+	rows map[shared.ID]*session.Session
+}
+
+func newFakeSessions() *fakeSessions {
+	return &fakeSessions{rows: map[shared.ID]*session.Session{}}
+}
+
+func (f *fakeSessions) Create(_ context.Context, s *session.Session) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rows[s.ID] = s
+	return nil
+}
+
+func (f *fakeSessions) Read(_ context.Context, id shared.ID) (*session.Session, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.rows[id]; ok {
+		return s, nil
+	}
+	return nil, errs.NotFoundErr("session not found").WithErr(session.ErrNotFound)
+}
+
+func (f *fakeSessions) Touch(_ context.Context, _ *session.Session) error { return nil }
+
+func (f *fakeSessions) Delete(_ context.Context, id shared.ID) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.rows[id]; !ok {
+		return errs.NotFoundErr("session not found").WithErr(session.ErrNotFound)
+	}
+	delete(f.rows, id)
+	return nil
+}
+
+type sentCode struct{ email, code string }
+
+type fakeMailer struct {
+	mu   sync.Mutex
+	sent []sentCode
+	err  error
+}
+
+func (f *fakeMailer) SendCode(_ context.Context, email, code string) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sent = append(f.sent, sentCode{email: email, code: code})
+	return nil
 }

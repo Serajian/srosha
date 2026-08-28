@@ -1,0 +1,292 @@
+/* Lapis -- the customer portal's design system.
+ *
+ * One stylesheet, no build pipeline. Every colour on every page is one of the
+ * tokens below; there are no one-off values anywhere in this file.
+ *
+ * The fonts are a stack rather than webfont files: nothing here may reach a
+ * font host at runtime, and the portal has to work on a network that cannot.
+ * Dropping Vazirmatn's woff2 into static/ and adding a @font-face is the whole
+ * of the upgrade -- it is already first in every stack. */
+
+:root {
+  /* ground */
+  --niche: #040A1C;
+  --lapis: #081234;
+  --panel: #0B1840;
+  --sunk: #0C1A46;
+
+  /* edges */
+  --line: #16295E;
+  --edge: #22397C;
+
+  /* ink */
+  --text: #EEF2FB;
+  --text-2: #A8BCE4;
+  --muted: #7C93C8;
+  --dim: #6C86C6;
+
+  /* voice */
+  --action: #33A5DE;
+  --on-action: #04162E;
+
+  /* Gold marks the one thing on a page you must read, copy or type right now.
+   * At most once per page: here, the six digits of a code. */
+  --gold: #D9A441;
+  --bad: #E4726A;
+
+  --radius: 6px;
+
+  --sans: "Vazirmatn", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--lapis);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--action); text-underline-offset: 3px; }
+a:hover { color: #6FC0EC; }
+:focus-visible { outline: 2px solid var(--action); outline-offset: 3px; }
+
+.offscreen {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+/* the shell ---------------------------------------------------------------- */
+
+.shell { display: flex; min-height: 100vh; }
+
+/* the niche: a tiled panel, the way a doorway is tiled. It carries what srosha
+ * is rather than a picture of it -- the seven channels are the product. */
+.niche {
+  position: relative;
+  flex: 0 0 clamp(280px, 40%, 600px);
+  background: var(--niche);
+  overflow: hidden;
+}
+
+.tiles { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .5; }
+
+/* Glazed tile is not a flat fill: it catches the light. One soft highlight,
+ * and a fade into the form so the seam between the two is not a hard edge. */
+.glaze {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(115% 85% at 16% 6%,
+      rgba(51, 165, 222, .17), rgba(73, 52, 162, .10) 44%, rgba(4, 10, 28, 0) 72%),
+    linear-gradient(to right, rgba(4, 10, 28, 0) 60%, rgba(4, 10, 28, .85));
+}
+
+.niche-body {
+  position: relative;
+  height: 100%;
+  padding: 60px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+}
+
+.crane { display: block; filter: brightness(0) invert(1); }
+
+.brand {
+  margin: 0 0 20px;
+  font-size: clamp(32px, 4vw, 46px);
+  font-weight: 900;
+  letter-spacing: -.03em;
+  line-height: 1;
+}
+
+.claim {
+  margin: 0;
+  max-width: 19ch;
+  font-size: clamp(17px, 1.6vw, 21px);
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.channels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 28px;
+  max-width: 300px;
+  margin: 40px 0 0;
+  padding: 26px 0 0;
+  border-top: 1px solid #1A2E63;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* the form ----------------------------------------------------------------- */
+
+.column {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px clamp(24px, 6vw, 90px);
+}
+
+.form { width: 100%; max-width: 404px; }
+
+.head {
+  margin: 0 0 12px;
+  font-size: clamp(30px, 3.4vw, 40px);
+  font-weight: 900;
+  letter-spacing: -.028em;
+  line-height: 1.06;
+  text-wrap: balance;
+}
+
+.sub { margin: 0 0 30px; color: var(--muted); }
+
+.mono { font-family: var(--mono); font-size: .94em; color: var(--text); }
+
+label {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+input[type="email"], input[type="text"] {
+  width: 100%;
+  height: 50px;
+  padding: 0 15px;
+  background: var(--sunk);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14.5px;
+}
+input::placeholder { color: #40558F; }
+input:focus {
+  outline: none;
+  border-color: var(--action);
+  box-shadow: 0 0 0 3px rgba(51, 165, 222, .14);
+}
+
+button {
+  width: 100%;
+  height: 50px;
+  margin-top: 22px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--action);
+  color: var(--on-action);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+button:hover { background: #47B2E7; }
+
+button.quiet {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  font-weight: 500;
+}
+button.quiet:hover { color: var(--text); border-color: var(--edge); }
+
+.problem {
+  margin: 0 0 22px;
+  padding: 12px 15px;
+  border: 1px solid rgba(228, 114, 106, .34);
+  border-radius: var(--radius);
+  background: rgba(228, 114, 106, .08);
+  color: var(--bad);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.fine {
+  margin: 26px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--dim);
+}
+
+/* the code ----------------------------------------------------------------- */
+
+/* A shamsa -- the medallion at the centre of a tile panel -- behind the six
+ * digits, which are the centre of this page. It is the only place geometry is
+ * used to mark a centre, and the only gold on the page. */
+.medallion {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 24px 0 18px;
+}
+
+.medallion svg {
+  position: absolute;
+  width: min(268px, 90%);
+  opacity: .5;
+  pointer-events: none;
+}
+
+.code {
+  position: relative;
+  width: 100%;
+  height: 68px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--gold);
+  letter-spacing: .34em;
+  text-indent: .34em; /* letter-spacing pads the right; this re-centres it */
+}
+
+/* who you are -------------------------------------------------------------- */
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px 28px;
+  margin: 0;
+  padding: 24px 26px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-size: 13px;
+}
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; font-family: var(--mono); font-size: 12.5px; }
+
+/* narrow ------------------------------------------------------------------- */
+
+@media (max-width: 820px) {
+  .shell { flex-direction: column; min-height: 100dvh; }
+
+  .niche { flex: 0 0 auto; }
+  .niche-body { padding: 30px 26px; gap: 20px; }
+  .crane { width: 44px; height: 44px; }
+  .brand { margin-bottom: 10px; }
+  .claim { max-width: 30ch; }
+
+  /* The channel list is the first thing to go: it says what srosha is, which
+   * somebody signing in on a phone already knows. */
+  .channels { display: none; }
+
+  .column { padding: 34px 26px 40px; }
+  .form { max-width: none; }
+}

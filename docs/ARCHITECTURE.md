@@ -310,3 +310,95 @@ one. The key id is inside the value, so asking costs no column and no second que
 that guard every read would be followed by a write, because sealing is randomized and no two
 seals of one value are ever equal. The reseal is best effort: the secret is already open and
 the message is going out, so a failed rewrite is logged and the next read tries again.
+
+---
+
+## Two surfaces in one binary, and what keeps them apart
+
+`console` is the third binary: the pages people sign in to, as opposed to the
+gRPC surface other services call. It carries the customer portal today and will
+carry the admin surface beside it, and those two audiences could not be further
+apart — one is anybody on the internet, the other can switch off a customer's
+sources and change who is an operator.
+
+They live in **one process, on two listeners**:
+
+```
+:8090   portal   public, reached through Traefik
+:8091   healthz  private
+:8092   admin    private, never published
+```
+
+### The alternative, and why not
+
+A fourth binary — `cmd/admin` — was the other option, and it is the stronger one:
+separation you cannot undo by moving two lines. It was not chosen, and the reason
+is worth writing down because it is a trade and not an oversight.
+
+Almost nothing about the admin surface is its own. The user, the sign-in code,
+the session, the use case, the repositories and the mailer are all shared, and
+shared *identically*: an operator signs in through the same four steps as a
+customer, because there is one `users` table and `role` is the only difference.
+A second binary would duplicate the whole of `bootstrap` and a second deployment
+to gain a boundary that a test can also hold.
+
+So the boundary is a port rather than a process, and it is held by three things
+rather than by one.
+
+### Cookies are not scoped by port
+
+This is what makes the choice load-bearing, and it surprises people:
+
+```
+a customer signs in at :8090   ->  cookie srosha_portal
+the same browser reaches :8092 ->  the same cookie is sent
+```
+
+A cookie's scope is its domain and its path. **The port is not part of it** —
+that is the cookie specification, not a bug and not something a flag can change.
+So a customer holding a perfectly valid session arrives at the admin listener
+already carrying it.
+
+A separate binary would not have fixed that either; it would only have made the
+admin surface easier to keep off the network a customer can reach. Here, that
+network separation is a deployment fact rather than a structural one, which is
+exactly why the check below is not optional.
+
+### What holds it
+
+**Three handlers, no shared mux.** `web` builds the portal's, `adminweb` will
+build its own, and each is passed to its own listener. There is no router that
+knows both, so there is no line to move that mounts one on the other's port.
+
+**The admin guard reads the role, from the live row, on every request.** Not from
+the session, and not from the cookie:
+
+```go
+u, err := signIn.Whoami(ctx, id)   // reads the users row
+...
+if !u.Role.IsOperator() { refuse }
+```
+
+Reading the row is what makes taking somebody's operator role take effect on
+their next request, for the same reason `is_active` does. This one line is the
+entire boundary between a customer and the admin surface, and it must be treated
+that way.
+
+**The admin port is never published.** Not in `ports:`, and not on
+`dokploy-network`. See `docs/CONFIG.md`.
+
+### What must be tested, because discipline is not a mechanism
+
+Two tests, and they are not optional — without them the decision above is a
+comment rather than a property:
+
+```
+every admin route answers 404 on the portal's handler
+   -> a mounting mistake fails the build instead of shipping
+
+a customer's session is refused by the admin guard
+   -> the IsOperator line cannot be deleted quietly
+```
+
+The first is what a fourth binary would have given for free. This is the price of
+not building one, and it is paid once.

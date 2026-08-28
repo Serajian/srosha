@@ -117,7 +117,7 @@ import (
 )
 
 var (
-	id  = shared.ID("01K0USER0000000000000000AB")
+	id  = shared.ID("01K0ACCT0000000000000000AB")
 	now = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 )
 
@@ -357,7 +357,7 @@ Expected: PASS, five tests.
 make dev-reset && sleep 3 && make migrate-up
 docker exec srosha-postgres-dev psql -U srosha -d srosha -c \
   "INSERT INTO users (id,email,role,is_active,created_at,updated_at)
-   VALUES ('01K0USER0000000000000000AB','a@b.test','root',true,now(),now());"
+   VALUES ('01K0ACCT0000000000000000AB','a@b.test','root',true,now(),now());"
 ```
 
 Expected: refused by the role CHECK.
@@ -705,8 +705,8 @@ import (
 )
 
 var (
-	codeID = shared.ID("01K0CODE0000000000000000AB")
-	userID = shared.ID("01K0USER0000000000000000AB")
+	codeID = shared.ID("01K0CDE00000000000000000AB")
+	userID = shared.ID("01K0ACCT0000000000000000AB")
 	now    = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 )
 
@@ -1218,7 +1218,7 @@ func (a *auditLog) Record(_ context.Context, e usecase.AuditEntry) error {
 func anActor(t *testing.T) *user.User {
 	t.Helper()
 
-	u, err := user.New(shared.ID("01K0USER0000000000000000AB"), "ops@acme.test", user.RoleAdmin, gateNow)
+	u, err := user.New(shared.ID("01K0ACCT0000000000000000AB"), "ops@acme.test", user.RoleAdmin, gateNow)
 	if err != nil {
 		t.Fatalf("user.New: %v", err)
 	}
@@ -2728,7 +2728,7 @@ Expected: PASS, three tests.
 make dev-up && make migrate-up
 docker exec srosha-postgres-dev psql -U srosha -d srosha -c \
   "INSERT INTO users (id,email,role,is_active,created_at,updated_at)
-   VALUES ('01K0USER0000000000000000AB','you@example.test','super_admin',true,now(),now());"
+   VALUES ('01K0ACCT0000000000000000AB','you@example.test','super_admin',true,now(),now());"
 make run-portal
 ```
 

@@ -49,11 +49,15 @@ func connect(t *testing.T) *pgxpool.Pool {
 }
 
 // truncate leaves each test a clean database. CASCADE follows the foreign keys,
-// so naming sources alone empties everything that hangs off it.
+// so naming a parent empties everything that hangs off it.
+//
+// users is named separately because nothing links it to sources yet. Left out,
+// a user written by one test is still there for the next one, and a test that
+// asks "has anybody used this address" gets the previous test's answer.
 func truncate(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 
-	if _, err := pool.Exec(context.Background(), "TRUNCATE sources CASCADE"); err != nil {
+	if _, err := pool.Exec(context.Background(), "TRUNCATE sources, users CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 }
