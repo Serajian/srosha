@@ -52,10 +52,15 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 		return abandon(ctx, res, err)
 	}
 
-	pages, err := web.New(web.Deps{
+	pages, err := web.NewPortal(web.PortalDeps{
 		SignIn:       signIn,
 		SecureCookie: cfg.Console.SecureCookie,
-		Log:          log,
+
+		// Everywhere but production, the same rule the gateway applies to
+		// reflection. gin's debug output prints the request that panicked, and
+		// requests here carry sign-in codes.
+		Debug: !cfg.App.IsProduction(),
+		Log:   log,
 	})
 	if err != nil {
 		return abandon(ctx, res, err)

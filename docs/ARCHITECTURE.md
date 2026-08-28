@@ -393,12 +393,107 @@ Two tests, and they are not optional — without them the decision above is a
 comment rather than a property:
 
 ```
-every admin route answers 404 on the portal's handler
-   -> a mounting mistake fails the build instead of shipping
+a customer's session is refused by the admin guard      DONE
+   -> TestOperatorPagesRefuseACustomer, and three beside it
 
-a customer's session is refused by the admin guard
-   -> the IsOperator line cannot be deleted quietly
+every admin route answers 404 on the portal's handler   when web/admin exists
+   -> a mounting mistake fails the build instead of shipping
 ```
 
-The first is what a fourth binary would have given for free. This is the price of
-not building one, and it is paid once.
+The second is what a fourth binary would have given for free. This is the price
+of not building one, and it is paid once.
+
+---
+
+## Gin routes the HTML surfaces, and nothing else
+
+`internal/adapter/api/web` is built on gin. The admin surface will be, and the
+gRPC side and the health endpoints are not.
+
+The reason is the shape of what is coming rather than what is here: six routes
+do not need a router, and thirty do. Sources, keys, credentials and callbacks
+each bring pages, and the admin surface brings its own set behind a different
+guard. Groups and middleware are what keep that readable, and writing them by
+hand is writing a small router badly.
+
+```
+engine.GET(pathSignIn, in.show)          open
+engine.POST(pathSignIn, in.request)
+
+authed := engine.Group("", sess.guard())  guarded, and a page added
+authed.GET(pathHome, account.show)        here cannot forget it
+```
+
+### What it is not allowed to touch
+
+Gin is a driving adapter's dependency and stops there.
+
+```
+core     does not know it exists, and must not
+infra    same. httpserver takes an http.Handler
+registry same. gin.Engine satisfies http.Handler, so nothing there changed
+grpcsrv  its own surface, its own interceptors
+api/http /healthz and /readyz, still the standard mux
+```
+
+The health endpoints stay on the standard library deliberately. They are two
+routes that must answer when everything else is broken, and the fewer things
+between the platform's probe and the answer, the better. That leaves two http
+styles in the tree, which is a real cost and is accepted rather than overlooked.
+
+### One struct per surface, on an engine of its own
+
+```
+web.NewPortal(...)   the customer surface
+web.NewAdmin(...)    next, in exactly the same shape
+```
+
+Each builds its **own** gin engine from the shared `newEngine`. The sharing is
+of code, never of an instance: two surfaces on one engine would be one routing
+mistake away from serving the admin pages on the public port, which is the thing
+this whole section exists to prevent.
+
+They are two structs in one package rather than two packages. A package each was
+tried and `make arch-check` refused it, correctly: the conventions allow a
+parent adapter to import its subpackage and not the reverse, and a surface
+importing a shared parent is the reverse. Two structs give the same separation
+of routes and handlers; what they do not give is a compiler-enforced barrier
+between one surface's handlers and the other's route table, and the first test
+below is what covers that instead.
+
+The guard takes the rule as a parameter, so a surface declares who it is for
+where its routes are listed:
+
+```go
+sessions.guard(anybody,  pathSignIn)   the portal: signing in is all of it
+sessions.guard(operator, pathSignIn)   the admin surface
+```
+
+`operator` is written and tested already, before the surface that needs it
+exists. That is the point of the parameter: the boundary cannot be forgotten
+when the admin pages are written, because it was not written with them.
+
+### What was given up
+
+**A compile-time guarantee became a runtime one.** The guarded handlers used to
+take the person as a parameter, so a page mounted outside the guard did not
+compile. Gin's handlers all have one signature, so the person travels in the
+context and `signedInUser` panics when it is missing. The group is what replaces
+the guarantee: a route is guarded by where it is written rather than by what it
+accepts. That is weaker, and the panic is deliberate -- silently serving a page
+with no user is worse than a 500.
+
+**Twenty-six indirect dependencies**, including a mongo driver, quic-go and a
+JIT assembler, in a repository whose direct list is otherwise short. Nothing in
+this service uses any of them; they arrive through gin's json and validation
+paths.
+
+### What is configured away from gin's defaults
+
+| | |
+| --- | --- |
+| `gin.New` not `gin.Default` | Default adds gin's own request logger, which would write a second differently-shaped line beside the structured one |
+| `HandleMethodNotAllowed = true` | off by default. Without it a GET of a POST-only route answers 404, which says the route does not exist when it does |
+| `ReleaseMode` outside development | gin's debug output prints the request that panicked, and requests on this surface carry sign-in codes |
+| a recovery of our own | same reason: a panic answers 500 and one structured line, and the request body is not in it |
+| `HTMLRender` of our own | gin's loaders put every template in one set, and every page here defines `content` -- one set would let only the last one parsed win, silently |

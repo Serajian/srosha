@@ -173,7 +173,7 @@ func newTestPortal(t *testing.T) *testPortal {
 		mail, ids, func() time.Time { return time.Now().UTC() },
 	)
 
-	handler, err := web.New(web.Deps{
+	handler, err := web.NewPortal(web.PortalDeps{
 		SignIn:       signIn,
 		SecureCookie: false,
 		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),

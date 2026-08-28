@@ -1,43 +1,36 @@
-// Package web is the customer portal: server-rendered HTML, plain forms, no
-// build pipeline and no javascript.
+// Package web is the shared half of the html surfaces: the engine they are
+// built on, the cookie they share, and the way a page becomes a response.
 //
-// It is a driving adapter like api/grpcsrv, and it knows the same amount about
-// the core: a use case it was handed. The audience is people with browsers, so
-// a single-page app would triple the work for nothing a customer would notice.
+// It serves no routes itself. Each surface is a subpackage that mounts its own
+// engine -- `web/portal` today, `web/admin` next -- and they do not import each
+// other. That is deliberate: the two audiences could not be further apart, and
+// a shared package would put every admin handler in reach of the portal's route
+// table, one typo from being mounted there.
 //
-// The admin panel is deliberately NOT here. It is a separate private surface,
-// because routing that puts both on one port is one bug away from handing
-// source creation to the internet.
-//
-// One file, one type, and no type's methods leave the file that declares it:
-//
-//	web.go       Deps and New -- what exists, and who may reach it
-//	session.go   sessions   the cookie, and the guard that reads it
-//	render.go    renderer   a page and its data, turned into html
-//	signin.go    signInHandler   getting in
-//	account.go   accountHandler  being in
-//
-// The handlers hold what they use and nothing more. There is no type here that
-// every handler can reach through, because that is how a page ends up quietly
-// depending on something nobody meant to give it.
+// Gin is confined to this adapter. Nothing in core, infra or registry knows it
+// exists, and gin.Engine satisfies http.Handler, so registry serves a surface
+// exactly as it served the standard mux before.
 package web
 
 import (
 	"context"
-	"errors"
-	"io/fs"
 	"log/slog"
 	"net/http"
 
 	"github.com/Serajian/srosha/internal/core/domain/session"
 	"github.com/Serajian/srosha/internal/core/domain/user"
 	"github.com/Serajian/srosha/internal/core/shared"
-	"github.com/Serajian/srosha/public"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/render"
 )
 
-// SignIn is what this adapter needs from the core, declared here because that
-// is where it is consumed. usecase.SignIn satisfies it and never learns that a
+// SignIn is what a surface needs from the core, declared here because this is
+// where it is consumed. usecase.SignIn satisfies it and never learns that a
 // browser exists.
+//
+// Both surfaces need all four: an operator signs in through the same flow as a
+// customer, because there is one users table and role is the only difference.
 type SignIn interface {
 	Request(ctx context.Context, email string) error
 	Verify(ctx context.Context, email, code string) (*session.Session, error)
@@ -45,88 +38,58 @@ type SignIn interface {
 	End(ctx context.Context, sessionID shared.ID) error
 }
 
-// Deps is what the pages need. Everything in it was built by bootstrap: this
-// package opens nothing and reads no config.
-type Deps struct {
-	SignIn SignIn
+// engineConfig is what every surface's engine is built from.
+type engineConfig struct {
+	// Debug turns on gin's own startup noise and its verbose panic dumps.
+	// Off everywhere but development: the dump prints the request, and these
+	// surfaces' requests carry sign-in codes.
+	Debug bool
 
-	// SecureCookie is off only for local development over plain http.
-	SecureCookie bool
-
-	Log *slog.Logger
+	Render render.HTMLRender
+	Log    *slog.Logger
 }
 
-func (d Deps) validate() error {
-	var errs []error
-
-	if d.SignIn == nil {
-		errs = append(errs, errors.New("no sign-in use case"))
-	}
-	if d.Log == nil {
-		errs = append(errs, errors.New("no logger"))
-	}
-
-	if len(errs) == 0 {
-		return nil
-	}
-	return errors.Join(errs...)
-}
-
-// New builds the whole page surface.
+// newEngine builds a surface's engine, already turned away from the four gin
+// defaults that are wrong here.
 //
-// Every route the portal answers is in the one table below, so nobody has to
-// grep the package to find out what it serves or which pages need a session.
-// Every mutating route is POST, so a link cannot cause one.
-func New(d Deps) (http.Handler, error) {
-	if err := d.validate(); err != nil {
-		return nil, err
-	}
+// Each surface calls this and gets its **own** engine. Nothing is shared but
+// the code: two surfaces on one engine would be one routing mistake away from
+// serving the admin pages on the public port.
+func newEngine(cfg engineConfig) *gin.Engine {
+	gin.SetMode(mode(cfg.Debug))
 
-	render, err := newRenderer(d.Log, "signin", "code", "account")
-	if err != nil {
-		return nil, err
-	}
-	assets, err := browserFiles()
-	if err != nil {
-		return nil, err
-	}
+	// gin.New, not gin.Default: Default adds gin's own logger, which would
+	// write a second, differently-shaped line for every request beside the
+	// structured one this service already emits.
+	engine := gin.New()
+	engine.Use(recovery(cfg.Log))
+	engine.HTMLRender = cfg.Render
 
-	sess := &sessions{signIn: d.SignIn, secure: d.SecureCookie}
-	in := &signInHandler{signIn: d.SignIn, sessions: sess, render: render, log: d.Log}
-	account := &accountHandler{signIn: d.SignIn, sessions: sess, render: render, log: d.Log}
+	// Off by default in gin, and the difference is real: a GET of a POST-only
+	// route would otherwise come back as not-found, which says the route does
+	// not exist when it does.
+	engine.HandleMethodNotAllowed = true
 
-	mux := http.NewServeMux()
-
-	// --- getting in. no session, by definition ---------------------------
-	mux.HandleFunc("GET "+pathSignIn, in.show)
-	mux.HandleFunc("POST "+pathSignIn, in.request)
-	mux.HandleFunc("GET "+pathCode, in.showCode)
-	mux.HandleFunc("POST "+pathCode, in.verify)
-
-	// --- being in --------------------------------------------------------
-	//
-	// "{$}" is an exact match. Without it "GET /" would catch every unrouted
-	// path, and a GET of a POST-only route would come back as not-found
-	// instead of the method refusal it is.
-	mux.HandleFunc("GET "+pathHome+"{$}", sess.guard(account.show))
-	mux.HandleFunc("POST "+pathSignOut, account.signOut)
-
-	// --- files a browser fetches -----------------------------------------
-	mux.Handle("GET "+pathStatic, http.StripPrefix(pathStatic, http.FileServerFS(assets)))
-
-	return mux, nil
+	return engine
 }
 
-// browserFiles is the portal's static assets and nothing else.
-//
-// It subs into static/ deliberately: public.Files also carries the templates,
-// and a file server pointed at its root would hand out the shape of every page
-// and every field name in one request.
-func browserFiles() (fs.FS, error) { return fs.Sub(public.Files, "static/portal") }
+func mode(debug bool) string {
+	if debug {
+		return gin.DebugMode
+	}
+	return gin.ReleaseMode
+}
 
-// redirect answers a browser after something happened. See other, not found:
-// the next thing to do is a GET, which is also what stops a refresh from
-// posting the form again.
-func redirect(w http.ResponseWriter, r *http.Request, to string) {
-	http.Redirect(w, r, to, http.StatusSeeOther)
+// recovery answers a panic with a 500 and one structured line, rather than
+// gin's own dump.
+//
+// gin's prints the request that panicked, and the requests on these surfaces
+// carry sign-in codes -- a crash would put one in the log, where it outlives
+// the ten minutes it was supposed to be worth anything for.
+func recovery(log *slog.Logger) gin.HandlerFunc {
+	return gin.CustomRecoveryWithWriter(nil, func(c *gin.Context, err any) {
+		log.ErrorContext(c.Request.Context(), "a page panicked",
+			"path", c.FullPath(), "error", err)
+		c.AbortWithStatus(http.StatusInternalServerError)
+	})
 }

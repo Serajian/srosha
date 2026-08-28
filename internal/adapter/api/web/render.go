@@ -2,55 +2,62 @@ package web
 
 import (
 	"html/template"
-	"log/slog"
 	"net/http"
 
 	"github.com/Serajian/srosha/public"
+
+	"github.com/gin-gonic/gin/render"
 )
 
-// renderer turns a page and its data into html. It is the only thing in this
-// package that knows templates exist.
-type renderer struct {
-	pages map[string]*template.Template
-	log   *slog.Logger
-}
-
-// newRenderer parses one template set per page, not one for everything.
+// pageRender is a surface's gin.HTMLRender.
 //
-// Every page defines "content", so a single set would let only the last one
-// parsed win -- silently, with no error and a blank page at the end of it.
-func newRenderer(log *slog.Logger, names ...string) (*renderer, error) {
+// Gin's own loaders put every template in one set, and every page defines
+// "content" -- so one set would let only the last one parsed win, silently,
+// with a blank page at the end of it. This keeps one set per page and hands gin
+// the right one by name.
+type pageRender struct{ pages map[string]*template.Template }
+
+// newPageRender parses one template set per page, from one surface's directory.
+//
+// The surface is a parameter rather than a constant because that is what makes
+// this shared: the portal reads templates/portal, the admin surface reads
+// templates/admin, and neither can reach the other's.
+func newPageRender(surface string, names ...string) (pageRender, error) {
 	pages := make(map[string]*template.Template, len(names))
+	dir := "templates/" + surface + "/"
 
 	for _, name := range names {
-		t, err := template.ParseFS(
-			public.Files,
-			"templates/portal/layout.html",
-			"templates/portal/"+name+".html",
-		)
+		t, err := template.ParseFS(public.Files, dir+"layout.html", dir+name+".html")
 		if err != nil {
-			return nil, err
+			return pageRender{}, err
 		}
 		pages[name] = t
 	}
-	return &renderer{pages: pages, log: log}, nil
+	return pageRender{pages: pages}, nil
 }
 
-// page writes one.
-//
-// A template that fails halfway has already written part of a body, so the
-// failure only reaches the log: there is nothing left to say to the browser
-// that would not land in the middle of the html it already has.
-func (rn *renderer) page(w http.ResponseWriter, r *http.Request, name string, data any) {
-	t, ok := rn.pages[name]
+// Instance is what gin calls for c.HTML(status, name, data). Every page is
+// rendered through its layout, which is why the name gin executes is always
+// "layout" and never the page's own.
+func (p pageRender) Instance(name string, data any) render.Render {
+	t, ok := p.pages[name]
 	if !ok {
-		rn.log.ErrorContext(r.Context(), "no such page", "page", name)
-		http.Error(w, "something went wrong", http.StatusInternalServerError)
-		return
+		return missingPage{name: name}
 	}
+	return render.HTML{Template: t, Name: "layout", Data: data}
+}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
-		rn.log.ErrorContext(r.Context(), "page failed to render", "page", name, "error", err)
-	}
+// missingPage is unreachable unless a handler names a page newPageRender was
+// not given. gin's Instance cannot return an error, so this fails visibly
+// rather than dereferencing a nil template.
+type missingPage struct{ name string }
+
+func (missingPage) WriteContentType(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+}
+
+func (m missingPage) Render(w http.ResponseWriter) error {
+	m.WriteContentType(w)
+	_, err := w.Write([]byte("no such page: " + m.name))
+	return err
 }
