@@ -27,6 +27,7 @@ type keyHandler struct {
 }
 
 type keysPage struct {
+	chrome
 	SourceID string
 	Keys     []source.Key
 	Problem  string
@@ -35,6 +36,7 @@ type keysPage struct {
 // keyIssuedPage carries the key itself, exactly once. Nothing stores it and
 // nothing can render it again.
 type keyIssuedPage struct {
+	chrome
 	SourceID string
 	Key      string
 	Label    string
@@ -48,7 +50,7 @@ func (h *keyHandler) list(c *gin.Context) {
 		notFound(c)
 		return
 	}
-	c.HTML(http.StatusOK, pageKeys, keysPage{SourceID: id, Keys: keys})
+	c.HTML(http.StatusOK, pageKeys, keysPage{chrome: inside, SourceID: id, Keys: keys})
 }
 
 // issue renders the key straight into the response and keeps it nowhere.
@@ -68,7 +70,7 @@ func (h *keyHandler) issue(c *gin.Context) {
 	}
 
 	c.HTML(http.StatusOK, pageKeyIssued, keyIssuedPage{
-		SourceID: id, Key: key, Label: made.Label,
+		chrome: inside, SourceID: id, Key: key, Label: made.Label,
 	})
 }
 
@@ -90,5 +92,9 @@ func (h *keyHandler) listWith(c *gin.Context, sourceID, problem string) {
 		notFound(c)
 		return
 	}
-	c.HTML(http.StatusOK, pageKeys, keysPage{SourceID: sourceID, Keys: keys, Problem: problem})
+	c.HTML(
+		http.StatusOK,
+		pageKeys,
+		keysPage{chrome: inside, SourceID: sourceID, Keys: keys, Problem: problem},
+	)
 }

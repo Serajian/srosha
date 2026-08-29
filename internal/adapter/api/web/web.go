@@ -62,7 +62,7 @@ func newEngine(cfg engineConfig) *gin.Engine {
 	// write a second, differently-shaped line for every request beside the
 	// structured one this service already emits.
 	engine := gin.New()
-	engine.Use(recovery(cfg.Log))
+	engine.Use(recovery(cfg.Log), reportFailures(cfg.Log))
 	engine.HTMLRender = cfg.Render
 
 	// Off by default in gin, and the difference is real: a GET of a POST-only
@@ -92,4 +92,21 @@ func recovery(log *slog.Logger) gin.HandlerFunc {
 			"path", c.FullPath(), "error", err)
 		c.AbortWithStatus(http.StatusInternalServerError)
 	})
+}
+
+// reportFailures reports what gin collected and nobody would otherwise read.
+//
+// A template that fails halfway does not panic: gin records the error on the
+// context, aborts, and returns whatever was already written. Without this the
+// page comes back truncated and the log says nothing -- which is exactly how a
+// broken sign-in form went unnoticed through a passing test.
+func reportFailures(log *slog.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+
+		for _, e := range c.Errors {
+			log.ErrorContext(c.Request.Context(), "a page did not finish",
+				"path", c.FullPath(), "error", e.Err)
+		}
+	}
 }

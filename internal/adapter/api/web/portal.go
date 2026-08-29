@@ -66,6 +66,18 @@ func (d PortalDeps) validate() error {
 	return errors.Join(errs...)
 }
 
+// chrome is what the layout needs from every page, whoever is looking at it.
+//
+// EVERY page embeds it, not only the guarded ones. A page that left it out
+// would not render a nav-less layout -- html/template refuses a field that is
+// not there, and the page stops mid-tag with the error going nowhere. That is
+// exactly how the sign-in form disappeared once.
+type chrome struct{ SignedIn bool }
+
+// inside is what a page behind the guard embeds. The sign-in pages embed the
+// zero value, which is the honest answer: nobody is signed in yet.
+var inside = chrome{SignedIn: true}
+
 // New builds this surface, on an engine of its own.
 //
 // Every route the portal answers is in the one table below, so nobody has to

@@ -864,3 +864,81 @@ func TestIdentityPagesRefuseSomebodyElsesSource(t *testing.T) {
 		t.Errorf("a stranger set somebody else's callback: %d", set.status)
 	}
 }
+
+// --- getting anywhere ------------------------------------------------------
+
+// The bug this catches shipped once: /sources existed and nothing linked to it,
+// so a customer signed in and had no way to reach the thing they came for.
+func TestEveryPageBehindTheGuardCanReachTheOthers(t *testing.T) {
+	p := newTestPortal(t)
+	cookie, id := aSourceOfMine(t, p, "a@acme.test")
+
+	for _, path := range []string{
+		"/", "/sources", "/sources/new",
+		"/sources/" + id, "/sources/" + id + "/keys",
+		"/sources/" + id + "/senders", "/sources/" + id + "/callback",
+	} {
+		got := get(t, p, path, cookie)
+		whole(t, path, got)
+
+		for _, link := range []string{`href="/sources"`, `action="/signout"`} {
+			if !strings.Contains(got.body, link) {
+				t.Errorf("%s has no %s -- somebody lands here and is stuck", path, link)
+			}
+		}
+	}
+}
+
+// whole asserts a page actually finished.
+//
+// This exists because the first version of the navigation shipped a template
+// that referenced a field the sign-in pages did not have. html/template refuses
+// a missing field, gin records the error on the context and aborts, and the
+// browser gets a 200 with the page cut off mid-tag. The sign-in form was gone
+// and the test that should have caught it passed -- it asserted the navigation
+// was absent, and it was absent because the page never reached it.
+//
+// Asserting a page is whole is therefore not ceremony. It is the only check
+// that fails when a template stops halfway.
+func whole(t *testing.T, path string, a answer) {
+	t.Helper()
+
+	if a.status != http.StatusOK {
+		t.Fatalf("GET %s = %d", path, a.status)
+	}
+	if !strings.Contains(a.body, "</html>") {
+		t.Fatalf("GET %s stopped before the end of the page:\n…%s",
+			path, tail(a.body, 200))
+	}
+	if !strings.Contains(a.body, "</main>") {
+		t.Errorf("GET %s has no main element -- it stopped inside the layout", path)
+	}
+}
+
+func tail(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[len(s)-n:]
+}
+
+// And a page nobody has signed in to must not offer links it cannot honor --
+// while still being a page.
+func TestTheSignInPagesAreWholeAndHaveNoNavigation(t *testing.T) {
+	p := newTestPortal(t)
+
+	for path, mustHave := range map[string]string{
+		"/signin":      "Send the code",
+		"/signin/code": "Sign in",
+	} {
+		got := get(t, p, path)
+		whole(t, path, got)
+
+		if !strings.Contains(got.body, mustHave) {
+			t.Errorf("GET %s does not carry its own form", path)
+		}
+		if strings.Contains(got.body, `class="nav"`) {
+			t.Errorf("%s shows navigation to somebody who is not signed in", path)
+		}
+	}
+}

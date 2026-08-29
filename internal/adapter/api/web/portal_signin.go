@@ -19,8 +19,14 @@ type signInHandler struct {
 // fields that mean nothing on most of them, and a template quietly rendering an
 // empty one is how a page ends up missing something nobody noticed.
 type (
-	signInPage struct{ Email, Problem string }
-	codePage   struct{ Email, Problem string }
+	signInPage struct {
+		chrome
+		Email, Problem string
+	}
+	codePage struct {
+		chrome
+		Email, Problem string
+	}
 )
 
 func (h *signInHandler) show(c *gin.Context) {

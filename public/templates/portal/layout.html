@@ -40,7 +40,16 @@
   </aside>
 
   <main class="column">
-    <div class="form">{{template "content" .}}</div>
+    <div class="form">
+      {{if .SignedIn}}
+      <nav class="nav" aria-label="Portal">
+        <a href="/sources">Sources</a>
+        <a href="/">Account</a>
+        <form method="post" action="/signout"><button type="submit">Sign out</button></form>
+      </nav>
+      {{end}}
+      {{template "content" .}}
+    </div>
   </main>
 
 </div>

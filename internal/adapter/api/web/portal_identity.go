@@ -47,11 +47,13 @@ type identityHandler struct {
 
 type (
 	sendersPage struct {
+		chrome
 		SourceID string
 		Senders  []credential.Credential
 		Problem  string
 	}
 	callbackPage struct {
+		chrome
 		SourceID string
 		Callback *webhook.Webhook
 		Problem  string
@@ -60,6 +62,7 @@ type (
 	// json:"-" because nothing may ever serialize this page. It exists for the
 	// length of one response and is not written down anywhere.
 	callbackSecretPage struct {
+		chrome
 		SourceID string
 		Secret   string `json:"-"`
 		URL      string
@@ -86,10 +89,14 @@ func (h *identityHandler) showSenders(c *gin.Context) {
 	senders, err := h.senders.List(c.Request.Context(), id)
 	if err != nil {
 		h.log.ErrorContext(c.Request.Context(), "could not list senders", "error", err)
-		c.HTML(http.StatusOK, pageSenders, sendersPage{SourceID: id, Problem: message(err)})
+		c.HTML(
+			http.StatusOK,
+			pageSenders,
+			sendersPage{chrome: inside, SourceID: id, Problem: message(err)},
+		)
 		return
 	}
-	c.HTML(http.StatusOK, pageSenders, sendersPage{SourceID: id, Senders: senders})
+	c.HTML(http.StatusOK, pageSenders, sendersPage{chrome: inside, SourceID: id, Senders: senders})
 }
 
 // addSender registers one of the source's own identities.
@@ -128,7 +135,7 @@ func (h *identityHandler) listSendersWith(c *gin.Context, id, problem string) {
 		return
 	}
 	c.HTML(http.StatusOK, pageSenders, sendersPage{
-		SourceID: id, Senders: senders, Problem: problem,
+		chrome: inside, SourceID: id, Senders: senders, Problem: problem,
 	})
 }
 
@@ -141,7 +148,11 @@ func (h *identityHandler) showCallback(c *gin.Context) {
 	// A source with no callback is ordinary, not an error: being told what
 	// happened is optional, and the page offers to set one up.
 	current, _ := h.callbacks.Get(c.Request.Context(), id)
-	c.HTML(http.StatusOK, pageCallback, callbackPage{SourceID: id, Callback: current})
+	c.HTML(
+		http.StatusOK,
+		pageCallback,
+		callbackPage{chrome: inside, SourceID: id, Callback: current},
+	)
 }
 
 // setCallback registers where this source is told what happened, and hands over
@@ -160,11 +171,15 @@ func (h *identityHandler) setCallback(c *gin.Context) {
 	)
 	if err != nil {
 		h.log.WarnContext(c.Request.Context(), "callback not registered", "error", err)
-		c.HTML(http.StatusOK, pageCallback, callbackPage{SourceID: id, Problem: message(err)})
+		c.HTML(
+			http.StatusOK,
+			pageCallback,
+			callbackPage{chrome: inside, SourceID: id, Problem: message(err)},
+		)
 		return
 	}
 
 	c.HTML(http.StatusOK, pageCallbackSecret, callbackSecretPage{
-		SourceID: id, Secret: secret, URL: w.CallbackURL,
+		chrome: inside, SourceID: id, Secret: secret, URL: w.CallbackURL,
 	})
 }

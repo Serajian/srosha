@@ -31,28 +31,33 @@ type sourceHandler struct {
 
 type (
 	sourceListPage struct {
+		chrome
 		Sources []source.Source
 		Problem string
 	}
 	sourceNewPage struct {
+		chrome
 		Name    string
 		Problem string
 	}
-	sourcePage struct{ Source *source.Source }
+	sourcePage struct {
+		chrome
+		Source *source.Source
+	}
 )
 
 func (h *sourceHandler) list(c *gin.Context) {
 	mine, err := h.sources.Mine(c.Request.Context(), signedInUser(c))
 	if err != nil {
 		h.log.ErrorContext(c.Request.Context(), "could not list sources", "error", err)
-		c.HTML(http.StatusOK, pageSources, sourceListPage{Problem: message(err)})
+		c.HTML(http.StatusOK, pageSources, sourceListPage{chrome: inside, Problem: message(err)})
 		return
 	}
-	c.HTML(http.StatusOK, pageSources, sourceListPage{Sources: mine})
+	c.HTML(http.StatusOK, pageSources, sourceListPage{chrome: inside, Sources: mine})
 }
 
 func (h *sourceHandler) showNew(c *gin.Context) {
-	c.HTML(http.StatusOK, pageSourceNew, sourceNewPage{})
+	c.HTML(http.StatusOK, pageSourceNew, sourceNewPage{chrome: inside})
 }
 
 // create registers a source. It is switched off, and the page it redirects to
@@ -64,7 +69,11 @@ func (h *sourceHandler) create(c *gin.Context) {
 
 	if _, err := h.sources.Register(c.Request.Context(), signedInUser(c), reg); err != nil {
 		h.log.WarnContext(c.Request.Context(), "source registration refused", "error", err)
-		c.HTML(http.StatusOK, pageSourceNew, sourceNewPage{Name: name, Problem: message(err)})
+		c.HTML(
+			http.StatusOK,
+			pageSourceNew,
+			sourceNewPage{chrome: inside, Name: name, Problem: message(err)},
+		)
 		return
 	}
 	c.Redirect(http.StatusSeeOther, pathSources)
@@ -76,7 +85,7 @@ func (h *sourceHandler) show(c *gin.Context) {
 		notFound(c)
 		return
 	}
-	c.HTML(http.StatusOK, pageSource, sourcePage{Source: src})
+	c.HTML(http.StatusOK, pageSource, sourcePage{chrome: inside, Source: src})
 }
 
 // defaultAddresses reads the repeated channel/address pairs the form posts.

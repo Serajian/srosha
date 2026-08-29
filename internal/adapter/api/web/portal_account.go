@@ -16,12 +16,15 @@ type accountHandler struct {
 	log      *slog.Logger
 }
 
-type accountPage struct{ User *user.User }
+type accountPage struct {
+	chrome
+	User *user.User
+}
 
 // show is everything the portal knows about somebody. It is in the guarded
 // group, so the person is read from the context rather than looked up again.
 func (h *accountHandler) show(c *gin.Context) {
-	c.HTML(http.StatusOK, pageAccount, accountPage{User: signedInUser(c)})
+	c.HTML(http.StatusOK, pageAccount, accountPage{chrome: inside, User: signedInUser(c)})
 }
 
 // signOut ends the session, and does not care whether it was already gone: the
