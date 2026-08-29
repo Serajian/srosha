@@ -4,19 +4,21 @@ Where a customer signs up, registers what they send as, and gets the key their
 code uses. Today none of that exists: a source is two hand-written SQL inserts,
 and the key reaches them however somebody remembers to send it.
 
-This is phase one of three, and the phases are separate because they serve
+This is phase one of two, and the phases are separate because they serve
 different people and carry different risk.
 
 | | | |
 | --- | --- | --- |
-| **1** | **Customer portal** | public. A customer signs up and runs their own sources |
-| 2 | Admin panel | private. Operators watch, investigate and intervene |
-| 3 | Subscription and payment | rides on 1 |
+| **1** | **Customer portal** | public. A customer signs up and registers their own sources |
+| 2 | Admin panel | private. Operators approve, watch and intervene |
 
 Only phase 1 is specified here.
 
-Phase 3 is deliberately last: until there is a real customer, every decision
-about plans and prices is a guess.
+**There was a third phase and there is not any more.** Subscription, plans and
+prices are cancelled: srosha behaves the same way with everybody. Nothing is
+sold, nothing is metered, and no feature is switched on by what somebody paid.
+That decision is not a deferral -- it removes a reason that several rules below
+used to lean on, and each of them had to stand on its own or go.
 
 ---
 
@@ -189,54 +191,84 @@ customer raise their own ceiling.
 | --- | --- |
 | `name` | `max_priority` — their ceiling |
 | `default_addresses` | `allow_custom_address` — how far a leaked key reaches |
-| | `may_use_shared_sender` — see below |
+| | `is_active` — approval, and switching it off later |
 
 The right-hand column takes defaults at registration and is changed only from
 the admin panel.
 
 ---
 
-## The rule that replaced approval
+## Approval, and the rule that was tried instead
 
-Signup is open. Nobody waits for an operator.
+**A source cannot send until an operator approves it.** Anybody may sign up and
+register one; nothing it registers reaches anybody until somebody here says so.
 
-That is only safe because of one rule, and the rule matters more than the
-approval it replaces.
+That was not the first answer. What was written here before was a rule meant to
+replace approval, and it is worth keeping the record of why it was reversed
+rather than quietly deleting it.
 
-**A source may not send as srosha.** Today, a source that has registered no
-credential of its own falls back to the service's own identities:
+### What was tried
+
+A source that has registered no credential of its own falls back to srosha's
+identities:
 
 ```go
 // internal/adapter/sender/registry.go
 the source registered nothing at all  ->  ours
 ```
 
-Which means an account created a minute ago could send anything to anybody
-**signed as us**: our Telegram bot banned, our sending domain blacklisted, and
-our real customers paying for it.
+The idea was to turn that off by default -- `sources.may_use_shared_sender`
+false -- so that a spammer had to bring their own bot and the spam was signed as
+them rather than as us. Open signup, no operator in the loop, and the cost of
+abuse moved onto the abuser.
 
-So `sources.may_use_shared_sender` defaults to false, and a source that has
-registered nothing can send nothing.
+### Why it was reversed
 
-This is a better filter than approval, because it moves the cost of abuse onto
-the abuser:
+Because it makes the product worse for the people it is for, and it was leaning
+on a phase that no longer exists.
+
+**Sending as srosha is the point, not a liability to price.** A source that has
+to register its own bot before it can send anything has to do the hardest part
+of the setup first. The default identities are what make the first message
+possible, and taking them away to filter spammers takes them away from everybody.
+
+**It was justified by a paid plan.** The old text said the flag "becomes what a
+paid plan switches on". There are no plans. Remove that sentence and the rule is
+a permanent tax on every legitimate customer, paid to avoid one conversation
+with an operator.
+
+**Approval costs a person a few minutes, once.** It is a real filter, made by
+somebody who can look, and it does not change what the product does for anybody
+who passes it.
+
+### What approval actually is
+
+Nothing new: `sources.is_active` already exists, and it is already the gate.
 
 ```
-a spammer       must bring their own bot -- the spam is signed as them
-a real customer has one already, registers it, and works
+source/auth.go     EnsureActive()  inside Authenticate  -- the key is refused
+source/service.go  EnsureActive()  inside Admit         -- the message is refused
 ```
 
-Who they choose to message is between them and their provider.
+So a source is created **inactive**, and an operator activates it. There is no
+second check to add and no path around the one that is there.
 
-Later this flag becomes what a paid plan switches on: **using srosha's own
-identities stops being a liability and becomes something to sell.**
+`approved_at` is added beside it as a **record, not a gate**: it says when a
+source was first approved and, with the audit log, by whom. It exists so a
+review queue can ask for what has never been approved
+(`approved_at IS NULL`) without also listing everything an operator switched off
+last month. Nothing reads it to decide anything.
 
-### One place this touches existing code
+### What this costs, and it is not nothing
 
-`Registry.For` takes a source id, not a source, so it cannot see the flag. The
-check either loads the source there or is made a level up. Deciding which is
-implementation, but it is a real edge with code that already works and not just
-a new column.
+**Until the admin panel exists, approval is an UPDATE somebody runs by hand.**
+The same as the first operator, and the same kind of stopgap: honest, written
+down, and not allowed to outlive phase 2.
+
+**A customer's first visit now ends in waiting.** They sign up, register a
+source, issue a key -- and it sends nothing until somebody approves. The portal
+has to say that plainly on the source's own page rather than letting them
+discover it from a failed send.
 
 ---
 
@@ -257,10 +289,13 @@ combinations:
 | --- | --- | --- |
 | an operator leaves | no | — they have no sources |
 | a customer abuses the service | maybe | **no**, immediately |
-| a customer has not paid *(phase 3)* | **yes** — or how would they pay | no |
+| a source has not been approved yet | **yes** | no — it has not been let out |
 
-A cascade makes the third row impossible, and the third row is what phase 3 is
-built on.
+The third row used to be "a customer has not paid", and that was the strongest
+argument for keeping the two apart. It is gone with the plans. The row above
+replaces it and makes the same point: somebody signs in perfectly normally while
+the thing they registered is not allowed out yet, and no cascade could express
+that.
 
 Closing a customer down entirely is therefore an **action** in the admin panel —
 switch off each of their sources — and not a state. It is explicit, it is
@@ -341,8 +376,8 @@ sessions      deactivating a user ends their session on the next request
 ownership     a user cannot see or touch a source they do not own
 fields        a registration form cannot set max_priority or the flags
 audit         every mutating action leaves exactly one row
-shared sender a source with may_use_shared_sender false and no credential
-              of its own cannot send
+approval    a source is created inactive, and sends nothing until an
+            operator activates it -- refused at the key and at the message
 ```
 
 The last one is the security property this whole design rests on, and it is the
@@ -366,8 +401,11 @@ one to write first.
 ## Not in phase 1
 
 - **Approval.** Removed, and replaced by the shared-sender rule.
-- **Payment, plans, quotas.** Phase 3. The service has a rate limit and no
-  monthly allowance, and adding one is its own piece of work.
+- **Payment, plans, quotas.** Cancelled, not deferred. srosha behaves the same
+  way with everybody, and no rule in this document may lean on a future in
+  which it does not.
+- **The approval page.** Phase 2, in the admin panel. Until then approval is an
+  UPDATE run by hand, like the first operator.
 - **The admin panel.** Phase 2, and a separate private surface.
 - **SMS codes.** There is no SMS channel yet.
 - **Transferring a source between users**, and what happens to sources when an

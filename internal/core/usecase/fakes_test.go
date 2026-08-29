@@ -46,6 +46,23 @@ func (l fakeLimiter) Allow(context.Context, string) (bool, error) { return l.all
 
 type fakeSources struct{ byID map[string]*source.Source }
 
+func (r fakeSources) Create(_ context.Context, s *source.Source) error {
+	r.byID[s.ID] = s
+	return nil
+}
+
+func (r fakeSources) ListByOwner(
+	_ context.Context, ownerID shared.ID,
+) ([]source.Source, error) {
+	out := []source.Source{}
+	for _, s := range r.byID {
+		if s.OwnerUserID == ownerID {
+			out = append(out, *s)
+		}
+	}
+	return out, nil
+}
+
 func (r fakeSources) ReadByID(_ context.Context, id string) (*source.Source, error) {
 	s, ok := r.byID[id]
 	if !ok {

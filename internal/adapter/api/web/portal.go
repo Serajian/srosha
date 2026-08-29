@@ -23,7 +23,11 @@ import (
 // Deps is what the pages need. Everything in it was built by bootstrap: this
 // package opens nothing and reads no config.
 type PortalDeps struct {
-	SignIn SignIn
+	SignIn    SignIn
+	Sources   SourcePages
+	Keys      KeyPages
+	Senders   SenderPages
+	Callbacks CallbackPages
 
 	// SecureCookie is off only for local development over plain http.
 	SecureCookie bool
@@ -39,6 +43,18 @@ func (d PortalDeps) validate() error {
 
 	if d.SignIn == nil {
 		errs = append(errs, errors.New("no sign-in use case"))
+	}
+	if d.Sources == nil {
+		errs = append(errs, errors.New("no sources use case"))
+	}
+	if d.Keys == nil {
+		errs = append(errs, errors.New("no keys use case"))
+	}
+	if d.Senders == nil {
+		errs = append(errs, errors.New("no credentials use case"))
+	}
+	if d.Callbacks == nil {
+		errs = append(errs, errors.New("no webhook use case"))
 	}
 	if d.Log == nil {
 		errs = append(errs, errors.New("no logger"))
@@ -60,7 +76,12 @@ func NewPortal(d PortalDeps) (http.Handler, error) {
 		return nil, err
 	}
 
-	pages, err := newPageRender(surface, pageSignIn, pageCode, pageAccount)
+	pages, err := newPageRender(surface,
+		pageSignIn, pageCode, pageAccount,
+		pageSources, pageSourceNew, pageSource,
+		pageKeys, pageKeyIssued,
+		pageSenders, pageCallback, pageCallbackSecret,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +95,11 @@ func NewPortal(d PortalDeps) (http.Handler, error) {
 	sessions := newSessions(d.SignIn, d.SecureCookie)
 	in := &signInHandler{signIn: d.SignIn, sessions: sessions, log: d.Log}
 	account := &accountHandler{signIn: d.SignIn, sessions: sessions, log: d.Log}
+	sources := &sourceHandler{sources: d.Sources, log: d.Log}
+	keys := &keyHandler{keys: d.Keys, log: d.Log}
+	identity := &identityHandler{
+		senders: d.Senders, callbacks: d.Callbacks, sources: d.Sources, log: d.Log,
+	}
 
 	// --- getting in. no session, by definition ---------------------------
 	engine.GET(pathSignIn, in.show)
@@ -90,6 +116,17 @@ func NewPortal(d PortalDeps) (http.Handler, error) {
 	//     whole of it, which is exactly what the admin surface will not say --
 	authed := engine.Group("", sessions.guard(anybody, pathSignIn))
 	authed.GET(pathHome, account.show)
+	authed.GET(pathSources, sources.list)
+	authed.GET(pathSourceNew, sources.showNew)
+	authed.POST(pathSources, sources.create)
+	authed.GET(pathSource, sources.show)
+	authed.GET(pathSourceKeys, keys.list)
+	authed.POST(pathSourceKeys, keys.issue)
+	authed.POST(pathKeyRevoke, keys.revoke)
+	authed.GET(pathSourceSenders, identity.showSenders)
+	authed.POST(pathSourceSenders, identity.addSender)
+	authed.GET(pathSourceCallback, identity.showCallback)
+	authed.POST(pathSourceCallback, identity.setCallback)
 
 	// --- files a browser fetches -----------------------------------------
 	engine.StaticFS(pathStatic, http.FS(assets))

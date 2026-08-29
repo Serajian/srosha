@@ -17,3 +17,15 @@ const (
 	MaxCodeRequests   = 5
 	CodeRequestWindow = time.Hour
 )
+
+// MaxSourcesPerUser is a backstop, not a plan: srosha treats everybody the
+// same, and this exists so one account cannot fill the table before anybody
+// notices. Reaching it is worth a conversation, not an upgrade.
+const MaxSourcesPerUser = 20
+
+// Verbs, spelled once. They end up in audit_log and are read a year later.
+const (
+	ActSourceCreate = "source.create"
+	ActKeyIssue     = "key.issue"
+	ActKeyRevoke    = "key.revoke"
+)

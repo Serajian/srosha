@@ -95,7 +95,9 @@ type Source struct {
 	ID                 string
 	Name               string
 	MaxPriority        string
+	OwnerUserID        string
 	IsActive           bool
+	ApprovedAt         *time.Time
 	AllowCustomAddress bool
 	DefaultAddresses   []byte
 	CreatedAt          time.Time

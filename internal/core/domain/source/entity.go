@@ -4,6 +4,7 @@ package source
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Serajian/srosha/internal/core/shared"
@@ -18,6 +19,15 @@ type Source struct {
 	MaxPriority shared.Priority
 	IsActive    bool
 
+	// OwnerUserID is who registered this. A customer sees their own sources and
+	// nobody else's.
+	OwnerUserID shared.ID
+
+	// ApprovedAt is when an operator first let this source out. A record, never
+	// a gate: IsActive is what decides, and this only tells a queue what it has
+	// never looked at.
+	ApprovedAt *time.Time
+
 	// False bounds the damage of a leaked key: the source can then only reach
 	// the addresses configured below, never a stranger.
 	AllowCustomAddress bool
@@ -30,6 +40,47 @@ type Source struct {
 	UpdatedAt time.Time
 }
 
+// New builds a source, switched off. An operator decides when it may send, and
+// nothing here can decide that for them.
+func New(
+	id string, owner shared.ID, name string,
+	addresses map[shared.Channel]string, now time.Time,
+) (*Source, error) {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return nil, errs.InvalidInputErr("a source needs a name").WithErr(ErrEmptyName)
+	}
+	if len(trimmed) > maxNameLen {
+		return nil, errs.InvalidInputErr("that name is too long").
+			WithErr(ErrEmptyName).
+			WithStr(fmt.Sprintf("%d chars, max %d", len(trimmed), maxNameLen))
+	}
+
+	if addresses == nil {
+		addresses = map[shared.Channel]string{}
+	}
+	for channel, address := range addresses {
+		if err := channel.ValidateAddress(address); err != nil {
+			return nil, err
+		}
+	}
+
+	return &Source{
+		ID:          id,
+		OwnerUserID: owner,
+		Name:        trimmed,
+		MaxPriority: shared.PriorityNormal,
+
+		// Switched off, and never approved. Both are the operator's to change.
+		IsActive:           false,
+		AllowCustomAddress: false,
+
+		DefaultAddresses: addresses,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}, nil
+}
+
 func (s *Source) EnsureActive() error {
 	if s.IsActive {
 		return nil
@@ -38,6 +89,11 @@ func (s *Source) EnsureActive() error {
 		WithErr(ErrSourceInactive).
 		WithStr(fmt.Sprintf("source %q", s.ID))
 }
+
+// IsApproved reports whether an operator has ever let this source out. It is
+// not the same question as EnsureActive: a source approved in March and
+// switched off in August answers yes here and refuses there.
+func (s *Source) IsApproved() bool { return s.ApprovedAt != nil }
 
 // Resolve turns one requested channel into the recipients to deliver to: the
 // given address if this source may name one, otherwise its configured default.

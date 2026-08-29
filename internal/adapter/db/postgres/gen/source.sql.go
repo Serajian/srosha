@@ -31,16 +31,17 @@ func (q *Queries) ActivateSource(ctx context.Context, arg ActivateSourceParams) 
 
 const createSource = `-- name: CreateSource :exec
 INSERT INTO sources (
-    id, name, max_priority, allow_custom_address,
+    id, owner_user_id, name, max_priority, allow_custom_address,
     default_addresses, created_at, updated_at
 ) VALUES (
-    $1, $2, $3, $4,
-    $5, $6, $6
+    $1, $2, $3, $4, $5,
+    $6, $7, $7
 )
 `
 
 type CreateSourceParams struct {
 	ID                 string
+	OwnerUserID        string
 	Name               string
 	MaxPriority        string
 	AllowCustomAddress bool
@@ -48,8 +49,9 @@ type CreateSourceParams struct {
 	CreatedAt          time.Time
 }
 
-// is_active is not given: a source is created switched on, and the column
-// default says so. allow_custom_address is a parameter because it genuinely is a
+// is_active is not given: a source is created switched OFF, and the column
+// default says so. Anybody may register one; nothing it registers reaches
+// anybody until an operator approves it. allow_custom_address is a parameter because it genuinely is a
 // per-customer decision taken at registration -- with it off, a leaked key can
 // only reach that customer's own addresses.
 //
@@ -58,6 +60,7 @@ type CreateSourceParams struct {
 func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) error {
 	_, err := q.db.Exec(ctx, createSource,
 		arg.ID,
+		arg.OwnerUserID,
 		arg.Name,
 		arg.MaxPriority,
 		arg.AllowCustomAddress,
@@ -92,8 +95,45 @@ func (q *Queries) DeactivateSource(ctx context.Context, arg DeactivateSourcePara
 	return result.RowsAffected(), nil
 }
 
+const listSourcesByOwner = `-- name: ListSourcesByOwner :many
+SELECT id, name, max_priority, owner_user_id, is_active, approved_at, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE owner_user_id = $1 ORDER BY created_at DESC
+`
+
+// ListSourcesByOwner is a customer's own page. Newest first, because the one
+// they just registered is the one they are looking for.
+func (q *Queries) ListSourcesByOwner(ctx context.Context, ownerUserID string) ([]Source, error) {
+	rows, err := q.db.Query(ctx, listSourcesByOwner, ownerUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Source{}
+	for rows.Next() {
+		var i Source
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.MaxPriority,
+			&i.OwnerUserID,
+			&i.IsActive,
+			&i.ApprovedAt,
+			&i.AllowCustomAddress,
+			&i.DefaultAddresses,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readSource = `-- name: ReadSource :one
-SELECT id, name, max_priority, is_active, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE id = $1
+SELECT id, name, max_priority, owner_user_id, is_active, approved_at, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE id = $1
 `
 
 // ReadSource deliberately does not filter on is_active. A suspended source must
@@ -107,7 +147,9 @@ func (q *Queries) ReadSource(ctx context.Context, id string) (Source, error) {
 		&i.ID,
 		&i.Name,
 		&i.MaxPriority,
+		&i.OwnerUserID,
 		&i.IsActive,
+		&i.ApprovedAt,
 		&i.AllowCustomAddress,
 		&i.DefaultAddresses,
 		&i.CreatedAt,

@@ -15,7 +15,17 @@ type Console struct {
 	HTTP       settings.HTTP
 	DB         settings.DB
 	Console    settings.Console
-	Telemetry  settings.Telemetry
+
+	// The console seals a sending credential when a customer registers one, and
+	// issues a callback's signing secret. Both use the keyring, so it holds the
+	// same keys the gateway does -- see ARCHITECTURE.md on why that widening is
+	// accepted rather than overlooked.
+	Crypto settings.Crypto
+
+	// It validates a callback address when a customer registers one, so it
+	// needs the policy and nothing else about webhooks.
+	WebhookPolicy settings.WebhookPolicy
+	Telemetry     settings.Telemetry
 }
 
 // LoadConsole reads the environment and reports everything wrong with it at
@@ -30,7 +40,10 @@ func LoadConsole() (Console, error) {
 		HTTP:       settings.LoadHTTP(r),
 		DB:         settings.LoadDB(r),
 		Console:    settings.LoadConsole(r, app.IsProduction()),
-		Telemetry:  settings.LoadTelemetry(r, app.IsProduction()),
+		Crypto:     settings.LoadCrypto(r),
+
+		WebhookPolicy: settings.LoadWebhookPolicy(r, app.IsProduction()),
+		Telemetry:     settings.LoadTelemetry(r, app.IsProduction()),
 	}
 
 	if err := r.Err(); err != nil {

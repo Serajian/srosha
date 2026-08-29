@@ -152,7 +152,14 @@ func TestASuspendedSourceStillAuthenticates(t *testing.T) {
 	ctx := context.Background()
 
 	presented, _ := issued(t, repo, "K6", sourceID, "production", nil)
-	if err := postgres.NewSourceRepository(pool).Deactivate(ctx, sourceID, keyNow()); err != nil {
+
+	sources := postgres.NewSourceRepository(pool)
+	// Approved first: a source is created waiting, so suspension is a second
+	// state and Deactivate has nothing to change until it has been let out.
+	if err := sources.Activate(ctx, sourceID, keyNow()); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	if err := sources.Deactivate(ctx, sourceID, keyNow()); err != nil {
 		t.Fatalf("Deactivate: %v", err)
 	}
 

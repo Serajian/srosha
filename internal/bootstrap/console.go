@@ -2,15 +2,24 @@ package bootstrap
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/Serajian/srosha/internal/adapter/api/web"
+	"github.com/Serajian/srosha/internal/adapter/auth"
 	"github.com/Serajian/srosha/internal/adapter/db/postgres"
 	"github.com/Serajian/srosha/internal/adapter/mailer"
+	"github.com/Serajian/srosha/internal/adapter/ratelimit"
+	"github.com/Serajian/srosha/internal/adapter/secret"
 	"github.com/Serajian/srosha/internal/adapter/system"
 	"github.com/Serajian/srosha/internal/config"
+	"github.com/Serajian/srosha/internal/core/domain/credential"
+	"github.com/Serajian/srosha/internal/core/domain/source"
+	"github.com/Serajian/srosha/internal/core/domain/webhook"
+	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
 	"github.com/Serajian/srosha/internal/infra/smtp"
 	"github.com/Serajian/srosha/internal/registry"
+	"github.com/Serajian/srosha/pkg/crypto"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -47,13 +56,17 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 		return abandon(ctx, res, err)
 	}
 
-	signIn, err := buildConsoleCore(cfg, db.Pool(), dialer)
+	core, err := buildConsoleCore(cfg, db.Pool(), dialer, log)
 	if err != nil {
 		return abandon(ctx, res, err)
 	}
 
 	pages, err := web.NewPortal(web.PortalDeps{
-		SignIn:       signIn,
+		SignIn:       core.signIn,
+		Sources:      core.sources,
+		Keys:         core.keys,
+		Senders:      core.senders,
+		Callbacks:    core.callbacks,
 		SecureCookie: cfg.Console.SecureCookie,
 
 		// Everywhere but production, the same rule the gateway applies to
@@ -94,14 +107,26 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 //
 // Nothing here is registered with the registry: none of it holds a resource, so
 // there is nothing to close and no order to get wrong.
+// consoleCore is everything the pages stand on. Nothing here is registered with
+// the registry: none of it holds a resource, so there is nothing to close.
+type consoleCore struct {
+	signIn    *usecase.SignIn
+	sources   *usecase.Sources
+	keys      *usecase.Keys
+	senders   *usecase.Credentials
+	callbacks *usecase.Registrar
+}
+
 func buildConsoleCore(
-	cfg config.Console, pool *pgxpool.Pool, dialer *smtp.Dialer,
-) (*usecase.SignIn, error) {
+	cfg config.Console, pool *pgxpool.Pool, dialer *smtp.Dialer, log *slog.Logger,
+) (consoleCore, error) {
+	var core consoleCore
+
 	now := system.Clock()
 
 	ids, err := system.NewIDs(now)
 	if err != nil {
-		return nil, err
+		return core, err
 	}
 
 	post, err := mailer.New(dialer, smtp.Identity{
@@ -111,15 +136,91 @@ func buildConsoleCore(
 		Password: cfg.Console.SMTP.Password.Reveal(),
 	}, cfg.Console.SMTP.From)
 	if err != nil {
-		return nil, err
+		return core, err
 	}
 
-	return usecase.NewSignIn(
+	// The gate is the one point every mutating change goes through, and it
+	// writes the audit row before the change runs.
+	gate := usecase.NewGate(postgres.NewAuditRepository(pool), ids.Generate, now)
+
+	core.signIn = usecase.NewSignIn(
 		postgres.NewUserRepository(pool),
 		postgres.NewLoginCodeRepository(pool),
 		postgres.NewSessionRepository(pool),
 		post,
 		ids.Generate,
 		now,
-	), nil
+	)
+	core.sources = usecase.NewSources(
+		postgres.NewSourceRepository(pool), gate, ids.Generate, now,
+	)
+	core.keys = usecase.NewKeys(
+		postgres.NewAPIKeyRepository(pool), core.sources, auth.NewScheme(),
+		gate, ids.Generate, now,
+	)
+
+	if err := buildIdentityCore(&core, cfg, pool, ids, now, log); err != nil {
+		return core, err
+	}
+	return core, nil
+}
+
+// buildIdentityCore assembles the two use cases a customer configures a source
+// with. Both already exist and are already tested; the console is a second face
+// on them, next to gRPC.
+//
+// The rate limiter is required by source.Service and never consulted here: it
+// is spent by Admit, which is the sending path, and the console does not send.
+func buildIdentityCore(
+	core *consoleCore, cfg config.Console, pool *pgxpool.Pool,
+	ids *system.IDs, now shared.NowFunc, log *slog.Logger,
+) error {
+	keys, err := crypto.NewKeyring(cfg.Crypto.Keys, cfg.Crypto.ActiveID)
+	if err != nil {
+		return err
+	}
+
+	limiter, err := ratelimit.NewMemory(consoleRateLimit, now)
+	if err != nil {
+		return err
+	}
+
+	sourceRows := postgres.NewSourceRepository(pool)
+	credentialRows := postgres.NewCredentialRepository(pool)
+	webhookRows := postgres.NewWebhookRepository(pool)
+
+	callbackSecrets, err := secret.NewWebhookKeeper(webhookRows, keys, now)
+	if err != nil {
+		return err
+	}
+
+	sources := source.NewService(sourceRows, limiter)
+
+	core.callbacks = usecase.NewRegistrar(
+		sources,
+		webhook.NewService(webhookRows, ids.Generate, now, webhook.URLPolicy{
+			AllowInsecure: cfg.WebhookPolicy.AllowInsecureURL,
+			AllowPrivate:  cfg.WebhookPolicy.AllowPrivateURL,
+		}),
+		callbackSecrets,
+	)
+
+	// The rows never see a secret in the clear and the core never sees one
+	// sealed. This is the only place both are true at once.
+	secrets, err := secret.New(credentialRows, keys, now, log)
+	if err != nil {
+		return err
+	}
+
+	core.senders = usecase.NewCredentials(
+		sources,
+		credential.NewService(credentialRows, now),
+		secrets,
+		credentialRows,
+		credentialRows,
+		postgres.NewUnitOfWork(pool),
+		ids.Generate,
+		now,
+	)
+	return nil
 }

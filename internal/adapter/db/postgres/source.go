@@ -30,6 +30,7 @@ func (r *SourceRepository) Create(ctx context.Context, s *source.Source) error {
 
 	err = r.q(ctx).CreateSource(ctx, gen.CreateSourceParams{
 		ID:                 s.ID,
+		OwnerUserID:        s.OwnerUserID.String(),
 		Name:               s.Name,
 		MaxPriority:        s.MaxPriority.String(),
 		AllowCustomAddress: s.AllowCustomAddress,
@@ -43,6 +44,27 @@ func (r *SourceRepository) Create(ctx context.Context, s *source.Source) error {
 		return failed("create source", err)
 	}
 	return nil
+}
+
+// ListByOwner is a customer's own page, and the whole of the ownership rule:
+// one WHERE clause, so nothing above it has to remember to filter.
+func (r *SourceRepository) ListByOwner(
+	ctx context.Context, ownerID shared.ID,
+) ([]source.Source, error) {
+	rows, err := r.q(ctx).ListSourcesByOwner(ctx, ownerID.String())
+	if err != nil {
+		return nil, failed("list sources by owner", err)
+	}
+
+	out := make([]source.Source, 0, len(rows))
+	for _, row := range rows {
+		s, err := toSource(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *s)
+	}
+	return out, nil
 }
 
 // ReadByID returns a suspended source like any other. Refusing it here would
@@ -122,9 +144,11 @@ func toSource(row gen.Source) (*source.Source, error) {
 
 	return &source.Source{
 		ID:                 row.ID,
+		OwnerUserID:        shared.ID(row.OwnerUserID),
 		Name:               row.Name,
 		MaxPriority:        priority,
 		IsActive:           row.IsActive,
+		ApprovedAt:         row.ApprovedAt,
 		AllowCustomAddress: row.AllowCustomAddress,
 		DefaultAddresses:   addresses,
 		CreatedAt:          row.CreatedAt,

@@ -1,5 +1,6 @@
--- is_active is not given: a source is created switched on, and the column
--- default says so. allow_custom_address is a parameter because it genuinely is a
+-- is_active is not given: a source is created switched OFF, and the column
+-- default says so. Anybody may register one; nothing it registers reaches
+-- anybody until an operator approves it. allow_custom_address is a parameter because it genuinely is a
 -- per-customer decision taken at registration -- with it off, a leaked key can
 -- only reach that customer's own addresses.
 --
@@ -8,12 +9,17 @@
 --
 -- name: CreateSource :exec
 INSERT INTO sources (
-    id, name, max_priority, allow_custom_address,
+    id, owner_user_id, name, max_priority, allow_custom_address,
     default_addresses, created_at, updated_at
 ) VALUES (
-    @id, @name, @max_priority, @allow_custom_address,
+    @id, @owner_user_id, @name, @max_priority, @allow_custom_address,
     @default_addresses, @created_at, @created_at
 );
+
+-- ListSourcesByOwner is a customer's own page. Newest first, because the one
+-- they just registered is the one they are looking for.
+-- name: ListSourcesByOwner :many
+SELECT * FROM sources WHERE owner_user_id = @owner_user_id ORDER BY created_at DESC;
 
 -- ReadSource deliberately does not filter on is_active. A suspended source must
 -- come back as a row so the domain's EnsureActive can say "source is not

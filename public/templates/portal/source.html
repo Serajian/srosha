@@ -1,0 +1,26 @@
+{{define "content"}}
+<h2 class="head">{{.Source.Name}}</h2>
+<p class="sub"><span class="mono">{{.Source.ID}}</span></p>
+
+{{if not .Source.IsActive}}
+  <p class="problem" role="status">
+    {{if .Source.IsApproved}}
+      An operator switched this source off. Nothing it sends will go out.
+    {{else}}
+      Waiting for approval. Set it up now — it starts working the moment
+      somebody here approves it.
+    {{end}}
+  </p>
+{{end}}
+
+<dl class="facts">
+  <dt>Registered</dt><dd class="mono">{{.Source.CreatedAt.Format "2 Jan 2006"}}</dd>
+  <dt>Highest priority</dt><dd class="mono">{{.Source.MaxPriority}}</dd>
+</dl>
+
+<nav class="fine">
+  <a href="/sources/{{.Source.ID}}/keys">Keys</a> ·
+  <a href="/sources/{{.Source.ID}}/senders">Senders</a> ·
+  <a href="/sources/{{.Source.ID}}/callback">Callback</a>
+</nav>
+{{end}}

@@ -4,6 +4,8 @@ import "errors"
 
 // Sentinel errors of the source aggregate.
 var (
+	ErrEmptyName               = errors.New("a source needs a name")
+	ErrKeyNotFound             = errors.New("key not found")
 	ErrNotFound                = errors.New("source not found")
 	ErrSourceInactive          = errors.New("source is not active")
 	ErrNoRoutes                = errors.New("at least one channel is required")

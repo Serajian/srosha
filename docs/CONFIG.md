@@ -160,10 +160,10 @@ Every key, with its defaults and which binary needs it, is documented in
 | db | `NOTIF_DB_DSN`, `NOTIF_DB_MAX_CONNS`, `NOTIF_DB_MAX_CONN_LIFETIME`, `NOTIF_DB_MAX_CONN_IDLE_TIME`, `NOTIF_DB_HEALTH_CHECK_PERIOD`, `NOTIF_DB_CONNECT_TIMEOUT`, `NOTIF_DB_CONNECT_ATTEMPTS`, `NOTIF_DB_CONNECT_BACKOFF` | ✅ | ✅ | ✅ |
 | mq | `NOTIF_MQ_URL`, `NOTIF_MQ_STREAM`, `NOTIF_MQ_DUPLICATE_WINDOW`, `NOTIF_MQ_MAX_AGE`, `NOTIF_MQ_CONNECT_TIMEOUT`, `NOTIF_MQ_MAX_RECONNECTS`, `NOTIF_MQ_RECONNECT_WAIT`, `NOTIF_MQ_DRAIN_TIMEOUT` | ✅ | ✅ | — |
 | ratelimit | `NOTIF_RATELIMIT_PER_MINUTE` | ✅ | — | — |
-| crypto | `NOTIF_CRYPTO_KEYS`, `NOTIF_CRYPTO_KEY_ID` | ✅ | ✅ | — |
+| crypto | `NOTIF_CRYPTO_KEYS`, `NOTIF_CRYPTO_KEY_ID` | ✅ | ✅ | ✅ |
 | dispatch | `NOTIF_DISPATCH_MAX_ATTEMPTS`, `NOTIF_DISPATCH_ACK_WAIT`, `NOTIF_DISPATCH_MAX_IN_FLIGHT` | — | ✅ | — |
 | sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN`, `NOTIF_SENDER_WHATSAPP_PHONE_NUMBER_ID`, `NOTIF_SENDER_MATRIX_TOKEN`, `NOTIF_SENDER_MATRIX_HOMESERVER`, `NOTIF_SENDER_FCM_SERVICE_ACCOUNT`, `NOTIF_SENDER_APNS_*` | — | ✅ | — |
-| webhook policy | `NOTIF_WEBHOOK_ALLOW_INSECURE_URL`, `NOTIF_WEBHOOK_ALLOW_PRIVATE_URL` | ✅ | ✅ | — |
+| webhook policy | `NOTIF_WEBHOOK_ALLOW_INSECURE_URL`, `NOTIF_WEBHOOK_ALLOW_PRIVATE_URL` | ✅ | ✅ | ✅ |
 | webhook | `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ | — |
 | telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ | ✅ |
 | console | `NOTIF_CONSOLE_SMTP_HOST`, `NOTIF_CONSOLE_SMTP_PORT`, `NOTIF_CONSOLE_SMTP_USER`, `NOTIF_CONSOLE_SMTP_PASSWORD`, `NOTIF_CONSOLE_SMTP_FROM`, `NOTIF_CONSOLE_SMTP_TIMEOUT`, `NOTIF_CONSOLE_SECURE_COOKIE` | — | — | ✅ |
@@ -209,8 +209,14 @@ it, let old values reseal themselves as they are read, and drop the first when
 no value names it. No step stops the service.
 
 Each key is 32 bytes for AES-256, standard base64 in the variable. Generate with
-`openssl rand -base64 32`. **Both binaries read them** — the gateway seals a
-credential when a source registers one, the dispatcher opens it to send.
+`openssl rand -base64 32`. **All three binaries read them** — the gateway seals a
+credential when a source registers one over gRPC, the console seals one when a
+customer registers it on a page and issues a callback's signing secret, and the
+dispatcher opens both to send.
+
+The console also reads the **webhook policy**, and only the policy: it validates
+a callback address when a customer registers one, and never makes the callback.
+The signing secrets are the dispatcher's and are not loaded there.
 
 `NOTIF_CONSOLE_*` and `NOTIF_PORTAL_ADDR` are deliberately two groups, because
 one names the **binary** and the other names a **surface**. The console carries
@@ -308,6 +314,12 @@ cannot share a wire.
 | Directory | `migrations/` |
 | Env keys | `GOOSE_DRIVER`, `GOOSE_MIGRATION_DIR`, `GOOSE_DBSTRING` |
 | When | a separate deployment step, never from an application entrypoint |
+
+The numbering was rearranged when sources gained an owner: `users` is `00002` and
+`sources` is `00003`, because `sources.owner_user_id` is a foreign key into a
+table that has to exist first. Everything from `00004` shifted up by one. Nothing
+was deployed, so the files were renumbered rather than the column arriving as an
+ALTER.
 
 | Group | Keys | gateway | dispatcher | console |
 | --- | --- | --- | --- | --- |

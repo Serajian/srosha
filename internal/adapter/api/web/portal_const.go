@@ -25,3 +25,45 @@ const (
 	fieldEmail = "email"
 	fieldCode  = "code"
 )
+
+// The source pages. ":id" is gin's parameter syntax, read with c.Param("id").
+const (
+	pathSources    = "/sources"
+	pathSourceNew  = "/sources/new"
+	pathSource     = "/sources/:id"
+	pathSourceKeys = "/sources/:id/keys"
+	pathKeyRevoke  = "/sources/:id/keys/:keyID/revoke"
+)
+
+const (
+	pageSources   = "sources"
+	pageSourceNew = "source_new"
+	pageSource    = "source"
+	pageKeys      = "keys"
+	pageKeyIssued = "key_issued"
+)
+
+const (
+	fieldName    = "name"
+	fieldChannel = "channel"
+	fieldAddress = "address"
+	fieldLabel   = "label"
+)
+
+// Senders and the callback.
+const (
+	pathSourceSenders  = "/sources/:id/senders"
+	pathSourceCallback = "/sources/:id/callback"
+)
+
+const (
+	pageSenders        = "senders"
+	pageCallback       = "callback"
+	pageCallbackSecret = "callback_secret"
+)
+
+const (
+	fieldSecret = "secret"
+	fieldConfig = "config"
+	fieldURL    = "url"
+)
