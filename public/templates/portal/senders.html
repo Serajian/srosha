@@ -1,0 +1,67 @@
+{{define "content"}}
+<h2 class="head">Senders</h2>
+<p class="sub">
+  What this source sends as. Register nothing and it sends as srosha, which is
+  what makes a first message work — this page is for putting your own name on it.
+</p>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+<form method="post" action="/sources/{{.SourceID}}/senders">
+  <label for="channel">Channel</label>
+  <select id="channel" name="channel" required>
+    <option value="">Pick one</option>
+    <option value="email">email</option>
+    <option value="telegram">telegram</option>
+    <option value="bale">bale</option>
+    <option value="whatsapp">whatsapp</option>
+    <option value="matrix">matrix</option>
+    <option value="fcm">fcm</option>
+    <option value="apns">apns</option>
+  </select>
+
+  <label for="name">Name</label>
+  <input id="name" name="name" type="text" placeholder="our-support-bot" required>
+  <p class="hint">How you refer to this identity when you send. Only you see it.</p>
+
+  <label for="secret">Secret</label>
+  <input id="secret" name="secret" type="password" autocomplete="off" required>
+  <p class="hint">
+    The bot token, the mailbox password, the signing key. srosha seals it and
+    never shows it again.
+  </p>
+
+  <label for="config">Settings <span class="optional">— optional, JSON</span></label>
+  <input id="config" name="config" type="text" placeholder='{"host":"smtp.acme.test"}'>
+  <p class="hint">
+    What is not secret: a host, a sending number, an app's bundle id. What each
+    channel wants is in the SDK's README.
+  </p>
+
+  <button type="submit">Register this sender</button>
+</form>
+
+{{if .Senders}}
+<ul class="cards">
+  {{range .Senders}}
+  <li class="card">
+    <span class="nm">{{.Name}}</span>
+    <span class="id">{{.Channel}}</span>
+    {{if .IsActive}}
+      <span class="pill ok">In use</span>
+      <form method="post" action="/sources/{{$.SourceID}}/senders/{{.ID}}/off">
+        <button type="submit" class="quiet">Turn off</button>
+      </form>
+    {{else}}
+      <span class="pill off">Switched off</span>
+      <form method="post" action="/sources/{{$.SourceID}}/senders/{{.ID}}/on">
+        <button type="submit" class="quiet">Turn on</button>
+      </form>
+    {{end}}
+  </li>
+  {{end}}
+</ul>
+{{end}}
+
+<p class="fine"><a href="/sources/{{.SourceID}}">Back to the source</a></p>
+{{end}}

@@ -18,6 +18,7 @@ func aSource(id string) *source.Source {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	return &source.Source{
 		ID:                 id,
+		OwnerUserID:        testOwner,
 		Name:               "Acme",
 		MaxPriority:        shared.PriorityHigh,
 		IsActive:           true,
@@ -51,8 +52,13 @@ func TestSourceRoundTrips(t *testing.T) {
 	if got.MaxPriority != want.MaxPriority {
 		t.Errorf("MaxPriority = %v, want %v", got.MaxPriority, want.MaxPriority)
 	}
-	if !got.IsActive {
-		t.Error("a new source came back switched off")
+	// A new source is switched off and has never been approved. Anybody may
+	// register one; an operator decides when it may send.
+	if got.IsActive {
+		t.Error("a new source came back able to send, with nobody having approved it")
+	}
+	if got.IsApproved() {
+		t.Error("a new source came back already approved")
 	}
 	if got.DefaultAddresses[shared.ChannelTelegram] != "-100123" {
 		t.Errorf("DefaultAddresses = %v", got.DefaultAddresses)
@@ -74,6 +80,13 @@ func TestSuspendedSourceStillReadsBack(t *testing.T) {
 
 	if err := repo.Create(ctx, s); err != nil {
 		t.Fatalf("Create: %v", err)
+	}
+
+	// A source is created waiting for approval, so being switched off is its
+	// first state and not something Deactivate can reach. Approving it is what
+	// an operator does, and what these transitions start from.
+	if err := repo.Activate(ctx, s.ID, time.Now().UTC()); err != nil {
+		t.Fatalf("Activate: %v", err)
 	}
 	if err := repo.Deactivate(ctx, s.ID, time.Now().UTC()); err != nil {
 		t.Fatalf("Deactivate: %v", err)
@@ -115,6 +128,13 @@ func TestUpdateLeavesTheActiveFlagAlone(t *testing.T) {
 
 	if err := repo.Create(ctx, s); err != nil {
 		t.Fatalf("Create: %v", err)
+	}
+
+	// A source is created waiting for approval, so being switched off is its
+	// first state and not something Deactivate can reach. Approving it is what
+	// an operator does, and what these transitions start from.
+	if err := repo.Activate(ctx, s.ID, time.Now().UTC()); err != nil {
+		t.Fatalf("Activate: %v", err)
 	}
 	if err := repo.Deactivate(ctx, s.ID, time.Now().UTC()); err != nil {
 		t.Fatalf("Deactivate: %v", err)
@@ -161,11 +181,127 @@ func TestChangingToTheStateItIsAlreadyIn(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
+	// A source is created waiting for approval, so being switched off is its
+	// first state and not something Deactivate can reach. Approving it is what
+	// an operator does, and what these transitions start from.
+	if err := repo.Activate(ctx, s.ID, time.Now().UTC()); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+
 	now := time.Now().UTC()
 	if err := repo.Deactivate(ctx, s.ID, now); err != nil {
 		t.Fatalf("first Deactivate: %v", err)
 	}
 	if err := repo.Deactivate(ctx, s.ID, now); !errs.IsType(err, errs.ErrNotFound) {
 		t.Errorf("second Deactivate = %v, want a not-found", err)
+	}
+}
+
+// A customer sees their own and nobody else's. This is the whole of the
+// ownership rule, and it is one WHERE clause -- so nothing above it has to
+// remember to filter.
+func TestOnlyTheOwnersSourcesComeBack(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+	ctx := context.Background()
+
+	stranger := shared.ID("01K0ACCT0000000000000000AC")
+	_, err := pool.Exec(ctx,
+		`INSERT INTO users (id, email, role, is_active, created_at, updated_at)
+		 VALUES ($1, 'them@acme.test', 'customer', true, now(), now())`, stranger.String())
+	if err != nil {
+		t.Fatalf("seed the stranger: %v", err)
+	}
+
+	repo := postgres.NewSourceRepository(pool)
+	for _, c := range []struct {
+		id    string
+		owner shared.ID
+	}{
+		{ulid("SO1"), testOwner}, {ulid("SO2"), testOwner}, {ulid("SO3"), stranger},
+	} {
+		s := aSource(c.id)
+		s.OwnerUserID = c.owner
+		if err := repo.Create(ctx, s); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+	}
+
+	got, err := repo.ListByOwner(ctx, testOwner)
+	if err != nil {
+		t.Fatalf("ListByOwner: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d sources, want the owner's two", len(got))
+	}
+	for _, s := range got {
+		if s.OwnerUserID != testOwner {
+			t.Errorf("somebody else's source came back: %q", s.ID)
+		}
+	}
+}
+
+// An owner with nothing gets an empty list, not an error: having no sources yet
+// is the ordinary state of a new account, and the page that renders it says so.
+func TestAnOwnerWithNoSources(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	got, err := postgres.NewSourceRepository(pool).ListByOwner(context.Background(), testOwner)
+	if err != nil {
+		t.Fatalf("ListByOwner: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("got %d sources for an owner with none", len(got))
+	}
+}
+
+// The portal's statement cannot reach the ceiling, and this is the assertion
+// that holds even if every layer above it is rewritten: it hands
+// UpdateSettings a source whose ceiling has been raised in memory, and reads
+// the row back to find the stored one untouched.
+func TestUpdateSettingsCannotCarryTheCeiling(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	repo := postgres.NewSourceRepository(pool)
+	ctx := context.Background()
+	s := aSource(ulid("S7"))
+
+	if err := repo.Create(ctx, s); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := repo.Activate(ctx, s.ID, time.Now().UTC()); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+
+	// Everything a customer must not be able to move, moved in memory.
+	s.Name = "acme-alerts"
+	s.Description = "pages the on-call"
+	s.MaxPriority = shared.PriorityCritical
+	s.AllowCustomAddress = true
+	s.IsActive = false
+	s.UpdatedAt = time.Now().UTC()
+
+	if err := repo.UpdateSettings(ctx, s); err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+
+	got, err := repo.ReadByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("ReadByID: %v", err)
+	}
+
+	if got.Name != "acme-alerts" || got.Description != "pages the on-call" {
+		t.Errorf("the settings did not land: %q / %q", got.Name, got.Description)
+	}
+	if got.MaxPriority == shared.PriorityCritical {
+		t.Error("the statement carried max_priority")
+	}
+	if got.AllowCustomAddress {
+		t.Error("the statement carried allow_custom_address")
+	}
+	if !got.IsActive {
+		t.Error("the statement switched the source off")
 	}
 }

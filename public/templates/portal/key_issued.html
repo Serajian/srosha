@@ -1,0 +1,16 @@
+{{define "content"}}
+<h2 class="head">Your key</h2>
+<p class="sub">Copy it now. This is the only time it is shown.</p>
+
+<div class="reveal">
+  <code class="k">{{.Key}}</code>
+  <span class="cap">{{.Label}}</span>
+</div>
+
+<p class="hint">
+  Put it where your code reads secrets. srosha stores only a hash of it — if you
+  lose it, revoke it and issue another.
+</p>
+
+<p class="fine"><a href="/sources/{{.SourceID}}/keys">I've saved it</a></p>
+{{end}}

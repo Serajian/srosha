@@ -1,0 +1,41 @@
+{{define "content"}}
+<h2 class="head">Edit {{.Source.Name}}</h2>
+<p class="sub">Its keys, senders and callback are not touched by this.</p>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+<form method="post" action="/sources/{{.Source.ID}}/edit">
+  <label for="name">Name</label>
+  <input id="name" name="name" type="text" value="{{.Source.Name}}" autofocus required>
+
+  <label for="description">What it's for <span class="optional">— optional</span></label>
+  <input id="description" name="description" type="text" value="{{.Source.Description}}"
+         placeholder="pages the on-call engineer">
+  <p class="hint">A sentence, so two sources with similar names are still telling.</p>
+
+  <label>Where it sends by default</label>
+  {{range $channel, $address := .Source.DefaultAddresses}}
+  <div class="pair">
+    <select name="channel" aria-label="Channel">
+      {{range $.Channels}}
+      <option value="{{.}}" {{if eq . $channel}}selected{{end}}>{{.}}</option>
+      {{end}}
+    </select>
+    <input name="address" type="text" value="{{$address}}" aria-label="Address">
+  </div>
+  {{end}}
+
+  <div class="pair">
+    <select name="channel" aria-label="Channel">
+      <option value="">Channel</option>
+      {{range .Channels}}<option value="{{.}}">{{.}}</option>{{end}}
+    </select>
+    <input name="address" type="text" placeholder="billing@acme.test" aria-label="Address">
+  </div>
+  <p class="hint">Clearing an address removes that channel. This is the whole set.</p>
+
+  <button type="submit">Save changes</button>
+</form>
+
+<p class="fine"><a href="/sources/{{.Source.ID}}">Back to the source</a></p>
+{{end}}

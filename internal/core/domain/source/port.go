@@ -8,7 +8,18 @@ import (
 )
 
 type Repository interface {
+	Create(ctx context.Context, s *Source) error
 	ReadByID(ctx context.Context, id string) (*Source, error)
+	ListByOwner(ctx context.Context, ownerID shared.ID) ([]Source, error)
+
+	// UpdateSettings writes what the customer owns -- name, description and
+	// default addresses -- and nothing else.
+	//
+	// Deliberately not called Update. The adapter has one of those, it writes
+	// max_priority and allow_custom_address as well, and the whole difference
+	// between the two is which columns a caller can reach. A name that hid that
+	// difference would be the bug.
+	UpdateSettings(ctx context.Context, s *Source) error
 }
 
 // KeyRepository is the authentication path, and only that. Issuing, listing and
@@ -42,4 +53,16 @@ type KeyRepository interface {
 // source, so the port belongs here rather than to whoever happens to ask.
 type RateLimiter interface {
 	Allow(ctx context.Context, sourceID string) (bool, error)
+}
+
+// KeyIssuer is the other half of a key's life: making one, listing them and
+// revoking one.
+//
+// Separate from KeyRepository because that one runs on every request and this
+// one runs when a person clicks something -- a port that grew both would be
+// faked in tests that care about neither.
+type KeyIssuer interface {
+	Create(ctx context.Context, k *Key, keyHash string) error
+	ListBySourceID(ctx context.Context, sourceID string) ([]Key, error)
+	Revoke(ctx context.Context, keyID shared.ID, now time.Time) error
 }

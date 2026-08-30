@@ -113,7 +113,7 @@ func NewCredentials(
 func (c *Credentials) Register(
 	ctx context.Context, sourceID string, reg CredentialRegistration,
 ) (*credential.Credential, error) {
-	if _, err := c.sources.Load(ctx, sourceID); err != nil {
+	if _, err := c.sources.Manage(ctx, sourceID); err != nil {
 		return nil, err
 	}
 	if err := validConfig(reg.Config); err != nil {
@@ -155,7 +155,7 @@ func validConfig(config []byte) error {
 // Switched-off ones are in it, and that is the point: the answer to "what do I
 // have" must include the one somebody disabled, or nobody can turn it back on.
 func (c *Credentials) List(ctx context.Context, sourceID string) ([]credential.Credential, error) {
-	if _, err := c.sources.Load(ctx, sourceID); err != nil {
+	if _, err := c.sources.Manage(ctx, sourceID); err != nil {
 		return nil, err
 	}
 	return c.creds.List(ctx, sourceID)
@@ -240,7 +240,7 @@ func (c *Credentials) Rotate(
 func (c *Credentials) get(
 	ctx context.Context, sourceID string, id shared.ID,
 ) (*credential.Credential, error) {
-	if _, err := c.sources.Load(ctx, sourceID); err != nil {
+	if _, err := c.sources.Manage(ctx, sourceID); err != nil {
 		return nil, err
 	}
 	if id.IsZero() {

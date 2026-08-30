@@ -46,6 +46,19 @@ func (s *Service) Load(ctx context.Context, id string) (*Source, error) {
 	return src, nil
 }
 
+// Manage answers "who is this source" for a caller that is changing its
+// configuration rather than sending.
+//
+// It deliberately does NOT require the source to be active. A source is created
+// waiting for approval, and a customer sets it up in that window -- a bot, a
+// callback, a key -- so that what an operator approves is a source that is
+// ready rather than an empty one. A source an operator later switched off can
+// still be reconfigured for the same reason: fixing whatever caused that is the
+// only way back.
+func (s *Service) Manage(ctx context.Context, id string) (*Source, error) {
+	return s.repo.ReadByID(ctx, id)
+}
+
 // Resolve turns the requested channels into the recipients to deliver to.
 func (s *Service) Resolve(src *Source, routes []Route) ([]shared.Recipient, error) {
 	if len(routes) == 0 {

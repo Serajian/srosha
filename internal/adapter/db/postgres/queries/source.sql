@@ -1,5 +1,6 @@
--- is_active is not given: a source is created switched on, and the column
--- default says so. allow_custom_address is a parameter because it genuinely is a
+-- is_active is not given: a source is created switched OFF, and the column
+-- default says so. Anybody may register one; nothing it registers reaches
+-- anybody until an operator approves it. allow_custom_address is a parameter because it genuinely is a
 -- per-customer decision taken at registration -- with it off, a leaked key can
 -- only reach that customer's own addresses.
 --
@@ -8,12 +9,17 @@
 --
 -- name: CreateSource :exec
 INSERT INTO sources (
-    id, name, max_priority, allow_custom_address,
+    id, owner_user_id, name, max_priority, allow_custom_address,
     default_addresses, created_at, updated_at
 ) VALUES (
-    @id, @name, @max_priority, @allow_custom_address,
+    @id, @owner_user_id, @name, @max_priority, @allow_custom_address,
     @default_addresses, @created_at, @created_at
 );
+
+-- ListSourcesByOwner is a customer's own page. Newest first, because the one
+-- they just registered is the one they are looking for.
+-- name: ListSourcesByOwner :many
+SELECT * FROM sources WHERE owner_user_id = @owner_user_id ORDER BY created_at DESC;
 
 -- ReadSource deliberately does not filter on is_active. A suspended source must
 -- come back as a row so the domain's EnsureActive can say "source is not
@@ -60,3 +66,26 @@ WHERE id = @id AND is_active;
 UPDATE sources
 SET is_active = TRUE, updated_at = @updated_at::timestamptz
 WHERE id = @id AND NOT is_active;
+
+-- UpdateSourceSettings writes the three columns a customer owns, and cannot
+-- name the others.
+--
+-- UpdateSource above it writes max_priority and allow_custom_address as well,
+-- which is right for an operator and wrong here: a rename must not be able to
+-- carry a ceiling. Keeping those columns out of this statement is a cheaper
+-- guarantee than a use case that remembers to re-read and re-send them, because
+-- the statement cannot be broken by an edit somewhere else.
+--
+-- default_addresses is written whole, with the same caveat UpdateSource
+-- carries: two edits to two different channels at once will have one overwrite
+-- the other.
+--
+-- execrows so the caller can tell "updated" from "no such source".
+--
+-- name: UpdateSourceSettings :execrows
+UPDATE sources
+SET name              = @name,
+    description       = @description,
+    default_addresses = @default_addresses,
+    updated_at        = @updated_at::timestamptz
+WHERE id = @id;

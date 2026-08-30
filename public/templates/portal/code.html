@@ -1,0 +1,31 @@
+{{define "content"}}
+<h2 class="head">Enter the code</h2>
+<p class="sub">Sent to <span class="mono">{{.Email}}</span></p>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+<form method="post" action="/signin/code">
+  <input type="hidden" name="email" value="{{.Email}}">
+
+  <div class="medallion">
+    <svg viewBox="0 0 240 240" aria-hidden="true">
+      <g fill="none" stroke="#33A5DE" stroke-width="1" stroke-linejoin="round">
+        <circle cx="120" cy="120" r="112"></circle>
+        <polygon points="87,8 153,8 232,87 232,153 153,232 87,232 8,153 8,87"></polygon>
+        <rect x="49" y="49" width="142" height="142"></rect>
+        <path d="M120 20 220 120 120 220 20 120Z"></path>
+      </g>
+    </svg>
+    <label for="code" class="offscreen">Six-digit code</label>
+    <input id="code" name="code" class="code" type="text" inputmode="numeric"
+           pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"
+           spellcheck="false" autofocus required>
+  </div>
+
+  <button type="submit">Sign in</button>
+</form>
+
+<p class="fine">
+  Three guesses. Ten minutes. <a href="/signin">Use another address</a>
+</p>
+{{end}}

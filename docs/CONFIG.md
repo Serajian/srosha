@@ -66,6 +66,9 @@ network; `ports:` is never used.
 | gateway | 50051 | gRPC |
 | gateway | 8080 | `/healthz` |
 | dispatcher | 8081 | `/healthz` |
+| console | 8090 | the customer portal's pages — **the only surface a browser reaches** |
+| console | 8091 | `/healthz` |
+| console | 8092 | the admin surface *(phase 2)* — never published, see ARCHITECTURE.md |
 | nats | 4222 | clients |
 | nats | 8222 | monitoring JSON — unauthenticated, never published |
 | postgres | 5432 | clients |
@@ -73,6 +76,15 @@ network; `ports:` is never used.
 There is no REST surface and none is planned. srosha is called by other services,
 not by browsers, and gRPC is what those speak: a second surface would be a second
 contract to keep the first one honest against, for callers that do not exist.
+
+That is about the **customer API**, which is still gRPC and still the only way to
+send anything. The console serves HTML to people, which is not a second API: it
+has no contract, no versioning and no client — nothing outside a browser is meant
+to parse it, and nothing does.
+
+The console's portal port is the one thing in this table that is reachable from
+outside, and it goes out through Traefik on `dokploy-network` like the gateway's,
+never through `ports:`. Its admin port stays on the private network only.
 
 The health ports carry no API at all. `/healthz` is there for the platform to
 decide whether a container is alive; nothing a customer writes should ever call
@@ -137,23 +149,25 @@ the prefix `NOTIF_`, and `.` in a config key mapped to `_`.
 Every key, with its defaults and which binary needs it, is documented in
 `.env.example`. Summary of what each binary requires:
 
-| Group | Keys | gateway | dispatcher |
-| --- | --- | --- | --- |
-| app | `NOTIF_APP_ENV`, `NOTIF_APP_SERVICE_NAME`, `NOTIF_APP_SHUTDOWN_TIMEOUT` | ✅ | ✅ |
-| grpc | `NOTIF_GRPC_ADDR`, `NOTIF_GRPC_HTTP_ADDR`, `NOTIF_GRPC_STOP_TIMEOUT` | ✅ | — |
-| auth | `NOTIF_AUTH_KEY_TOUCH_AFTER` | ✅ | — |
-| http | `NOTIF_HTTP_ADDR` | — | ✅ |
-| http server | `NOTIF_HTTP_SERVER_READ_HEADER_TIMEOUT`, `NOTIF_HTTP_SERVER_READ_TIMEOUT`, `NOTIF_HTTP_SERVER_WRITE_TIMEOUT`, `NOTIF_HTTP_SERVER_IDLE_TIMEOUT` | ✅ | ✅ |
-| http client | `NOTIF_HTTP_CLIENT_TIMEOUT`, `NOTIF_HTTP_CLIENT_DIAL_TIMEOUT`, `NOTIF_HTTP_CLIENT_TLS_TIMEOUT`, `NOTIF_HTTP_CLIENT_MAX_IDLE_CONNS`, `NOTIF_HTTP_CLIENT_MAX_IDLE_PER_HOST`, `NOTIF_HTTP_CLIENT_IDLE_CONN_TIMEOUT` | — | ✅ |
-| db | `NOTIF_DB_DSN`, `NOTIF_DB_MAX_CONNS`, `NOTIF_DB_MAX_CONN_LIFETIME`, `NOTIF_DB_MAX_CONN_IDLE_TIME`, `NOTIF_DB_HEALTH_CHECK_PERIOD`, `NOTIF_DB_CONNECT_TIMEOUT`, `NOTIF_DB_CONNECT_ATTEMPTS`, `NOTIF_DB_CONNECT_BACKOFF` | ✅ | ✅ |
-| mq | `NOTIF_MQ_URL`, `NOTIF_MQ_STREAM`, `NOTIF_MQ_DUPLICATE_WINDOW`, `NOTIF_MQ_MAX_AGE`, `NOTIF_MQ_CONNECT_TIMEOUT`, `NOTIF_MQ_MAX_RECONNECTS`, `NOTIF_MQ_RECONNECT_WAIT`, `NOTIF_MQ_DRAIN_TIMEOUT` | ✅ | ✅ |
-| ratelimit | `NOTIF_RATELIMIT_PER_MINUTE` | ✅ | — |
-| crypto | `NOTIF_CRYPTO_KEYS`, `NOTIF_CRYPTO_KEY_ID` | ✅ | ✅ |
-| dispatch | `NOTIF_DISPATCH_MAX_ATTEMPTS`, `NOTIF_DISPATCH_ACK_WAIT`, `NOTIF_DISPATCH_MAX_IN_FLIGHT` | — | ✅ |
-| sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN`, `NOTIF_SENDER_WHATSAPP_PHONE_NUMBER_ID`, `NOTIF_SENDER_MATRIX_TOKEN`, `NOTIF_SENDER_MATRIX_HOMESERVER`, `NOTIF_SENDER_FCM_SERVICE_ACCOUNT`, `NOTIF_SENDER_APNS_*` | — | ✅ |
-| webhook policy | `NOTIF_WEBHOOK_ALLOW_INSECURE_URL`, `NOTIF_WEBHOOK_ALLOW_PRIVATE_URL` | ✅ | ✅ |
-| webhook | `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ |
-| telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ |
+| Group | Keys | gateway | dispatcher | console |
+| --- | --- | --- | --- | --- |
+| app | `NOTIF_APP_ENV`, `NOTIF_APP_SERVICE_NAME`, `NOTIF_APP_SHUTDOWN_TIMEOUT` | ✅ | ✅ | ✅ |
+| grpc | `NOTIF_GRPC_ADDR`, `NOTIF_GRPC_HTTP_ADDR`, `NOTIF_GRPC_STOP_TIMEOUT` | ✅ | — | — |
+| auth | `NOTIF_AUTH_KEY_TOUCH_AFTER` | ✅ | — | — |
+| http | `NOTIF_HTTP_ADDR` | — | ✅ | ✅ |
+| http server | `NOTIF_HTTP_SERVER_READ_HEADER_TIMEOUT`, `NOTIF_HTTP_SERVER_READ_TIMEOUT`, `NOTIF_HTTP_SERVER_WRITE_TIMEOUT`, `NOTIF_HTTP_SERVER_IDLE_TIMEOUT` | ✅ | ✅ | ✅ |
+| http client | `NOTIF_HTTP_CLIENT_TIMEOUT`, `NOTIF_HTTP_CLIENT_DIAL_TIMEOUT`, `NOTIF_HTTP_CLIENT_TLS_TIMEOUT`, `NOTIF_HTTP_CLIENT_MAX_IDLE_CONNS`, `NOTIF_HTTP_CLIENT_MAX_IDLE_PER_HOST`, `NOTIF_HTTP_CLIENT_IDLE_CONN_TIMEOUT` | — | ✅ | — |
+| db | `NOTIF_DB_DSN`, `NOTIF_DB_MAX_CONNS`, `NOTIF_DB_MAX_CONN_LIFETIME`, `NOTIF_DB_MAX_CONN_IDLE_TIME`, `NOTIF_DB_HEALTH_CHECK_PERIOD`, `NOTIF_DB_CONNECT_TIMEOUT`, `NOTIF_DB_CONNECT_ATTEMPTS`, `NOTIF_DB_CONNECT_BACKOFF` | ✅ | ✅ | ✅ |
+| mq | `NOTIF_MQ_URL`, `NOTIF_MQ_STREAM`, `NOTIF_MQ_DUPLICATE_WINDOW`, `NOTIF_MQ_MAX_AGE`, `NOTIF_MQ_CONNECT_TIMEOUT`, `NOTIF_MQ_MAX_RECONNECTS`, `NOTIF_MQ_RECONNECT_WAIT`, `NOTIF_MQ_DRAIN_TIMEOUT` | ✅ | ✅ | — |
+| ratelimit | `NOTIF_RATELIMIT_PER_MINUTE` | ✅ | — | — |
+| crypto | `NOTIF_CRYPTO_KEYS`, `NOTIF_CRYPTO_KEY_ID` | ✅ | ✅ | ✅ |
+| dispatch | `NOTIF_DISPATCH_MAX_ATTEMPTS`, `NOTIF_DISPATCH_ACK_WAIT`, `NOTIF_DISPATCH_MAX_IN_FLIGHT` | — | ✅ | — |
+| sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN`, `NOTIF_SENDER_WHATSAPP_PHONE_NUMBER_ID`, `NOTIF_SENDER_MATRIX_TOKEN`, `NOTIF_SENDER_MATRIX_HOMESERVER`, `NOTIF_SENDER_FCM_SERVICE_ACCOUNT`, `NOTIF_SENDER_APNS_*` | — | ✅ | — |
+| webhook policy | `NOTIF_WEBHOOK_ALLOW_INSECURE_URL`, `NOTIF_WEBHOOK_ALLOW_PRIVATE_URL` | ✅ | ✅ | ✅ |
+| webhook | `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ | — |
+| telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ | ✅ |
+| console | `NOTIF_CONSOLE_SMTP_HOST`, `NOTIF_CONSOLE_SMTP_PORT`, `NOTIF_CONSOLE_SMTP_USER`, `NOTIF_CONSOLE_SMTP_PASSWORD`, `NOTIF_CONSOLE_SMTP_FROM`, `NOTIF_CONSOLE_SMTP_TIMEOUT`, `NOTIF_CONSOLE_SECURE_COOKIE` | — | — | ✅ |
+| portal | `NOTIF_PORTAL_ADDR` | — | — | ✅ |
 
 `NOTIF_MQ_URL` carries a **different** NATS user per binary. Do not collapse them.
 
@@ -195,14 +209,63 @@ it, let old values reseal themselves as they are read, and drop the first when
 no value names it. No step stops the service.
 
 Each key is 32 bytes for AES-256, standard base64 in the variable. Generate with
-`openssl rand -base64 32`. **Both binaries read them** — the gateway seals a
-credential when a source registers one, the dispatcher opens it to send.
+`openssl rand -base64 32`. **All three binaries read them** — the gateway seals a
+credential when a source registers one over gRPC, the console seals one when a
+customer registers it on a page and issues a callback's signing secret, and the
+dispatcher opens both to send.
+
+The console also reads the **webhook policy**, and only the policy: it validates
+a callback address when a customer registers one, and never makes the callback.
+The signing secrets are the dispatcher's and are not loaded there.
+
+`NOTIF_CONSOLE_*` and `NOTIF_PORTAL_ADDR` are deliberately two groups, because
+one names the **binary** and the other names a **surface**. The console carries
+the customer portal today and the admin surface beside it later; they share this
+process, one mail account and one cookie rule, and each brings its own address —
+because which of them is exposed is the whole security argument. `NOTIF_ADMIN_ADDR`
+joins the second group in phase 2.
+
+Its SMTP account is its own and not the sender's. Signing in must not depend on
+how a customer's messages happen to be configured, and the mail does **not** go
+through srosha's queue: a sign-in that depends on the service you are signing in
+to fix is a trap.
+
+`NOTIF_CONSOLE_SECURE_COOKIE` is off only for local development over plain http,
+and the console refuses to start in production with it off.
 
 ### Password rule
 
 Letters, digits and hyphens only. `#` is truncated by Dokploy's `.env` parsing;
 `)` `!` `$` break in the shell; `#` `@` `:` `/` `?` need percent-encoding inside a
 connection URL. Generate with `openssl rand -hex 24`.
+
+---
+
+## Pages and assets
+
+Everything the console renders or serves lives at the repository root rather than
+inside the Go tree, so changing a page or a stylesheet is not a hunt through
+packages. It is still compiled into the binary: `public/embed.go` embeds it,
+because `go:embed` cannot reach outside its own directory.
+
+| | |
+| --- | --- |
+| Directory | `public/` |
+| Served to a browser | `public/static/<surface>/` — today `static/portal/` |
+| Rendered on the server | `public/templates/<surface>/` — today `templates/portal/` |
+| Stylesheet | `public/static/portal/portal.css` — the whole design system, ~250 lines |
+| Logo | `public/static/portal/crane.svg` — the brand svg with a `viewBox` added |
+| URL prefix | `/static/` — mapped to one surface's directory, never to `public/` |
+
+**The two halves are not the same thing.** `static/` is fetched byte for byte;
+`templates/` is rendered and never served. Serving `templates/` would hand out
+the shape of every page and every field name in one request, so nothing may point
+a file server at the root of that FS — `web.browserFiles` subs into
+`static/portal` first, and the admin surface will do the same into its own.
+
+Fonts are a stack, not files: nothing here may reach a font host at runtime, and
+the portal has to work on a network that cannot. Vazirmatn is first in every
+stack and takes over the moment its `woff2` is dropped in beside the stylesheet.
 
 ---
 
@@ -252,11 +315,17 @@ cannot share a wire.
 | Env keys | `GOOSE_DRIVER`, `GOOSE_MIGRATION_DIR`, `GOOSE_DBSTRING` |
 | When | a separate deployment step, never from an application entrypoint |
 
-| Group | Keys | gateway | dispatcher |
-| --- | --- | --- | --- |
-| reconcile | `NOTIF_RECONCILE_AFTER`, `NOTIF_RECONCILE_GIVE_UP`, `NOTIF_RECONCILE_SCHEDULE`, `NOTIF_RECONCILE_BATCH`, `NOTIF_RECONCILE_LEASE` | — | ✅ |
-| retention | `NOTIF_RETENTION_AGE` | ✅ | ✅ |
-| retention sweep | `NOTIF_RETENTION_SCHEDULE`, `NOTIF_RETENTION_BATCH` | — | ✅ |
+The numbering was rearranged when sources gained an owner: `users` is `00002` and
+`sources` is `00003`, because `sources.owner_user_id` is a foreign key into a
+table that has to exist first. Everything from `00004` shifted up by one. Nothing
+was deployed, so the files were renumbered rather than the column arriving as an
+ALTER.
+
+| Group | Keys | gateway | dispatcher | console |
+| --- | --- | --- | --- | --- |
+| reconcile | `NOTIF_RECONCILE_AFTER`, `NOTIF_RECONCILE_GIVE_UP`, `NOTIF_RECONCILE_SCHEDULE`, `NOTIF_RECONCILE_BATCH`, `NOTIF_RECONCILE_LEASE` | — | ✅ | — |
+| retention | `NOTIF_RETENTION_AGE` | ✅ | ✅ | — |
+| retention sweep | `NOTIF_RETENTION_SCHEDULE`, `NOTIF_RETENTION_BATCH` | — | ✅ | — |
 
 **There is no signing secret here, and there was until it moved into the
 database.** It was a json map of source id to secret, which made adding a source
@@ -311,7 +380,12 @@ Local host-port mappings only. Production publishes nothing.
 | postgres | `127.0.0.1:7001` |
 | nats | `127.0.0.1:7002` |
 | gateway gRPC | `50051`, read from `NOTIF_GRPC_ADDR` in `.env` |
+| console portal | `8090`, read from `NOTIF_PORTAL_ADDR`; `make run-console` |
 | env file | `.env`, git-ignored; template in `.env.example` |
+
+The console needs an SMTP host to start, and a local catcher will not do as it
+stands: the dialer requires STARTTLS and mailpit serves plain SMTP by default. To
+try a sign-in locally, read the code out of `login_codes` instead.
 
 ---
 
@@ -321,7 +395,8 @@ Local host-port mappings only. Production publishes nothing.
 
 | Target | Does |
 | --- | --- |
-| `make build` | both binaries into `build/` |
+| `make build` | all three binaries into `build/` |
+| `make run-gateway` / `run-dispatcher` / `run-console` | one binary, locally |
 | `make proto` | `buf generate` into `gen/` (committed) |
 | `make arch-check` | fails if `core/domain` imports outside stdlib, `core/shared`, `pkg/errs` |
 | `make precommit` | deps, proto lint, format, lint, arch-check |

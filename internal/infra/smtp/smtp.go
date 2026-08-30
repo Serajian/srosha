@@ -91,6 +91,17 @@ type Message struct {
 
 	// ContentType is the body's, "text/plain" or "text/html".
 	ContentType string
+
+	// HTML is the same message, marked up.
+	//
+	// When it is set the mail goes out as multipart/alternative: Body is what a
+	// client that will not render html shows, and this is what every other one
+	// shows. Both are sent and the client picks -- which is the only way to add
+	// markup without taking the plain half away from whoever still needs it.
+	//
+	// The two have to say the same thing. A code in one and not in the other is
+	// a person who cannot sign in.
+	HTML string
 }
 
 // Dialer opens a client per identity, and holds only what they share.
@@ -175,6 +186,13 @@ func (c *Client) Send(ctx context.Context, m Message) (string, error) {
 	// is a garbled subject on every message rather than a failure anybody sees.
 	msg.Subject(m.Subject)
 	msg.SetBodyString(mail.ContentType(m.ContentType), m.Body)
+
+	// Appended rather than set, and appended second: in multipart/alternative
+	// the LAST part is the one a client prefers, so this order is what makes
+	// the plain half the fallback rather than the message.
+	if m.HTML != "" {
+		msg.AddAlternativeString(mail.TypeTextHTML, m.HTML)
+	}
 	msg.SetMessageID()
 
 	if err := c.client.DialAndSendWithContext(ctx, msg); err != nil {

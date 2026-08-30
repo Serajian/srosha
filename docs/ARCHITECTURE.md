@@ -310,3 +310,190 @@ one. The key id is inside the value, so asking costs no column and no second que
 that guard every read would be followed by a write, because sealing is randomized and no two
 seals of one value are ever equal. The reseal is best effort: the secret is already open and
 the message is going out, so a failed rewrite is logged and the next read tries again.
+
+---
+
+## Two surfaces in one binary, and what keeps them apart
+
+`console` is the third binary: the pages people sign in to, as opposed to the
+gRPC surface other services call. It carries the customer portal today and will
+carry the admin surface beside it, and those two audiences could not be further
+apart — one is anybody on the internet, the other can switch off a customer's
+sources and change who is an operator.
+
+They live in **one process, on two listeners**:
+
+```
+:8090   portal   public, reached through Traefik
+:8091   healthz  private
+:8092   admin    private, never published
+```
+
+### The alternative, and why not
+
+A fourth binary — `cmd/admin` — was the other option, and it is the stronger one:
+separation you cannot undo by moving two lines. It was not chosen, and the reason
+is worth writing down because it is a trade and not an oversight.
+
+Almost nothing about the admin surface is its own. The user, the sign-in code,
+the session, the use case, the repositories and the mailer are all shared, and
+shared *identically*: an operator signs in through the same four steps as a
+customer, because there is one `users` table and `role` is the only difference.
+A second binary would duplicate the whole of `bootstrap` and a second deployment
+to gain a boundary that a test can also hold.
+
+So the boundary is a port rather than a process, and it is held by three things
+rather than by one.
+
+### Cookies are not scoped by port
+
+This is what makes the choice load-bearing, and it surprises people:
+
+```
+a customer signs in at :8090   ->  cookie srosha_portal
+the same browser reaches :8092 ->  the same cookie is sent
+```
+
+A cookie's scope is its domain and its path. **The port is not part of it** —
+that is the cookie specification, not a bug and not something a flag can change.
+So a customer holding a perfectly valid session arrives at the admin listener
+already carrying it.
+
+A separate binary would not have fixed that either; it would only have made the
+admin surface easier to keep off the network a customer can reach. Here, that
+network separation is a deployment fact rather than a structural one, which is
+exactly why the check below is not optional.
+
+### What holds it
+
+**Three handlers, no shared mux.** `web` builds the portal's, `adminweb` will
+build its own, and each is passed to its own listener. There is no router that
+knows both, so there is no line to move that mounts one on the other's port.
+
+**The admin guard reads the role, from the live row, on every request.** Not from
+the session, and not from the cookie:
+
+```go
+u, err := signIn.Whoami(ctx, id)   // reads the users row
+...
+if !u.Role.IsOperator() { refuse }
+```
+
+Reading the row is what makes taking somebody's operator role take effect on
+their next request, for the same reason `is_active` does. This one line is the
+entire boundary between a customer and the admin surface, and it must be treated
+that way.
+
+**The admin port is never published.** Not in `ports:`, and not on
+`dokploy-network`. See `docs/CONFIG.md`.
+
+### What must be tested, because discipline is not a mechanism
+
+Two tests, and they are not optional — without them the decision above is a
+comment rather than a property:
+
+```
+a customer's session is refused by the admin guard      DONE
+   -> TestOperatorPagesRefuseACustomer, and three beside it
+
+every admin route answers 404 on the portal's handler   when web/admin exists
+   -> a mounting mistake fails the build instead of shipping
+```
+
+The second is what a fourth binary would have given for free. This is the price
+of not building one, and it is paid once.
+
+---
+
+## Gin routes the HTML surfaces, and nothing else
+
+`internal/adapter/api/web` is built on gin. The admin surface will be, and the
+gRPC side and the health endpoints are not.
+
+The reason is the shape of what is coming rather than what is here: six routes
+do not need a router, and thirty do. Sources, keys, credentials and callbacks
+each bring pages, and the admin surface brings its own set behind a different
+guard. Groups and middleware are what keep that readable, and writing them by
+hand is writing a small router badly.
+
+```
+engine.GET(pathSignIn, in.show)          open
+engine.POST(pathSignIn, in.request)
+
+authed := engine.Group("", sess.guard())  guarded, and a page added
+authed.GET(pathHome, account.show)        here cannot forget it
+```
+
+### What it is not allowed to touch
+
+Gin is a driving adapter's dependency and stops there.
+
+```
+core     does not know it exists, and must not
+infra    same. httpserver takes an http.Handler
+registry same. gin.Engine satisfies http.Handler, so nothing there changed
+grpcsrv  its own surface, its own interceptors
+api/http /healthz and /readyz, still the standard mux
+```
+
+The health endpoints stay on the standard library deliberately. They are two
+routes that must answer when everything else is broken, and the fewer things
+between the platform's probe and the answer, the better. That leaves two http
+styles in the tree, which is a real cost and is accepted rather than overlooked.
+
+### One struct per surface, on an engine of its own
+
+```
+web.NewPortal(...)   the customer surface
+web.NewAdmin(...)    next, in exactly the same shape
+```
+
+Each builds its **own** gin engine from the shared `newEngine`. The sharing is
+of code, never of an instance: two surfaces on one engine would be one routing
+mistake away from serving the admin pages on the public port, which is the thing
+this whole section exists to prevent.
+
+They are two structs in one package rather than two packages. A package each was
+tried and `make arch-check` refused it, correctly: the conventions allow a
+parent adapter to import its subpackage and not the reverse, and a surface
+importing a shared parent is the reverse. Two structs give the same separation
+of routes and handlers; what they do not give is a compiler-enforced barrier
+between one surface's handlers and the other's route table, and the first test
+below is what covers that instead.
+
+The guard takes the rule as a parameter, so a surface declares who it is for
+where its routes are listed:
+
+```go
+sessions.guard(anybody,  pathSignIn)   the portal: signing in is all of it
+sessions.guard(operator, pathSignIn)   the admin surface
+```
+
+`operator` is written and tested already, before the surface that needs it
+exists. That is the point of the parameter: the boundary cannot be forgotten
+when the admin pages are written, because it was not written with them.
+
+### What was given up
+
+**A compile-time guarantee became a runtime one.** The guarded handlers used to
+take the person as a parameter, so a page mounted outside the guard did not
+compile. Gin's handlers all have one signature, so the person travels in the
+context and `signedInUser` panics when it is missing. The group is what replaces
+the guarantee: a route is guarded by where it is written rather than by what it
+accepts. That is weaker, and the panic is deliberate -- silently serving a page
+with no user is worse than a 500.
+
+**Twenty-six indirect dependencies**, including a mongo driver, quic-go and a
+JIT assembler, in a repository whose direct list is otherwise short. Nothing in
+this service uses any of them; they arrive through gin's json and validation
+paths.
+
+### What is configured away from gin's defaults
+
+| | |
+| --- | --- |
+| `gin.New` not `gin.Default` | Default adds gin's own request logger, which would write a second differently-shaped line beside the structured one |
+| `HandleMethodNotAllowed = true` | off by default. Without it a GET of a POST-only route answers 404, which says the route does not exist when it does |
+| `ReleaseMode` outside development | gin's debug output prints the request that panicked, and requests on this surface carry sign-in codes |
+| a recovery of our own | same reason: a panic answers 500 and one structured line, and the request body is not in it |
+| `HTMLRender` of our own | gin's loaders put every template in one set, and every page here defines `content` -- one set would let only the last one parsed win, silently |

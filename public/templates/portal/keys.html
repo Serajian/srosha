@@ -1,0 +1,33 @@
+{{define "content"}}
+<h2 class="head">Keys</h2>
+<p class="sub">Your code sends one of these with every message.</p>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+<form method="post" action="/sources/{{.SourceID}}/keys">
+  <label for="label">What is this key for?</label>
+  <input id="label" name="label" type="text" placeholder="production" required>
+  <p class="hint">A name only you see. It is how you tell them apart when you rotate.</p>
+  <button type="submit">Issue a key</button>
+</form>
+
+{{if .Keys}}
+<ul class="cards">
+  {{range .Keys}}
+  <li class="card">
+    <span class="nm">{{.Label}}</span>
+    <span class="id">{{.ID}}</span>
+    {{if .RevokedAt}}
+      <span class="pill off">Revoked</span>
+    {{else}}
+      <form method="post" action="/sources/{{$.SourceID}}/keys/{{.ID}}/revoke">
+        <button type="submit" class="quiet">Revoke</button>
+      </form>
+    {{end}}
+  </li>
+  {{end}}
+</ul>
+{{end}}
+
+<p class="fine"><a href="/sources/{{.SourceID}}">Back to the source</a></p>
+{{end}}

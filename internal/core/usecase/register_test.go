@@ -10,7 +10,6 @@ import (
 	"github.com/Serajian/srosha/internal/core/domain/webhook"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
-	"github.com/Serajian/srosha/pkg/errs"
 )
 
 type registerRig struct {
@@ -136,17 +135,20 @@ func TestRegisterChecksTheURLOnEveryCall(t *testing.T) {
 	}
 }
 
-func TestRegisterRefusesAnInactiveSource(t *testing.T) {
+// A source that cannot send can still be configured, and this is the case that
+// matters: a source is created waiting for approval, so if registering a
+// callback needed it to be active, a customer could never set one up before an
+// operator had already approved an empty source.
+//
+// This test used to assert the opposite. The behavior changed with approval,
+// and the reason is worth more than the assertion was.
+func TestACallbackCanBeSetOnASourceThatCannotSendYet(t *testing.T) {
 	r := newRegisterRig(t)
 	r.src.IsActive = false
 
 	_, _, err := r.registrar.Register(context.Background(), "acme", reg("https://acme.com/hooks"))
-
-	if !errors.Is(err, source.ErrSourceInactive) {
-		t.Fatalf("error = %v, want ErrSourceInactive", err)
-	}
-	if !errs.IsType(err, errs.ErrForbidden) {
-		t.Errorf("type = %v, want forbidden", errs.TypeOf(err))
+	if err != nil {
+		t.Fatalf("Register on a source waiting for approval: %v", err)
 	}
 }
 

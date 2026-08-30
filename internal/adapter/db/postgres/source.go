@@ -30,6 +30,7 @@ func (r *SourceRepository) Create(ctx context.Context, s *source.Source) error {
 
 	err = r.q(ctx).CreateSource(ctx, gen.CreateSourceParams{
 		ID:                 s.ID,
+		OwnerUserID:        s.OwnerUserID.String(),
 		Name:               s.Name,
 		MaxPriority:        s.MaxPriority.String(),
 		AllowCustomAddress: s.AllowCustomAddress,
@@ -43,6 +44,27 @@ func (r *SourceRepository) Create(ctx context.Context, s *source.Source) error {
 		return failed("create source", err)
 	}
 	return nil
+}
+
+// ListByOwner is a customer's own page, and the whole of the ownership rule:
+// one WHERE clause, so nothing above it has to remember to filter.
+func (r *SourceRepository) ListByOwner(
+	ctx context.Context, ownerID shared.ID,
+) ([]source.Source, error) {
+	rows, err := r.q(ctx).ListSourcesByOwner(ctx, ownerID.String())
+	if err != nil {
+		return nil, failed("list sources by owner", err)
+	}
+
+	out := make([]source.Source, 0, len(rows))
+	for _, row := range rows {
+		s, err := toSource(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *s)
+	}
+	return out, nil
 }
 
 // ReadByID returns a suspended source like any other. Refusing it here would
@@ -77,6 +99,32 @@ func (r *SourceRepository) Update(ctx context.Context, s *source.Source, now tim
 	})
 	if err != nil {
 		return failed("update source", err)
+	}
+	if rows == 0 {
+		return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
+	}
+	return nil
+}
+
+// UpdateSettings writes the three columns the customer owns. It is a separate
+// method from Update rather than a flag on it, because the difference is which
+// columns are written and that is exactly the thing a call site must not get
+// wrong: Update carries the ceiling, this cannot reach it.
+func (r *SourceRepository) UpdateSettings(ctx context.Context, s *source.Source) error {
+	addresses, err := fromAddresses(s.DefaultAddresses)
+	if err != nil {
+		return badRow("source", s.ID, "default_addresses", err)
+	}
+
+	rows, err := r.q(ctx).UpdateSourceSettings(ctx, gen.UpdateSourceSettingsParams{
+		ID:               s.ID,
+		Name:             s.Name,
+		Description:      s.Description,
+		DefaultAddresses: addresses,
+		UpdatedAt:        s.UpdatedAt,
+	})
+	if err != nil {
+		return failed("update source settings", err)
 	}
 	if rows == 0 {
 		return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
@@ -122,9 +170,12 @@ func toSource(row gen.Source) (*source.Source, error) {
 
 	return &source.Source{
 		ID:                 row.ID,
+		OwnerUserID:        shared.ID(row.OwnerUserID),
 		Name:               row.Name,
+		Description:        row.Description,
 		MaxPriority:        priority,
 		IsActive:           row.IsActive,
+		ApprovedAt:         row.ApprovedAt,
 		AllowCustomAddress: row.AllowCustomAddress,
 		DefaultAddresses:   addresses,
 		CreatedAt:          row.CreatedAt,

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Serajian/srosha/internal/core/domain/source"
 	"github.com/Serajian/srosha/internal/core/shared"
@@ -184,5 +185,31 @@ func TestResolveMessageHidesConfiguration(t *testing.T) {
 	}
 	if strings.Contains(ae.Message(), "billing-service") {
 		t.Errorf("message leaks the source id: %q", ae.Message())
+	}
+}
+
+func TestANewSourceIsNotApprovedYet(t *testing.T) {
+	s := &source.Source{ID: "01K0SRC0000000000000000000", IsActive: false}
+
+	if s.IsApproved() {
+		t.Error("a source nobody has approved says it is approved")
+	}
+	if err := s.EnsureActive(); err == nil {
+		t.Error("a source nobody has approved may send")
+	}
+}
+
+// approved_at is a record and not a gate: a source an operator switched off is
+// still a source that was once approved, and the two questions have different
+// answers.
+func TestApprovalIsRememberedSeparatelyFromBeingOn(t *testing.T) {
+	at := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	s := &source.Source{ID: "01K0SRC0000000000000000000", IsActive: false, ApprovedAt: &at}
+
+	if !s.IsApproved() {
+		t.Error("a source that was approved and later switched off forgot it was approved")
+	}
+	if err := s.EnsureActive(); err == nil {
+		t.Error("a switched-off source may send")
 	}
 }

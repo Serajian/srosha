@@ -1,7 +1,8 @@
 package registry
 
 import (
-	"github.com/Serajian/srosha/internal/config/settings"
+	"time"
+
 	"github.com/Serajian/srosha/internal/infra/smtp"
 )
 
@@ -15,6 +16,9 @@ import (
 // A dialer rather than a client, because mail is not http. One http client
 // serves every provider; a mail client is one account on one server, and every
 // source may bring its own.
-func SMTPDialer(c settings.HTTPClient) (*smtp.Dialer, error) {
-	return smtp.NewDialer(smtp.DialerConfig{Timeout: c.Timeout})
+// The timeout is passed rather than a settings group: it is the only thing a
+// dialer holds, and the two binaries that need one read it from different
+// places -- the dispatcher's outbound client settings, and the console's own.
+func SMTPDialer(timeout time.Duration) (*smtp.Dialer, error) {
+	return smtp.NewDialer(smtp.DialerConfig{Timeout: timeout})
 }

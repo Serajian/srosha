@@ -5,4 +5,10 @@ package bootstrap
 const (
 	binaryGateway    = "gateway"
 	binaryDispatcher = "dispatcher"
+	binaryConsole    = "console"
 )
+
+// consoleRateLimit is required by source.Service and never consulted: the
+// limiter is spent by Admit, which is the sending path, and the console does
+// not send. It is a number so the type is satisfied, not a policy.
+const consoleRateLimit = 1_000_000

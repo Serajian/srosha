@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Serajian/srosha/internal/core/shared"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -49,14 +51,33 @@ func connect(t *testing.T) *pgxpool.Pool {
 }
 
 // truncate leaves each test a clean database. CASCADE follows the foreign keys,
-// so naming sources alone empties everything that hangs off it.
+// so naming a parent empties everything that hangs off it.
+//
+// users is named separately because nothing links it to sources yet. Left out,
+// a user written by one test is still there for the next one, and a test that
+// asks "has anybody used this address" gets the previous test's answer.
 func truncate(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 
-	if _, err := pool.Exec(context.Background(), "TRUNCATE sources CASCADE"); err != nil {
+	if _, err := pool.Exec(context.Background(), "TRUNCATE sources, users CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
+
+	// Clean is not empty: a source has an owner and cannot exist without one,
+	// so the row every source test needs is part of the clean state rather
+	// than something twenty-five call sites each have to remember.
+	_, err := pool.Exec(context.Background(),
+		`INSERT INTO users (id, email, role, is_active, created_at, updated_at)
+		 VALUES ($1, 'owner@acme.test', 'customer', true, now(), now())`,
+		testOwner.String())
+	if err != nil {
+		t.Fatalf("seed the owner: %v", err)
+	}
 }
+
+// testOwner owns every source these tests create. Sources belong to somebody,
+// and which somebody is not what any of these tests are about.
+const testOwner = shared.ID("01K0ACCT0000000000000000AB")
 
 // ulid is a deterministic id for a test: readable in a failure message, and
 // still a valid ULID as far as the database's domain is concerned.

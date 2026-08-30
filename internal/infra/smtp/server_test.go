@@ -56,6 +56,7 @@ func certificate(t *testing.T) tls.Certificate {
 type server struct {
 	mu   sync.Mutex
 	sess []string // what was said to it, in order
+	data []string // the message itself, between DATA and the lone dot
 
 	// replies overrides the answer to one verb: "RCPT TO" -> "550 no such user".
 	replies map[string]string
@@ -130,6 +131,9 @@ func (s *server) handle(conn net.Conn) {
 		line = strings.TrimRight(line, "\r\n")
 
 		if inData {
+			if line != "." {
+				s.recordData(line)
+			}
 			if line == "." {
 				inData = false
 				if !s.answer(say, "DATA-END", "250 2.0.0 Ok: queued") {
@@ -217,4 +221,19 @@ func (s *server) said() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]string(nil), s.sess...)
+}
+
+func (s *server) recordData(line string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data = append(s.data, line)
+}
+
+// received is the message as it arrived: headers, boundaries and all. It is
+// what a test asserts on when the question is what actually went out rather
+// than what was asked for.
+func (s *server) received() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return strings.Join(s.data, "\n")
 }

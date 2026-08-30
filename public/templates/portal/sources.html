@@ -1,0 +1,41 @@
+{{define "content"}}
+<div class="head-row">
+  <h2 class="head">Your sources</h2>
+  <a class="button" href="/sources/new">Register a source</a>
+</div>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+{{if not .Sources}}
+  <div class="empty">
+    <h3>Nothing sends yet</h3>
+    <p>
+      A source is one thing that sends — an app, a service, a single product of
+      yours. Register one and it gets its own keys and its own senders.
+    </p>
+    <a class="button" href="/sources/new">Register your first source</a>
+  </div>
+{{else}}
+  <ul class="cards">
+    {{range .Sources}}
+    <li class="card">
+      <a class="nm" href="/sources/{{.ID}}">{{.Name}}</a>
+      <span class="id">{{.ID}}</span>
+      {{if .IsActive}}
+        <span class="pill ok">Sending</span>
+      {{else if .IsApproved}}
+        <span class="pill off">Switched off</span>
+        <p class="why">An operator switched this source off. Nothing it sends will go out.</p>
+      {{else}}
+        <span class="pill hold">Waiting for approval</span>
+        <p class="why">
+          Somebody here checks new sources before they can send. Set it up in the
+          meantime — a sender and a callback — and it will start working the
+          moment it is approved.
+        </p>
+      {{end}}
+    </li>
+    {{end}}
+  </ul>
+{{end}}
+{{end}}

@@ -1,0 +1,34 @@
+{{define "content"}}
+<h2 class="head">Register a source</h2>
+<p class="sub">
+  One thing that sends. It will not send anything until somebody here approves
+  it, which usually takes a little while.
+</p>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+<form method="post" action="/sources">
+  <label for="name">Name</label>
+  <input id="name" name="name" type="text" value="{{.Name}}"
+         placeholder="acme-billing" autofocus required>
+  <p class="hint">Lowercase letters, digits and dashes. Only you ever see it.</p>
+
+  <label for="address">Where it sends by default <span class="optional">— optional</span></label>
+  <div class="pair">
+    <select id="channel" name="channel" aria-label="Channel">
+      <option value="">Channel</option>
+      <option value="email">email</option>
+      <option value="telegram">telegram</option>
+      <option value="bale">bale</option>
+      <option value="whatsapp">whatsapp</option>
+      <option value="matrix">matrix</option>
+      <option value="fcm">fcm</option>
+      <option value="apns">apns</option>
+    </select>
+    <input id="address" name="address" type="text" placeholder="billing@acme.test">
+  </div>
+  <p class="hint">Where this source sends when a message doesn't name anyone.</p>
+
+  <button type="submit">Register</button>
+</form>
+{{end}}

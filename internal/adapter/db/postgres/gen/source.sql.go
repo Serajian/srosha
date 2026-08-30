@@ -31,16 +31,17 @@ func (q *Queries) ActivateSource(ctx context.Context, arg ActivateSourceParams) 
 
 const createSource = `-- name: CreateSource :exec
 INSERT INTO sources (
-    id, name, max_priority, allow_custom_address,
+    id, owner_user_id, name, max_priority, allow_custom_address,
     default_addresses, created_at, updated_at
 ) VALUES (
-    $1, $2, $3, $4,
-    $5, $6, $6
+    $1, $2, $3, $4, $5,
+    $6, $7, $7
 )
 `
 
 type CreateSourceParams struct {
 	ID                 string
+	OwnerUserID        string
 	Name               string
 	MaxPriority        string
 	AllowCustomAddress bool
@@ -48,8 +49,9 @@ type CreateSourceParams struct {
 	CreatedAt          time.Time
 }
 
-// is_active is not given: a source is created switched on, and the column
-// default says so. allow_custom_address is a parameter because it genuinely is a
+// is_active is not given: a source is created switched OFF, and the column
+// default says so. Anybody may register one; nothing it registers reaches
+// anybody until an operator approves it. allow_custom_address is a parameter because it genuinely is a
 // per-customer decision taken at registration -- with it off, a leaked key can
 // only reach that customer's own addresses.
 //
@@ -58,6 +60,7 @@ type CreateSourceParams struct {
 func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) error {
 	_, err := q.db.Exec(ctx, createSource,
 		arg.ID,
+		arg.OwnerUserID,
 		arg.Name,
 		arg.MaxPriority,
 		arg.AllowCustomAddress,
@@ -92,8 +95,46 @@ func (q *Queries) DeactivateSource(ctx context.Context, arg DeactivateSourcePara
 	return result.RowsAffected(), nil
 }
 
+const listSourcesByOwner = `-- name: ListSourcesByOwner :many
+SELECT id, name, description, max_priority, owner_user_id, is_active, approved_at, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE owner_user_id = $1 ORDER BY created_at DESC
+`
+
+// ListSourcesByOwner is a customer's own page. Newest first, because the one
+// they just registered is the one they are looking for.
+func (q *Queries) ListSourcesByOwner(ctx context.Context, ownerUserID string) ([]Source, error) {
+	rows, err := q.db.Query(ctx, listSourcesByOwner, ownerUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Source{}
+	for rows.Next() {
+		var i Source
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Description,
+			&i.MaxPriority,
+			&i.OwnerUserID,
+			&i.IsActive,
+			&i.ApprovedAt,
+			&i.AllowCustomAddress,
+			&i.DefaultAddresses,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readSource = `-- name: ReadSource :one
-SELECT id, name, max_priority, is_active, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE id = $1
+SELECT id, name, description, max_priority, owner_user_id, is_active, approved_at, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE id = $1
 `
 
 // ReadSource deliberately does not filter on is_active. A suspended source must
@@ -106,8 +147,11 @@ func (q *Queries) ReadSource(ctx context.Context, id string) (Source, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.Description,
 		&i.MaxPriority,
+		&i.OwnerUserID,
 		&i.IsActive,
+		&i.ApprovedAt,
 		&i.AllowCustomAddress,
 		&i.DefaultAddresses,
 		&i.CreatedAt,
@@ -151,6 +195,51 @@ func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (int
 		arg.Name,
 		arg.MaxPriority,
 		arg.AllowCustomAddress,
+		arg.DefaultAddresses,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateSourceSettings = `-- name: UpdateSourceSettings :execrows
+UPDATE sources
+SET name              = $1,
+    description       = $2,
+    default_addresses = $3,
+    updated_at        = $4::timestamptz
+WHERE id = $5
+`
+
+type UpdateSourceSettingsParams struct {
+	Name             string
+	Description      string
+	DefaultAddresses []byte
+	UpdatedAt        time.Time
+	ID               string
+}
+
+// UpdateSourceSettings writes the three columns a customer owns, and cannot
+// name the others.
+//
+// UpdateSource above it writes max_priority and allow_custom_address as well,
+// which is right for an operator and wrong here: a rename must not be able to
+// carry a ceiling. Keeping those columns out of this statement is a cheaper
+// guarantee than a use case that remembers to re-read and re-send them, because
+// the statement cannot be broken by an edit somewhere else.
+//
+// default_addresses is written whole, with the same caveat UpdateSource
+// carries: two edits to two different channels at once will have one overwrite
+// the other.
+//
+// execrows so the caller can tell "updated" from "no such source".
+func (q *Queries) UpdateSourceSettings(ctx context.Context, arg UpdateSourceSettingsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateSourceSettings,
+		arg.Name,
+		arg.Description,
 		arg.DefaultAddresses,
 		arg.UpdatedAt,
 		arg.ID,

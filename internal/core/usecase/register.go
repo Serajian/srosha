@@ -49,7 +49,7 @@ func NewRegistrar(
 func (r *Registrar) Register(
 	ctx context.Context, sourceID string, reg webhook.Registration,
 ) (w *webhook.Webhook, secret string, err error) {
-	if _, err := r.sources.Load(ctx, sourceID); err != nil {
+	if _, err := r.sources.Manage(ctx, sourceID); err != nil {
 		return nil, "", err
 	}
 
@@ -91,7 +91,7 @@ func (r *Registrar) RotateSecret(ctx context.Context, sourceID string) (string, 
 }
 
 func (r *Registrar) Get(ctx context.Context, sourceID string) (*webhook.Webhook, error) {
-	if _, err := r.sources.Load(ctx, sourceID); err != nil {
+	if _, err := r.sources.Manage(ctx, sourceID); err != nil {
 		return nil, err
 	}
 

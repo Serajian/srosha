@@ -1,0 +1,28 @@
+{{define "content"}}
+<h2 class="head">Callback</h2>
+<p class="sub">Where srosha tells this source what happened to a message.</p>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+{{if .Callback}}
+<dl class="facts">
+  <dt>Address</dt><dd class="mono">{{.Callback.CallbackURL}}</dd>
+  <dt>Status</dt><dd class="mono">{{if .Callback.IsActive}}active{{else}}switched off{{end}}</dd>
+</dl>
+<p class="hint">
+  Setting a new address issues a new signing secret and retires the old one.
+</p>
+{{end}}
+
+<form method="post" action="/sources/{{.SourceID}}/callback">
+  <label for="url">Address</label>
+  <input id="url" name="url" type="url" placeholder="https://acme.test/hooks/srosha" required>
+  <p class="hint">
+    It must be https. srosha signs every callback, and a signature over plain
+    http protects nothing.
+  </p>
+  <button type="submit">{{if .Callback}}Change it{{else}}Set the callback{{end}}</button>
+</form>
+
+<p class="fine"><a href="/sources/{{.SourceID}}">Back to the source</a></p>
+{{end}}
