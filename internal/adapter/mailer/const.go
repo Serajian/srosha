@@ -1,5 +1,12 @@
 package mailer
 
+// Where the letters live. The trailing slash is part of it: this is joined to a
+// filename, not to a path.
+const emailDir = "templates/email/"
+
+// letterSignInCode names both the file and the entry in the parsed set.
+const letterSignInCode = "signin_code"
+
 // What a person sees.
 //
 // The code is deliberately not in the subject: a subject shows in a
@@ -8,16 +15,22 @@ package mailer
 const (
 	subject = "Your srosha sign-in code"
 
-	// Plain text, because six digits need no markup and a client that will not
-	// render html still shows this.
+	// The plain half of the letter. It is not a leftover: it is what a client
+	// that will not render html shows, and it goes out alongside the html
+	// every time.
+	//
+	// It says the same thing as signin_code.html, in the same words, on
+	// purpose. Two halves that drift apart are two different messages, and the
+	// person reading the wrong one is the person who cannot sign in.
 	body = `Your sign-in code is:
 
     %s
 
-It can be used once, and expires shortly.
+Type it into the page that asked for it.
+Ten minutes. One use. Three guesses.
 
-If you did not ask for this, somebody typed your address. Nothing has
-happened to your account and there is nothing you need to do.
+If you didn't ask for this, somebody typed your address. Nothing has
+happened to your account and there's nothing you need to do.
 `
 
 	contentType = "text/plain"

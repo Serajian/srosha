@@ -221,3 +221,47 @@ func asReplyCoded(err error, target *interface{ ReplyCode() int }) bool {
 	}
 	return false
 }
+
+// A message with both halves goes out as ONE mail, not two, and the html part
+// comes last -- which is what makes a client prefer it and leaves the plain
+// half as the fallback rather than the message.
+func TestBothHalvesGoOutAsOneMultipartMessage(t *testing.T) {
+	c, srv := client(t, nil)
+
+	m := message()
+	m.HTML = "<p>it is done, in markup</p>"
+
+	if _, err := c.Send(context.Background(), m); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	got := srv.received()
+	if !strings.Contains(got, "multipart/alternative") {
+		t.Fatalf("the mail is not multipart/alternative:\n%s", got)
+	}
+
+	plain := strings.Index(got, "text/plain")
+	html := strings.Index(got, "text/html")
+	switch {
+	case plain < 0:
+		t.Error("the plain half never went out")
+	case html < 0:
+		t.Error("the html half never went out")
+	case html < plain:
+		t.Error("the html part comes first, so a client will prefer the plain one")
+	}
+}
+
+// Without an html half nothing changes: the mail stays a single plain part, so
+// adding markup to one letter did not quietly re-shape every other message.
+func TestAMessageWithNoHTMLHalfStaysPlain(t *testing.T) {
+	c, srv := client(t, nil)
+
+	if _, err := c.Send(context.Background(), message()); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	if got := srv.received(); strings.Contains(got, "multipart") {
+		t.Errorf("a plain message went out as multipart:\n%s", got)
+	}
+}
