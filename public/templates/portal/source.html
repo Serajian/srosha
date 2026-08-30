@@ -1,6 +1,7 @@
 {{define "content"}}
 <h2 class="head">{{.Source.Name}}</h2>
 <p class="sub"><span class="mono">{{.Source.ID}}</span></p>
+{{if .Source.Description}}<p class="sub">{{.Source.Description}}</p>{{end}}
 
 {{if not .Source.IsActive}}
   <p class="problem" role="status">
@@ -21,6 +22,7 @@
 <nav class="fine">
   <a href="/sources/{{.Source.ID}}/keys">Keys</a> ·
   <a href="/sources/{{.Source.ID}}/senders">Senders</a> ·
-  <a href="/sources/{{.Source.ID}}/callback">Callback</a>
+  <a href="/sources/{{.Source.ID}}/callback">Callback</a> ·
+  <a href="/sources/{{.Source.ID}}/edit">Edit</a>
 </nav>
 {{end}}

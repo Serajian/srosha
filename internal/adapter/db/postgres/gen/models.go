@@ -94,6 +94,7 @@ type Session struct {
 type Source struct {
 	ID                 string
 	Name               string
+	Description        string
 	MaxPriority        string
 	OwnerUserID        string
 	IsActive           bool

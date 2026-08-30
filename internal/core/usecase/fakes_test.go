@@ -63,6 +63,16 @@ func (r fakeSources) ListByOwner(
 	return out, nil
 }
 
+// UpdateSettings writes back over the stored source, so a test can read what an
+// edit actually left behind rather than what the call returned.
+func (r fakeSources) UpdateSettings(_ context.Context, s *source.Source) error {
+	if _, ok := r.byID[s.ID]; !ok {
+		return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
+	}
+	r.byID[s.ID] = s
+	return nil
+}
+
 func (r fakeSources) ReadByID(_ context.Context, id string) (*source.Source, error) {
 	s, ok := r.byID[id]
 	if !ok {

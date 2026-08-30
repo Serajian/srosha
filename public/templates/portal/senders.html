@@ -49,8 +49,14 @@
     <span class="id">{{.Channel}}</span>
     {{if .IsActive}}
       <span class="pill ok">In use</span>
+      <form method="post" action="/sources/{{$.SourceID}}/senders/{{.ID}}/off">
+        <button type="submit" class="quiet">Turn off</button>
+      </form>
     {{else}}
       <span class="pill off">Switched off</span>
+      <form method="post" action="/sources/{{$.SourceID}}/senders/{{.ID}}/on">
+        <button type="submit" class="quiet">Turn on</button>
+      </form>
     {{end}}
   </li>
   {{end}}

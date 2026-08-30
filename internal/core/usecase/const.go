@@ -26,6 +26,7 @@ const MaxSourcesPerUser = 20
 // Verbs, spelled once. They end up in audit_log and are read a year later.
 const (
 	ActSourceCreate = "source.create"
+	ActSourceUpdate = "source.update"
 	ActKeyIssue     = "key.issue"
 	ActKeyRevoke    = "key.revoke"
 )

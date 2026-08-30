@@ -31,23 +31,28 @@ const (
 	pathSources    = "/sources"
 	pathSourceNew  = "/sources/new"
 	pathSource     = "/sources/:id"
+	pathSourceEdit = "/sources/:id/edit"
+	pathSenderOff  = "/sources/:id/senders/:senderID/off"
+	pathSenderOn   = "/sources/:id/senders/:senderID/on"
 	pathSourceKeys = "/sources/:id/keys"
 	pathKeyRevoke  = "/sources/:id/keys/:keyID/revoke"
 )
 
 const (
-	pageSources   = "sources"
-	pageSourceNew = "source_new"
-	pageSource    = "source"
-	pageKeys      = "keys"
-	pageKeyIssued = "key_issued"
+	pageSources    = "sources"
+	pageSourceNew  = "source_new"
+	pageSource     = "source"
+	pageSourceEdit = "source_edit"
+	pageKeys       = "keys"
+	pageKeyIssued  = "key_issued"
 )
 
 const (
-	fieldName    = "name"
-	fieldChannel = "channel"
-	fieldAddress = "address"
-	fieldLabel   = "label"
+	fieldName        = "name"
+	fieldDescription = "description"
+	fieldChannel     = "channel"
+	fieldAddress     = "address"
+	fieldLabel       = "label"
 )
 
 // Senders and the callback.

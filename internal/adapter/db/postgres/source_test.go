@@ -255,3 +255,53 @@ func TestAnOwnerWithNoSources(t *testing.T) {
 		t.Errorf("got %d sources for an owner with none", len(got))
 	}
 }
+
+// The portal's statement cannot reach the ceiling, and this is the assertion
+// that holds even if every layer above it is rewritten: it hands
+// UpdateSettings a source whose ceiling has been raised in memory, and reads
+// the row back to find the stored one untouched.
+func TestUpdateSettingsCannotCarryTheCeiling(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	repo := postgres.NewSourceRepository(pool)
+	ctx := context.Background()
+	s := aSource(ulid("S7"))
+
+	if err := repo.Create(ctx, s); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := repo.Activate(ctx, s.ID, time.Now().UTC()); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+
+	// Everything a customer must not be able to move, moved in memory.
+	s.Name = "acme-alerts"
+	s.Description = "pages the on-call"
+	s.MaxPriority = shared.PriorityCritical
+	s.AllowCustomAddress = true
+	s.IsActive = false
+	s.UpdatedAt = time.Now().UTC()
+
+	if err := repo.UpdateSettings(ctx, s); err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+
+	got, err := repo.ReadByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("ReadByID: %v", err)
+	}
+
+	if got.Name != "acme-alerts" || got.Description != "pages the on-call" {
+		t.Errorf("the settings did not land: %q / %q", got.Name, got.Description)
+	}
+	if got.MaxPriority == shared.PriorityCritical {
+		t.Error("the statement carried max_priority")
+	}
+	if got.AllowCustomAddress {
+		t.Error("the statement carried allow_custom_address")
+	}
+	if !got.IsActive {
+		t.Error("the statement switched the source off")
+	}
+}

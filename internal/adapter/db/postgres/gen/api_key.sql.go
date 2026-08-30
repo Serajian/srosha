@@ -97,7 +97,7 @@ func (q *Queries) ListAPIKeysBySource(ctx context.Context, sourceID string) ([]L
 }
 
 const readSourceByKeyHash = `-- name: ReadSourceByKeyHash :one
-SELECT s.id, s.name, s.max_priority, s.owner_user_id, s.is_active, s.approved_at, s.allow_custom_address, s.default_addresses, s.created_at, s.updated_at, k.id AS api_key_id
+SELECT s.id, s.name, s.description, s.max_priority, s.owner_user_id, s.is_active, s.approved_at, s.allow_custom_address, s.default_addresses, s.created_at, s.updated_at, k.id AS api_key_id
 FROM api_keys k
 JOIN sources s ON s.id = k.source_id
 WHERE k.key_hash = $1
@@ -139,6 +139,7 @@ func (q *Queries) ReadSourceByKeyHash(ctx context.Context, arg ReadSourceByKeyHa
 	err := row.Scan(
 		&i.Source.ID,
 		&i.Source.Name,
+		&i.Source.Description,
 		&i.Source.MaxPriority,
 		&i.Source.OwnerUserID,
 		&i.Source.IsActive,

@@ -23,6 +23,20 @@ type SourceRegistration struct {
 	DefaultAddresses map[shared.Channel]string
 }
 
+// SourceSettings is what a customer may change afterwards, and it is the same
+// three things they set at registration plus the description.
+//
+// What is absent is the guarantee, exactly as it is for SourceRegistration:
+// max_priority, allow_custom_address, is_active, approved_at and owner_user_id
+// are not fields here, so a handler that tried to carry one would not compile.
+// The statement underneath cannot name them either -- two locks, because this
+// is the one the customer's own form posts into.
+type SourceSettings struct {
+	Name             string
+	Description      string
+	DefaultAddresses map[shared.Channel]string
+}
+
 // Sources is what a customer does with the things they own.
 type Sources struct {
 	repo  source.Repository
@@ -93,6 +107,37 @@ func (s *Sources) One(
 			WithErr(source.ErrNotFound).
 			WithStr(fmt.Sprintf("user %q asked for source %q, owned by %q",
 				actor.ID, id, src.OwnerUserID))
+	}
+	return src, nil
+}
+
+// Update changes the three things a customer owns on a source they own.
+//
+// Ownership is checked by reading through One, which answers ErrNotFound for
+// somebody else's source rather than refusing it -- a refusal would confirm the
+// id exists.
+//
+// Keys, senders and callbacks are not touched. They are their own resources
+// with their own pages and their own audit verbs, and folding them in here
+// would mean a rename could revoke a key.
+func (s *Sources) Update(
+	ctx context.Context, actor *user.User, id string, set SourceSettings,
+) (*source.Source, error) {
+	src, err := s.One(ctx, actor, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := src.Reconfigure(set.Name, set.Description, set.DefaultAddresses, s.now()); err != nil {
+		return nil, err
+	}
+
+	act := Act{Verb: ActSourceUpdate, TargetType: "source", TargetID: src.ID}
+	err = s.gate.Do(ctx, actor, act, func(ctx context.Context) error {
+		return s.repo.UpdateSettings(ctx, src)
+	})
+	if err != nil {
+		return nil, err
 	}
 	return src, nil
 }

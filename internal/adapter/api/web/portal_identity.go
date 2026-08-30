@@ -20,6 +20,16 @@ type SenderPages interface {
 		ctx context.Context, sourceID string, reg usecase.CredentialRegistration,
 	) (*credential.Credential, error)
 	List(ctx context.Context, sourceID string) ([]credential.Credential, error)
+
+	// Switching one off is not deleting it, and there is no delete: after an
+	// incident the first question is when an identity was withdrawn, and a row
+	// that is gone answers nothing.
+	Deactivate(
+		ctx context.Context, sourceID string, id shared.ID,
+	) (*credential.Credential, error)
+	Activate(
+		ctx context.Context, sourceID string, id shared.ID,
+	) (*credential.Credential, error)
 }
 
 // CallbackPages is where a source is told what happened. usecase.Registrar
@@ -137,6 +147,30 @@ func (h *identityHandler) listSendersWith(c *gin.Context, id, problem string) {
 	c.HTML(http.StatusOK, pageSenders, sendersPage{
 		chrome: inside, SourceID: id, Senders: senders, Problem: problem,
 	})
+}
+
+// switchSender turns one identity off or back on. Which of the two is decided
+// by the route rather than by a posted value, so a form cannot ask for the one
+// the page did not offer.
+func (h *identityHandler) switchSender(on bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, ok := h.mine(c)
+		if !ok {
+			return
+		}
+
+		move := h.senders.Deactivate
+		if on {
+			move = h.senders.Activate
+		}
+
+		if _, err := move(c.Request.Context(), id, shared.ID(c.Param("senderID"))); err != nil {
+			h.log.WarnContext(c.Request.Context(), "sender not switched", "error", err)
+			h.listSendersWith(c, id, message(err))
+			return
+		}
+		c.Redirect(http.StatusSeeOther, pathSources+"/"+id+"/senders")
+	}
 }
 
 func (h *identityHandler) showCallback(c *gin.Context) {

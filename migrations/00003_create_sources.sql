@@ -8,6 +8,15 @@ CREATE TABLE sources (
     id                   ulid        PRIMARY KEY,
     name                 TEXT        NOT NULL,
 
+    -- What this source is for, in the customer's words. Distinct from name,
+    -- which is a label: two sources both called "alerts" are told apart by
+    -- this.
+    --
+    -- NOT NULL DEFAULT '' rather than nullable. An empty description and an
+    -- absent one are the same thing to everybody who reads one, and a nullable
+    -- column would make every reader handle a difference carrying no meaning.
+    description          TEXT        NOT NULL DEFAULT '',
+
     -- The ceiling on what this source may ask for. A request above it is
     -- downgraded rather than refused, and both values are kept on the message.
     max_priority         TEXT        NOT NULL

@@ -176,6 +176,7 @@ register a source  a name, and the addresses it sends to by default
 issue keys         their own, as many as they need, revoked by them
 register identities their own bot, mail account, signing key
 register a callback and receive the signing secret, once
+change a source    its name, what it is for, where it sends by default
 ```
 
 Everything after signing up already exists as a use case; the portal is a second
@@ -190,11 +191,45 @@ customer raise their own ceiling.
 | the customer's | ours |
 | --- | --- |
 | `name` | `max_priority` — their ceiling |
-| `default_addresses` | `allow_custom_address` — how far a leaked key reaches |
-| | `is_active` — approval, and switching it off later |
+| `description` | `allow_custom_address` — how far a leaked key reaches |
+| `default_addresses` | `is_active` — approval, and switching it off later |
+| | `approved_at` — when an operator first let it out |
+| | `owner_user_id` — who it belongs to |
 
 The right-hand column takes defaults at registration and is changed only from
 the admin panel.
+
+### Changing a source afterwards
+
+The left column is editable for as long as the source exists. A default address
+outliving its usefulness is ordinary -- a team moves channel, a mailbox is
+retired -- and registering a second source to change one address would leave the
+first one behind with its keys still valid.
+
+The right column is not editable, and not by being hidden from a form. The
+portal's update writes **only** the three columns above:
+
+```sql
+UPDATE sources SET name = ..., description = ..., default_addresses = ...
+```
+
+`UpdateSource`, which the admin panel will use, writes `max_priority` and
+`allow_custom_address` as well. If the portal shared it, every rename would
+carry the customer's ceiling in the same statement -- correct only for as long
+as the use case above it kept re-reading and re-sending the current values, and
+wrong the first time somebody edited that use case. A second statement that
+cannot name those columns is the cheaper guarantee.
+
+`owner_user_id` is absent from both. Ownership is not a setting: transferring a
+source is its own operation with its own rules, and it is not in this phase.
+
+Three resources hang off a source and none of them are part of this. Keys,
+senders and callbacks each have their own lifecycle, their own pages and their
+own audit verbs; folding them into one save would mean a rename could revoke a
+key.
+
+A change is audited like every other administrative act -- `source.update`,
+through the same gate.
 
 ---
 
@@ -400,7 +435,6 @@ one to write first.
 
 ## Not in phase 1
 
-- **Approval.** Removed, and replaced by the shared-sender rule.
 - **Payment, plans, quotas.** Cancelled, not deferred. srosha behaves the same
   way with everybody, and no rule in this document may lean on a future in
   which it does not.

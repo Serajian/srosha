@@ -39,6 +39,8 @@ func (r oneSource) ListByOwner(context.Context, shared.ID) ([]source.Source, err
 	return nil, nil
 }
 
+func (r oneSource) UpdateSettings(context.Context, *source.Source) error { return nil }
+
 type allowAll struct{}
 
 func (allowAll) Allow(context.Context, string) (bool, error) { return true, nil }
@@ -76,5 +78,76 @@ func TestManagingASourceThatIsNotThere(t *testing.T) {
 
 	if _, err := svc.Manage(context.Background(), "01K0SRC0000000000000000000"); err == nil {
 		t.Fatal("Manage: want an error for a source that does not exist")
+	}
+}
+
+// The three fields a customer owns change. The ceiling does not -- and this
+// asserts on the entity rather than trusting the statement, because a use case
+// that reads and re-sends the whole row is exactly how a ceiling gets carried
+// somewhere it should not.
+func TestChangingSettingsLeavesTheCeilingAlone(t *testing.T) {
+	src := waiting()
+	src.MaxPriority = shared.PriorityCritical
+	src.AllowCustomAddress = true
+
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	if err := src.Reconfigure("acme-alerts", "pages the on-call", nil, at); err != nil {
+		t.Fatalf("Reconfigure: %v", err)
+	}
+	got := src
+
+	if got.Name != "acme-alerts" || got.Description != "pages the on-call" {
+		t.Errorf("name = %q, description = %q", got.Name, got.Description)
+	}
+	if got.MaxPriority != shared.PriorityCritical {
+		t.Errorf("the ceiling moved to %v", got.MaxPriority)
+	}
+	if !got.AllowCustomAddress {
+		t.Error("allow_custom_address was cleared by an edit")
+	}
+	if got.IsActive {
+		t.Error("an edit switched the source on")
+	}
+	if !got.UpdatedAt.Equal(at) {
+		t.Errorf("updated_at = %v", got.UpdatedAt)
+	}
+}
+
+// A default address that no longer exists is the ordinary reason to edit a
+// source, so the map has to be replaceable rather than append-only.
+func TestADefaultAddressCanBeReplaced(t *testing.T) {
+	src := waiting()
+	src.DefaultAddresses = map[shared.Channel]string{shared.ChannelEmail: "old@acme.test"}
+
+	err := src.Reconfigure(
+		src.Name, "",
+		map[shared.Channel]string{shared.ChannelEmail: "new@acme.test"},
+		time.Now().UTC(),
+	)
+	if err != nil {
+		t.Fatalf("Reconfigure: %v", err)
+	}
+	got := src
+	if got.DefaultAddresses[shared.ChannelEmail] != "new@acme.test" {
+		t.Errorf("address = %q", got.DefaultAddresses[shared.ChannelEmail])
+	}
+}
+
+// An edit is all of it or none of it. A bad address must not leave the name
+// already changed, because the customer would fix the address and never know
+// the rename had gone through on its own.
+func TestABadAddressLeavesTheWholeEditUndone(t *testing.T) {
+	src := waiting()
+	err := src.Reconfigure(
+		"renamed", "",
+		map[shared.Channel]string{shared.ChannelEmail: "not-an-address"},
+		time.Now().UTC(),
+	)
+	if err == nil {
+		t.Fatal("a bad address was accepted")
+	}
+	if src.Name != "acme-billing" {
+		t.Errorf("the name changed anyway: %q", src.Name)
 	}
 }

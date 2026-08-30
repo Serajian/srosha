@@ -13,10 +13,27 @@ import (
 )
 
 type sourceRig struct {
-	sources *usecase.Sources
-	log     *auditLog
-	actor   *user.User
-	at      time.Time
+	sources  *usecase.Sources
+	log      *auditLog
+	actor    *user.User
+	stranger *user.User
+	at       time.Time
+}
+
+// registered is one source the actor owns. A helper rather than something the
+// rig seeds, so the tests that count what a person has still count only what
+// they registered themselves.
+func (r *sourceRig) registered(t *testing.T) string {
+	t.Helper()
+
+	src, err := r.sources.Register(
+		context.Background(), r.actor, usecase.SourceRegistration{Name: "acme-billing"},
+	)
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	r.log.entries = nil // the registration's own row is not what the caller counts
+	return src.ID
 }
 
 func newSourceRig(t *testing.T) *sourceRig {
@@ -30,16 +47,23 @@ func newSourceRig(t *testing.T) *sourceRig {
 		t.Fatalf("user.New: %v", err)
 	}
 
+	stranger, err := user.New(
+		shared.ID("01K0ACCT0000000000000000AC"), "them@acme.test", user.RoleCustomer, at,
+	)
+	if err != nil {
+		t.Fatalf("user.New: %v", err)
+	}
+
 	log := &auditLog{}
 	repo := fakeSources{byID: map[string]*source.Source{}}
-
 	return &sourceRig{
 		sources: usecase.NewSources(
 			repo, usecase.NewGate(log, seqIDs(), fixedNow(at)), seqIDs(), fixedNow(at),
 		),
-		log:   log,
-		actor: actor,
-		at:    at,
+		log:      log,
+		actor:    actor,
+		stranger: stranger,
+		at:       at,
 	}
 }
 
@@ -161,5 +185,82 @@ func TestASourceNeedsAName(t *testing.T) {
 	}
 	if len(rig.log.entries) != 0 {
 		t.Errorf("wrote %d audit rows for something that never happened", len(rig.log.entries))
+	}
+}
+
+// Somebody else's source answers ErrNotFound rather than a refusal, for the
+// same reason One does: a refusal confirms the id exists.
+func TestOnlyTheOwnerChangesASource(t *testing.T) {
+	rig := newSourceRig(t)
+	id := rig.registered(t)
+
+	_, err := rig.sources.Update(
+		context.Background(), rig.stranger, id,
+		usecase.SourceSettings{Name: "theirs now"},
+	)
+	if err == nil {
+		t.Fatal("a stranger changed somebody else's source")
+	}
+	if !errors.Is(err, source.ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound so the id is not confirmed", err)
+	}
+	if len(rig.log.entries) != 0 {
+		t.Error("a refused change still wrote an audit row")
+	}
+}
+
+func TestAChangeLeavesAnAuditRow(t *testing.T) {
+	rig := newSourceRig(t)
+	id := rig.registered(t)
+	before := len(rig.log.entries)
+
+	_, err := rig.sources.Update(
+		context.Background(), rig.actor, id,
+		usecase.SourceSettings{Name: "acme-alerts", Description: "pages the on-call"},
+	)
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	if len(rig.log.entries) != before+1 {
+		t.Fatalf("the change wrote %d rows", len(rig.log.entries)-before)
+	}
+	if got := rig.log.entries[before].Verb; got != usecase.ActSourceUpdate {
+		t.Errorf("verb = %q", got)
+	}
+}
+
+// The customer's form cannot carry the ceiling, and this is the assertion that
+// stays true if somebody later widens SourceSettings without thinking.
+func TestAChangeCannotTouchWhatIsOurs(t *testing.T) {
+	rig := newSourceRig(t)
+	id := rig.registered(t)
+	ctx := context.Background()
+
+	before, err := rig.sources.One(ctx, rig.actor, id)
+	if err != nil {
+		t.Fatalf("One: %v", err)
+	}
+	before.MaxPriority = shared.PriorityCritical
+	before.AllowCustomAddress = true
+
+	got, err := rig.sources.Update(
+		ctx, rig.actor, id, usecase.SourceSettings{Name: "renamed"},
+	)
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	if got.MaxPriority != shared.PriorityCritical {
+		t.Errorf("the ceiling moved to %v", got.MaxPriority)
+	}
+	if !got.AllowCustomAddress {
+		t.Error("allow_custom_address was cleared")
+	}
+	if got.IsActive {
+		t.Error("the source switched itself on")
+	}
+	if got.OwnerUserID != rig.actor.ID {
+		t.Errorf("the owner changed to %q", got.OwnerUserID)
 	}
 }

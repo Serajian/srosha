@@ -14,8 +14,13 @@ import (
 // Source is the authenticated caller. Configuration loaded from a row, so
 // nothing here is derived and nothing needs an accessor.
 type Source struct {
-	ID          string
-	Name        string
+	ID   string
+	Name string
+
+	// Description is what this source is for, in the customer's words. A name
+	// is a label; two sources both called "alerts" are told apart by this.
+	Description string
+
 	MaxPriority shared.Priority
 	IsActive    bool
 
@@ -79,6 +84,51 @@ func New(
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}, nil
+}
+
+// Reconfigure changes the three things a customer owns, or changes nothing.
+//
+// Everything is validated before anything is written, so a bad address does not
+// leave a rename already applied -- the customer would fix the address and never
+// learn the rename had gone through on its own.
+//
+// What is not here is the point of it: the ceiling, the switch, the owner and
+// the id are not parameters, so no caller can pass them and no later edit can
+// add them without saying so in this signature.
+func (s *Source) Reconfigure(
+	name, description string, addresses map[shared.Channel]string, now time.Time,
+) error {
+	trimmedName := strings.TrimSpace(name)
+	if trimmedName == "" {
+		return errs.InvalidInputErr("a source needs a name").WithErr(ErrEmptyName)
+	}
+	if len(trimmedName) > maxNameLen {
+		return errs.InvalidInputErr("that name is too long").
+			WithErr(ErrEmptyName).
+			WithStr(fmt.Sprintf("%d chars, max %d", len(trimmedName), maxNameLen))
+	}
+
+	trimmedDescription := strings.TrimSpace(description)
+	if len(trimmedDescription) > maxDescriptionLen {
+		return errs.InvalidInputErr("that description is too long").
+			WithErr(ErrEmptyName).
+			WithStr(fmt.Sprintf("%d chars, max %d", len(trimmedDescription), maxDescriptionLen))
+	}
+
+	if addresses == nil {
+		addresses = map[shared.Channel]string{}
+	}
+	for channel, address := range addresses {
+		if err := channel.ValidateAddress(address); err != nil {
+			return err
+		}
+	}
+
+	s.Name = trimmedName
+	s.Description = trimmedDescription
+	s.DefaultAddresses = addresses
+	s.UpdatedAt = now
+	return nil
 }
 
 func (s *Source) EnsureActive() error {

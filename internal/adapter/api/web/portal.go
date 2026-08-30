@@ -90,7 +90,7 @@ func NewPortal(d PortalDeps) (http.Handler, error) {
 
 	pages, err := newPageRender(surface,
 		pageSignIn, pageCode, pageAccount,
-		pageSources, pageSourceNew, pageSource,
+		pageSources, pageSourceNew, pageSource, pageSourceEdit,
 		pageKeys, pageKeyIssued,
 		pageSenders, pageCallback, pageCallbackSecret,
 	)
@@ -132,11 +132,15 @@ func NewPortal(d PortalDeps) (http.Handler, error) {
 	authed.GET(pathSourceNew, sources.showNew)
 	authed.POST(pathSources, sources.create)
 	authed.GET(pathSource, sources.show)
+	authed.GET(pathSourceEdit, sources.showEdit)
+	authed.POST(pathSourceEdit, sources.update)
 	authed.GET(pathSourceKeys, keys.list)
 	authed.POST(pathSourceKeys, keys.issue)
 	authed.POST(pathKeyRevoke, keys.revoke)
 	authed.GET(pathSourceSenders, identity.showSenders)
 	authed.POST(pathSourceSenders, identity.addSender)
+	authed.POST(pathSenderOff, identity.switchSender(false))
+	authed.POST(pathSenderOn, identity.switchSender(true))
 	authed.GET(pathSourceCallback, identity.showCallback)
 	authed.POST(pathSourceCallback, identity.setCallback)
 

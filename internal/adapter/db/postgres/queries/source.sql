@@ -66,3 +66,26 @@ WHERE id = @id AND is_active;
 UPDATE sources
 SET is_active = TRUE, updated_at = @updated_at::timestamptz
 WHERE id = @id AND NOT is_active;
+
+-- UpdateSourceSettings writes the three columns a customer owns, and cannot
+-- name the others.
+--
+-- UpdateSource above it writes max_priority and allow_custom_address as well,
+-- which is right for an operator and wrong here: a rename must not be able to
+-- carry a ceiling. Keeping those columns out of this statement is a cheaper
+-- guarantee than a use case that remembers to re-read and re-send them, because
+-- the statement cannot be broken by an edit somewhere else.
+--
+-- default_addresses is written whole, with the same caveat UpdateSource
+-- carries: two edits to two different channels at once will have one overwrite
+-- the other.
+--
+-- execrows so the caller can tell "updated" from "no such source".
+--
+-- name: UpdateSourceSettings :execrows
+UPDATE sources
+SET name              = @name,
+    description       = @description,
+    default_addresses = @default_addresses,
+    updated_at        = @updated_at::timestamptz
+WHERE id = @id;

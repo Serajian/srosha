@@ -22,6 +22,9 @@ type SourcePages interface {
 	) (*source.Source, error)
 	Mine(ctx context.Context, actor *user.User) ([]source.Source, error)
 	One(ctx context.Context, actor *user.User, id string) (*source.Source, error)
+	Update(
+		ctx context.Context, actor *user.User, id string, set usecase.SourceSettings,
+	) (*source.Source, error)
 }
 
 type sourceHandler struct {
@@ -43,6 +46,15 @@ type (
 	sourcePage struct {
 		chrome
 		Source *source.Source
+	}
+	// sourceEditPage carries the channel list rather than the template naming
+	// the seven itself. A channel added to shared and not to a hardcoded list
+	// is a channel a customer cannot configure, with nothing to say so.
+	sourceEditPage struct {
+		chrome
+		Source   *source.Source
+		Channels []shared.Channel
+		Problem  string
 	}
 )
 
@@ -86,6 +98,52 @@ func (h *sourceHandler) show(c *gin.Context) {
 		return
 	}
 	c.HTML(http.StatusOK, pageSource, sourcePage{chrome: inside, Source: src})
+}
+
+func (h *sourceHandler) showEdit(c *gin.Context) {
+	src, err := h.sources.One(c.Request.Context(), signedInUser(c), c.Param("id"))
+	if err != nil {
+		notFound(c)
+		return
+	}
+	c.HTML(http.StatusOK, pageSourceEdit, sourceEditPage{
+		chrome: inside, Source: src, Channels: shared.AllChannels(),
+	})
+}
+
+// update writes the three things the customer owns.
+//
+// The form has no field for anything else, and usecase.SourceSettings has no
+// member for it either -- so a posted max_priority is read by nobody rather
+// than filtered by somebody.
+func (h *sourceHandler) update(c *gin.Context) {
+	id := c.Param("id")
+
+	set := usecase.SourceSettings{
+		Name:             formValue(h.log, c, fieldName),
+		Description:      formValue(h.log, c, fieldDescription),
+		DefaultAddresses: defaultAddresses(c),
+	}
+
+	if _, err := h.sources.Update(c.Request.Context(), signedInUser(c), id, set); err != nil {
+		h.log.WarnContext(c.Request.Context(), "source not changed", "error", err)
+		h.editWith(c, id, message(err))
+		return
+	}
+	c.Redirect(http.StatusSeeOther, pathSources+"/"+id)
+}
+
+// editWith renders the form again with something gone wrong on it, over the
+// source as it still is rather than as it was asked to be.
+func (h *sourceHandler) editWith(c *gin.Context, id, problem string) {
+	src, err := h.sources.One(c.Request.Context(), signedInUser(c), id)
+	if err != nil {
+		notFound(c)
+		return
+	}
+	c.HTML(http.StatusOK, pageSourceEdit, sourceEditPage{
+		chrome: inside, Source: src, Channels: shared.AllChannels(), Problem: problem,
+	})
 }
 
 // defaultAddresses reads the repeated channel/address pairs the form posts.

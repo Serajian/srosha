@@ -106,6 +106,32 @@ func (r *SourceRepository) Update(ctx context.Context, s *source.Source, now tim
 	return nil
 }
 
+// UpdateSettings writes the three columns the customer owns. It is a separate
+// method from Update rather than a flag on it, because the difference is which
+// columns are written and that is exactly the thing a call site must not get
+// wrong: Update carries the ceiling, this cannot reach it.
+func (r *SourceRepository) UpdateSettings(ctx context.Context, s *source.Source) error {
+	addresses, err := fromAddresses(s.DefaultAddresses)
+	if err != nil {
+		return badRow("source", s.ID, "default_addresses", err)
+	}
+
+	rows, err := r.q(ctx).UpdateSourceSettings(ctx, gen.UpdateSourceSettingsParams{
+		ID:               s.ID,
+		Name:             s.Name,
+		Description:      s.Description,
+		DefaultAddresses: addresses,
+		UpdatedAt:        s.UpdatedAt,
+	})
+	if err != nil {
+		return failed("update source settings", err)
+	}
+	if rows == 0 {
+		return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
+	}
+	return nil
+}
+
 // Deactivate and Activate report a source that was already in the asked-for
 // state as not found, because nothing was changed and saying otherwise would
 // claim an act that did not happen.
@@ -146,6 +172,7 @@ func toSource(row gen.Source) (*source.Source, error) {
 		ID:                 row.ID,
 		OwnerUserID:        shared.ID(row.OwnerUserID),
 		Name:               row.Name,
+		Description:        row.Description,
 		MaxPriority:        priority,
 		IsActive:           row.IsActive,
 		ApprovedAt:         row.ApprovedAt,

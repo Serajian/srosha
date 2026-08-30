@@ -169,6 +169,24 @@ func (m *memSources) Create(_ context.Context, s *source.Source) error {
 	return nil
 }
 
+// UpdateSettings writes only the three columns the real statement writes. The
+// fake mirroring that is the point: a test that saved the whole struct would
+// pass even if the ceiling had been carried in.
+func (m *memSources) UpdateSettings(_ context.Context, s *source.Source) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, row := range m.rows {
+		if row.ID == s.ID {
+			row.Name = s.Name
+			row.Description = s.Description
+			row.DefaultAddresses = s.DefaultAddresses
+			row.UpdatedAt = s.UpdatedAt
+			return nil
+		}
+	}
+	return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
+}
+
 func (m *memSources) ReadByID(_ context.Context, id string) (*source.Source, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -268,6 +286,7 @@ func (m *mintKeys) Mint() (string, string, error) {
 // faking them here would only test the fake.
 type memSenders struct {
 	mu   sync.Mutex
+	n    int
 	rows map[string][]credential.Credential
 }
 
@@ -276,9 +295,53 @@ func (m *memSenders) Register(
 ) (*credential.Credential, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	c := credential.Credential{Name: reg.Name, Channel: reg.Channel}
-	m.rows[sourceID] = append(m.rows[sourceID], c)
-	return &c, nil
+
+	// An id and a live flag, because the page now has buttons that need both.
+	// Restore rather than a struct literal: whether an identity is live is the
+	// entity's own state, not a field, and this fake must not be able to set it
+	// in a way the real one cannot.
+	m.n++
+	c := credential.Restore(credential.Snapshot{
+		ID:       shared.ID(fmt.Sprintf("01K0CRED00000000000000%04d", m.n)),
+		SourceID: sourceID,
+		Name:     reg.Name,
+		Channel:  reg.Channel,
+		IsActive: true,
+	})
+	m.rows[sourceID] = append(m.rows[sourceID], *c)
+	return c, nil
+}
+
+func (m *memSenders) Deactivate(
+	ctx context.Context, sourceID string, id shared.ID,
+) (*credential.Credential, error) {
+	return m.setActive(ctx, sourceID, id, false)
+}
+
+func (m *memSenders) Activate(
+	ctx context.Context, sourceID string, id shared.ID,
+) (*credential.Credential, error) {
+	return m.setActive(ctx, sourceID, id, true)
+}
+
+func (m *memSenders) setActive(
+	_ context.Context, sourceID string, id shared.ID, on bool,
+) (*credential.Credential, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := time.Now().UTC()
+	for i := range m.rows[sourceID] {
+		if m.rows[sourceID][i].ID != id {
+			continue
+		}
+		if on {
+			m.rows[sourceID][i].Activate(now)
+		} else {
+			m.rows[sourceID][i].Deactivate(now)
+		}
+		return &m.rows[sourceID][i], nil
+	}
+	return nil, errs.NotFoundErr("no such sender")
 }
 
 func (m *memSenders) List(
@@ -325,6 +388,7 @@ type testPortal struct {
 	mail    *memMailer
 	users   *memUsers
 	sources *memSources
+	senders *memSenders
 	keys    *memKeys
 	audit   *memAudit
 }
@@ -333,6 +397,7 @@ func newTestPortal(t *testing.T) *testPortal {
 	t.Helper()
 
 	users := &memUsers{rows: map[string]*user.User{}}
+	senders := &memSenders{rows: map[string][]credential.Credential{}}
 	mail := &memMailer{}
 
 	var n int
@@ -359,7 +424,7 @@ func newTestPortal(t *testing.T) *testPortal {
 		SignIn:       signIn,
 		Sources:      useSources,
 		Keys:         usecase.NewKeys(keys, useSources, &mintKeys{}, gate, ids, now),
-		Senders:      &memSenders{rows: map[string][]credential.Credential{}},
+		Senders:      senders,
 		Callbacks:    &memCallbacks{rows: map[string]*webhook.Webhook{}},
 		SecureCookie: false,
 		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -371,7 +436,8 @@ func newTestPortal(t *testing.T) *testPortal {
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	return &testPortal{
-		Server: srv, mail: mail, users: users, sources: sources, keys: keys, audit: audit,
+		Server: srv, mail: mail, users: users, sources: sources,
+		senders: senders, keys: keys, audit: audit,
 	}
 }
 
@@ -939,6 +1005,177 @@ func TestTheSignInPagesAreWholeAndHaveNoNavigation(t *testing.T) {
 		}
 		if strings.Contains(got.body, `class="nav"`) {
 			t.Errorf("%s shows navigation to somebody who is not signed in", path)
+		}
+	}
+}
+
+// The one that matters. The form has no field for the ceiling, so this posts
+// one anyway -- which is what an attacker does, and what a well-meaning later
+// change to the form would do by accident.
+func TestPostingWhatIsOursChangesNothing(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "me@acme.test")
+
+	post(t, p, "/sources", url.Values{"name": {"acme-billing"}}, cookie)
+	id := onlySourceID(t, p)
+
+	before := p.sources.rows[0]
+	before.MaxPriority = shared.PriorityCritical
+	before.AllowCustomAddress = true
+
+	done := post(t, p, "/sources/"+id+"/edit", url.Values{
+		"name":                 {"renamed"},
+		"description":          {"pages the on-call"},
+		"max_priority":         {"CRITICAL"},
+		"allow_custom_address": {"true"},
+		"is_active":            {"true"},
+		"approved_at":          {"2026-01-01T00:00:00Z"},
+		"owner_user_id":        {"01K0ACCT0000000000000000AC"},
+	}, cookie)
+	if done.status != http.StatusSeeOther {
+		t.Fatalf("POST edit = %d\n%s", done.status, done.body)
+	}
+
+	got := p.sources.rows[0]
+	if got.Name != "renamed" || got.Description != "pages the on-call" {
+		t.Errorf("the edit did not take: %q / %q", got.Name, got.Description)
+	}
+	if got.IsActive {
+		t.Error("a posted is_active switched the source on")
+	}
+	if got.ApprovedAt != nil {
+		t.Error("a posted approved_at was written")
+	}
+	if got.MaxPriority != shared.PriorityCritical {
+		t.Errorf("max_priority was overwritten with %v", got.MaxPriority)
+	}
+	if !got.AllowCustomAddress {
+		t.Error("allow_custom_address was overwritten")
+	}
+}
+
+// A default address outliving its usefulness is the ordinary reason to edit a
+// source, so replacing one has to work rather than only adding another.
+func TestADefaultAddressCanBeChanged(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "me@acme.test")
+
+	post(t, p, "/sources", url.Values{
+		"name": {"acme-billing"}, "channel": {"email"}, "address": {"old@acme.test"},
+	}, cookie)
+	id := onlySourceID(t, p)
+
+	post(t, p, "/sources/"+id+"/edit", url.Values{
+		"name": {"acme-billing"}, "channel": {"email"}, "address": {"new@acme.test"},
+	}, cookie)
+
+	if got := p.sources.rows[0].DefaultAddresses[shared.ChannelEmail]; got != "new@acme.test" {
+		t.Errorf("address = %q", got)
+	}
+}
+
+// Somebody else's source is not editable, and says what a missing one says.
+func TestAStrangerCannotEditASource(t *testing.T) {
+	p := newTestPortal(t)
+
+	mine := signedIn(t, p, "me@acme.test")
+	post(t, p, "/sources", url.Values{"name": {"mine"}}, mine)
+	id := onlySourceID(t, p)
+
+	theirs := signedIn(t, p, "them@acme.test")
+
+	if got := get(t, p, "/sources/"+id+"/edit", theirs); got.status != http.StatusNotFound {
+		t.Errorf("GET their edit page = %d, want 404", got.status)
+	}
+
+	post(t, p, "/sources/"+id+"/edit", url.Values{"name": {"theirs now"}}, theirs)
+	if p.sources.rows[0].Name != "mine" {
+		t.Errorf("a stranger renamed it to %q", p.sources.rows[0].Name)
+	}
+}
+
+// Switching a sender off is not deleting it. A source whose bot token was
+// withdrawn needs the row still there when the new one arrives -- and after an
+// incident, when it was switched off is the first question asked.
+func TestASenderSwitchedOffIsStillThere(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "me@acme.test")
+
+	post(t, p, "/sources", url.Values{"name": {"acme-billing"}}, cookie)
+	id := onlySourceID(t, p)
+
+	post(t, p, "/sources/"+id+"/senders", url.Values{
+		"channel": {"telegram"}, "name": {"our-support-bot"}, "secret": {"a-token"},
+	}, cookie)
+
+	senderID := p.senders.rows[id][0].ID
+
+	off := post(t, p, "/sources/"+id+"/senders/"+senderID.String()+"/off", nil, cookie)
+	if off.status != http.StatusSeeOther {
+		t.Fatalf("POST off = %d\n%s", off.status, off.body)
+	}
+	if p.senders.rows[id][0].IsActive() {
+		t.Error("the sender is still in use")
+	}
+	if len(p.senders.rows[id]) != 1 {
+		t.Fatalf("switching off removed the row: %d left", len(p.senders.rows[id]))
+	}
+
+	page := get(t, p, "/sources/"+id+"/senders", cookie)
+	if !strings.Contains(page.body, "our-support-bot") {
+		t.Error("a switched-off sender vanished from the page")
+	}
+
+	on := post(t, p, "/sources/"+id+"/senders/"+senderID.String()+"/on", nil, cookie)
+	if on.status != http.StatusSeeOther {
+		t.Fatalf("POST on = %d", on.status)
+	}
+	if !p.senders.rows[id][0].IsActive() {
+		t.Error("the sender did not come back")
+	}
+}
+
+// A stranger cannot reach the switch, for the same reason they cannot reach the
+// page it is on.
+func TestAStrangerCannotSwitchASenderOff(t *testing.T) {
+	p := newTestPortal(t)
+
+	mine := signedIn(t, p, "me@acme.test")
+	post(t, p, "/sources", url.Values{"name": {"mine"}}, mine)
+	id := onlySourceID(t, p)
+	post(t, p, "/sources/"+id+"/senders", url.Values{
+		"channel": {"telegram"}, "name": {"our-support-bot"}, "secret": {"a-token"},
+	}, mine)
+	senderID := p.senders.rows[id][0].ID
+
+	theirs := signedIn(t, p, "them@acme.test")
+	got := post(t, p, "/sources/"+id+"/senders/"+senderID.String()+"/off", nil, theirs)
+
+	if got.status != http.StatusNotFound {
+		t.Errorf("POST their switch = %d, want 404", got.status)
+	}
+	if !p.senders.rows[id][0].IsActive() {
+		t.Error("a stranger switched somebody else's sender off")
+	}
+}
+
+// The form comes back filled in with what is already there. A blank edit form
+// is a form that silently clears whatever it does not show.
+func TestTheEditFormArrivesFilledIn(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "me@acme.test")
+
+	post(t, p, "/sources", url.Values{
+		"name": {"acme-billing"}, "channel": {"email"}, "address": {"billing@acme.test"},
+	}, cookie)
+	id := onlySourceID(t, p)
+
+	got := get(t, p, "/sources/"+id+"/edit", cookie)
+	whole(t, "/sources/"+id+"/edit", got)
+
+	for _, want := range []string{"acme-billing", "billing@acme.test", `name="description"`} {
+		if !strings.Contains(got.body, want) {
+			t.Errorf("the form does not carry %q", want)
 		}
 	}
 }
