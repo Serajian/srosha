@@ -13,6 +13,17 @@ import (
 // -- a path that exists on neither surface -- and pass for two weeks. So the
 // names cross the boundary here, once, and nothing is spelled twice.
 
+// PortalCookieName and AdminCookieName are the two surfaces' session cookies.
+//
+// They cross the boundary here for the same reason the route table does: a
+// name spelled again as a literal in a test is a name that can drift from the
+// one the code writes, and the test would go on passing while the surfaces
+// stopped being separated.
+const (
+	PortalCookieName = portalCookieName
+	AdminCookieName  = adminCookieName
+)
+
 // AdminRoute is one row of a surface's own route table.
 type AdminRoute struct{ Method, Path string }
 

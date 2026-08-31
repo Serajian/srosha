@@ -409,7 +409,7 @@ func signedInAdmin(t *testing.T, a *testAdmin, email string) *http.Cookie {
 	in := apost(t, a, "/signin/code",
 		url.Values{"email": {email}, "code": {a.mail.lastCode(t)}})
 
-	cookie := in.session()
+	cookie := in.sessionNamed(web.AdminCookieName)
 	if cookie == nil {
 		t.Fatalf("could not sign %s in", email)
 	}
@@ -1287,5 +1287,27 @@ func TestASourceThatCanBeApprovedShowsNoWarning(t *testing.T) {
 
 	if strings.Contains(got.body, "Only the customer can fix this") {
 		t.Errorf("a source that can be approved is shown a warning anyway:\n%s", got.body)
+	}
+}
+
+// NewAdmin writes the admin surface's own cookie, and not the portal's.
+//
+// The unit test in session_test.go proves sessions reads only the name it was
+// given; it cannot prove NewAdmin gives it the right one. Passing the portal's
+// name here does fail the suite -- as a dozen "could not sign in" lines that
+// never say why. This one says why.
+func TestTheAdminSurfaceWritesItsOwnCookie(t *testing.T) {
+	a := newTestAdmin(t)
+
+	apost(t, a, "/signin", url.Values{"email": {"ops@srosha.ir"}})
+	in := apost(t, a, "/signin/code",
+		url.Values{"email": {"ops@srosha.ir"}, "code": {a.mail.lastCode(t)}})
+
+	if in.sessionNamed(web.PortalCookieName) != nil {
+		t.Error("the admin surface set the portal's cookie, so a customer's " +
+			"session would be presented here rather than never sent")
+	}
+	if in.sessionNamed(web.AdminCookieName) == nil {
+		t.Fatal("the admin surface set no session cookie of its own")
 	}
 }

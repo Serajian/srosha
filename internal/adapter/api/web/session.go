@@ -14,16 +14,16 @@ import (
 // sessions is the cookie, and the question of who is behind it. Nothing else in
 // this adapter reads or writes one.
 //
-// Both surfaces get their own, and they share the cookie because a cookie is
-// not scoped by port and could not be separated anyway. What separates them is
-// the role a surface's guard demands -- see guard.
+// Each surface builds its own with its own name, which is what keeps a
+// customer's session off the admin host -- see const.go.
 type sessions struct {
 	signIn SignIn
+	name   string
 	secure bool
 }
 
-func newSessions(signIn SignIn, secure bool) *sessions {
-	return &sessions{signIn: signIn, secure: secure}
+func newSessions(signIn SignIn, name string, secure bool) *sessions {
+	return &sessions{signIn: signIn, name: name, secure: secure}
 }
 
 // begin puts the session in a cookie.
@@ -32,8 +32,12 @@ func newSessions(signIn SignIn, secure bool) *sessions {
 // SameSite on the call, and this cookie's expiry has to be the session's own
 // deadline rather than a duration computed beside it.
 func (s *sessions) begin(c *gin.Context, sess *session.Session) {
+	// No Domain, deliberately: without one the cookie is host-only, and
+	// host-only is the whole separation between the two surfaces. Setting
+	// Domain=srosha.ir would send this to the admin host too, and nothing
+	// would fail.
 	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     sessionCookieName,
+		Name:     s.name,
 		Value:    sess.ID.String(),
 		Path:     "/",
 		HttpOnly: true,
@@ -47,7 +51,7 @@ func (s *sessions) begin(c *gin.Context, sess *session.Session) {
 // that ignores the date still has nothing left to send.
 func (s *sessions) clear(c *gin.Context) {
 	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     sessionCookieName,
+		Name:     s.name,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
@@ -60,7 +64,7 @@ func (s *sessions) clear(c *gin.Context) {
 
 // ID is what the browser presented, if anything.
 func (s *sessions) ID(c *gin.Context) (shared.ID, bool) {
-	v, err := c.Cookie(sessionCookieName)
+	v, err := c.Cookie(s.name)
 	if err != nil || v == "" {
 		return "", false
 	}

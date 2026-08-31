@@ -112,7 +112,7 @@ func NewPortal(d PortalDeps) (PortalHandler, error) {
 
 	engine := newEngine(engineConfig{Debug: d.Debug, Render: pages, Log: d.Log})
 
-	sessions := newSessions(d.SignIn, d.SecureCookie)
+	sessions := newSessions(d.SignIn, portalCookieName, d.SecureCookie)
 	in := &signInHandler{signIn: d.SignIn, sessions: sessions, log: d.Log}
 	account := &accountHandler{signIn: d.SignIn, sessions: sessions, log: d.Log}
 	sources := &sourceHandler{sources: d.Sources, log: d.Log}
