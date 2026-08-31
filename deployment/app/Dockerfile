@@ -1,8 +1,10 @@
-# One image, three binaries, and the tool that migrates the database.
+# One image, four binaries: the three services and the tool that migrates the
+# database. The sql is not copied -- go:embed compiles it into every binary, so
+# which migrations a build carries is a fact about the build.
 #
-# Which binary runs is `command` in the compose file. Three images differing
-# only in their entrypoint would be three builds of the same code, and three
-# chances for them to be built from different commits.
+# Which binary runs is `command` in the compose file. Separate images differing
+# only in their entrypoint would be separate builds of the same code, and as
+# many chances for them to be built from different commits.
 #
 # Both base images are ARGs because the network, not the architecture, is what
 # decides them here -- see the mirror loop below.
@@ -80,11 +82,6 @@ COPY go.mod go.sum ./
 COPY sdk/go/go.mod sdk/go/go.sum ./sdk/go/
 RUN go mod download
 
-# Pinned, deliberately. `make setup-dev` installs goose @latest, which is right
-# for a laptop and wrong for an image that has to be rebuildable: the tool that
-# migrates a production database must not change because a day passed.
-RUN go install -ldflags="-s -w" github.com/pressly/goose/v3/cmd/goose@v3.27.3
-
 COPY . .
 
 # Static, so the runtime image needs no libc at all. -s -w drops the symbol
@@ -92,7 +89,8 @@ COPY . .
 ENV CGO_ENABLED=0
 RUN go build -ldflags="-s -w" -trimpath -o /out/gateway    ./cmd/gateway \
  && go build -ldflags="-s -w" -trimpath -o /out/dispatcher ./cmd/dispatcher \
- && go build -ldflags="-s -w" -trimpath -o /out/console    ./cmd/console
+ && go build -ldflags="-s -w" -trimpath -o /out/console    ./cmd/console \
+ && go build -ldflags="-s -w" -trimpath -o /out/migrate    ./cmd/migrate
 
 
 # alpine, and not distroless, for one reason that has nothing to do with which
@@ -135,12 +133,7 @@ RUN adduser -D -u 10001 srosha
 
 WORKDIR /app
 
-COPY --from=build /out/gateway /out/dispatcher /out/console ./
-COPY --from=build /go/bin/goose ./goose
-
-# The sql travels with the code, so a migration can never come from a different
-# commit than the binaries that expect it.
-COPY migrations/ ./migrations/
+COPY --from=build /out/gateway /out/dispatcher /out/console /out/migrate ./
 
 USER srosha
 

@@ -5,6 +5,11 @@ import (
 
 	"github.com/Serajian/srosha/internal/config/settings"
 	"github.com/Serajian/srosha/internal/infra/database"
+	"github.com/Serajian/srosha/internal/infra/migrations"
+
+	// The sql itself, embedded. Aliased because the package that applies it
+	// carries the same name, and one of them has to say which it is.
+	sqlfiles "github.com/Serajian/srosha/migrations"
 )
 
 // Postgres opens the pool and puts it under res, so readiness pings it and
@@ -42,6 +47,20 @@ func Postgres(
 		name:  "postgres",
 		ready: db.Ping,
 		close: func(context.Context) error { db.Close(); return nil },
+	})
+
+	// A second check, and a second name, deliberately. Reaching the database
+	// and the database having this build's tables are different questions, and
+	// today they had different answers: three services reported healthy on a
+	// database with no tables at all. /readyz names them separately so whoever
+	// reads it learns which one is false.
+	want := sqlfiles.Latest()
+	res.add(step{
+		tier: tierStore,
+		name: "schema",
+		ready: func(ctx context.Context) error {
+			return migrations.EnsureCurrent(ctx, db.Pool(), want)
+		},
 	})
 	return db, nil
 }
