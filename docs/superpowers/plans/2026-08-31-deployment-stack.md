@@ -161,7 +161,7 @@ func TestProbeDialsLoopbackForABarePort(t *testing.T) {
 		t.Fatalf("Probe(%q) = %v", ":"+port, err)
 	}
 	if !reached {
-		t.Error("a bare :port was not dialled on loopback")
+		t.Error("a bare :port was not dialed on loopback")
 	}
 }
 ```
