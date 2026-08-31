@@ -8,6 +8,7 @@ const (
 	binaryGateway    = "gateway"
 	binaryDispatcher = "dispatcher"
 	binaryConsole    = "console"
+	binaryMigrate    = "migrate"
 )
 
 // consoleRateLimit is required by source.Service and never consulted: the

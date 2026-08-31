@@ -692,15 +692,24 @@ migrate-up: ## [Migrations] Apply database migrations
 	@goose -dir $(MIGRATIONS_DIR) $(GOOSE_DRIVER) "$(DB_URL)" up
 	@echo "$(COLOR_GREEN)✅ Migrations applied.$(COLOR_RESET)"
 
+.PHONY: migrate-server-status
+migrate-server-status: ## [Migrations] What the SERVER's database has. Changes nothing.
+	@test -f $(DOCKER_DIR)/.env || { \
+	   echo "$(COLOR_RED)no $(DOCKER_DIR)/.env$(COLOR_RESET)"; \
+	   echo "This target runs on the server, in the directory Dokploy cloned"; \
+	   echo "into, where it writes that file. On a laptop use: make migrate-status"; \
+	   exit 1; }
+	@docker compose -f $(DOCKER_COMPOSE) run --rm migrate /app/migrate status
+
 .PHONY: migrate-server
-migrate-server: ## [Migrations] Apply migrations ON THE SERVER, from the deployed image
+migrate-server: ## [Migrations] Apply migrations ON THE SERVER. A deploy already does this.
 	@test -f $(DOCKER_DIR)/.env || { \
 	   echo "$(COLOR_RED)no $(DOCKER_DIR)/.env$(COLOR_RESET)"; \
 	   echo "This target runs on the server, in the directory Dokploy cloned"; \
 	   echo "into, where it writes that file. On a laptop use: make migrate-up"; \
 	   exit 1; }
 	@echo "$(COLOR_YELLOW)📂 Running migrations from the image...$(COLOR_RESET)"
-	@docker compose -f $(DOCKER_COMPOSE) --profile migrate run --rm migrate
+	@docker compose -f $(DOCKER_COMPOSE) run --rm migrate
 	@echo "$(COLOR_GREEN)✅ Migrations applied.$(COLOR_RESET)"
 
 .PHONY: migrate-down

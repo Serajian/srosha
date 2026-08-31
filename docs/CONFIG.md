@@ -36,7 +36,7 @@ Host: one Linux server running Docker + Dokploy, shared with unrelated apps.
 | Dokploy project | `srosha` |
 | Service type | Compose with a Git source (never Application or Database) |
 | Compose path | `deployment/app/docker-compose.yml` — **the application only**, see below |
-| Dockerfile | `deployment/app/Dockerfile` — one image: all three binaries, goose, and `migrations/` |
+| Dockerfile | `deployment/app/Dockerfile` — one image, four binaries: the three services and `migrate` |
 | Ignore file | `.dockerignore` at the **repository root**, because that is the build context |
 | Image | `srosha:latest`; the binary is selected by `command` |
 | Runtime base | `alpine:3.22` — distroless was tried and the server cannot reach `gcr.io` |
@@ -168,6 +168,11 @@ the prefix `NOTIF_`, and `.` in a config key mapped to `_`.
 
 Every key, with its defaults and which binary needs it, is documented in
 `.env.example`. Summary of what each binary requires:
+
+`migrate` is a fourth binary and reads almost nothing: `NOTIF_APP_ENV`,
+`NOTIF_DB_DSN`, `NOTIF_MIGRATION_LOCK_TIMEOUT` and the telemetry keys. It has no
+broker, no crypto keys and no sending credentials — a tool that runs before the
+service starts should not need the service's secrets.
 
 | Group | Keys | gateway | dispatcher | console |
 | --- | --- | --- | --- | --- |
@@ -376,20 +381,36 @@ cannot share a wire.
 
 | | |
 | --- | --- |
-| Tool | goose, sequential numbering (`-s`) |
-| Directory | `migrations/` |
-| Env keys | `GOOSE_DRIVER`, `GOOSE_MIGRATION_DIR`, `GOOSE_DBSTRING` |
+| Tool | goose `v3.27.3`, as a library. Sequential numbering (`-s`) |
+| Directory | `migrations/`, compiled into every binary by `go:embed` |
+| Deployed as | the `migrate` service, which every other service waits for |
+| Locally | `make migrate-up`, which uses the goose command line |
+| Env keys | `NOTIF_MIGRATION_LOCK_TIMEOUT`; locally `GOOSE_*`, see below |
 | When | a separate deployment step, never from an application entrypoint |
-| Deployed as | `docker compose --profile migrate run --rm migrate` |
-| Version in the image | goose **`v3.27.3`**, pinned |
 
-The `migrate` service is under a profile, so it never comes up during a deploy,
-and it uses the same image as the deploy — the sql it applies is the sql of that
-commit. Run it **before** merging the code that depends on it: with auto-deploy
-there is no window in which the old code is guaranteed to be gone.
+**Every deploy migrates, and every service waits for it.** `migrate` is an
+ordinary service with `restart: "no"`, and the other three carry
+`depends_on: migrate: condition: service_completed_successfully`. So a deploy is
+build → migrate → start, and a failed migration stops the release: the running
+containers are not replaced, and the previous version keeps serving.
 
-`make setup-dev` installs goose `@latest` instead. That is right for a laptop
-and wrong for an image that has to be rebuildable, which is why the two differ.
+It takes a **Postgres advisory lock**, which is why it is `cmd/migrate` and not
+the goose command line — that has no lock flag. Two deploys at once queue rather
+than both applying the same migration. `NOTIF_MIGRATION_LOCK_TIMEOUT` bounds the
+wait, default `5m`, so a race ends as a failed release and not a hung one.
+
+The sql is **embedded**, not copied into the image. Which migrations a build
+carries is a fact about the build, and `migrations.Latest()` is what readiness
+compares the database against.
+
+`make setup-dev` installs the goose command line at `@latest` for local work.
+Both read the same `goose_db_version` table.
+
+| Command | Runs |
+| --- | --- |
+| `make migrate-up` | on a laptop, against the local port mapping |
+| `make migrate-server` | on the server, from the image. A deploy already does this |
+| `make migrate-server-status` | on the server. Changes nothing |
 
 The numbering was rearranged when sources gained an owner: `users` is `00002` and
 `sources` is `00003`, because `sources.owner_user_id` is a foreign key into a

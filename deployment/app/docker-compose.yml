@@ -24,6 +24,9 @@ services:
     image: srosha:latest
     command: ["/app/gateway"]
     restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     expose: ["50051", "8080"]
     environment:
       NOTIF_APP_ENV: ${NOTIF_APP_ENV}
@@ -74,6 +77,9 @@ services:
     image: srosha:latest
     command: ["/app/dispatcher"]
     restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     expose: ["8081"]
     environment:
       NOTIF_APP_ENV: ${NOTIF_APP_ENV}
@@ -110,6 +116,9 @@ services:
     image: srosha:latest
     command: ["/app/console"]
     restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     expose: ["8090", "8091", "8092"]
     environment:
       NOTIF_APP_ENV: ${NOTIF_APP_ENV}
@@ -160,22 +169,28 @@ services:
       - traefik.http.routers.srosha-admin.service=srosha-admin
       - traefik.http.services.srosha-admin.loadbalancer.server.port=8092
 
-  # Never up during a deploy -- that is what the profile buys. Run it yourself,
-  # BEFORE merging the code that depends on the migration:
-  #
-  #   docker compose --profile migrate run --rm migrate
+  # Runs to completion before any service starts, and every service waits for
+  # it -- see `depends_on` above. A failed migration therefore stops the
+  # release instead of letting the new code meet a schema it does not expect:
+  # the old containers are not replaced, so the previous version keeps serving.
   #
   # Same image as the deploy, so the sql applied is the sql of this commit.
+  #
+  # It takes a Postgres advisory lock, which is why it is our own binary and
+  # not the goose command line -- that has no lock flag. Two deploys at once
+  # queue behind each other rather than both applying the same migration.
+  #
+  # The sql is compiled into it, so this cannot apply migrations from a
+  # different commit than the services that follow it.
   migrate:
     build: *build
     image: srosha:latest
-    profiles: ["migrate"]
     restart: "no"
-    command: ["/app/goose", "up"]
+    command: ["/app/migrate"]
     environment:
-      GOOSE_DRIVER: postgres
-      GOOSE_MIGRATION_DIR: /app/migrations
-      GOOSE_DBSTRING: ${NOTIF_DB_DSN}
+      NOTIF_APP_ENV: ${NOTIF_APP_ENV}
+      NOTIF_DB_DSN: ${NOTIF_DB_DSN}
+      NOTIF_TELEMETRY_LOG_LEVEL: ${NOTIF_TELEMETRY_LOG_LEVEL}
     networks:
       - srosha-net
     logging: *logging
