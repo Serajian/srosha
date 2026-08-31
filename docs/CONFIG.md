@@ -68,7 +68,7 @@ network; `ports:` is never used.
 | dispatcher | 8081 | `/healthz` |
 | console | 8090 | the customer portal's pages — **the only surface a browser reaches** |
 | console | 8091 | `/healthz` |
-| console | 8092 | the admin surface *(phase 2)* — never published, see ARCHITECTURE.md |
+| console | 8092 | the admin surface — never published, see ARCHITECTURE.md |
 | nats | 4222 | clients |
 | nats | 8222 | monitoring JSON — unauthenticated, never published |
 | postgres | 5432 | clients |
@@ -283,17 +283,18 @@ because `go:embed` cannot reach outside its own directory.
 | | |
 | --- | --- |
 | Directory | `public/` |
-| Served to a browser | `public/static/<surface>/` — today `static/portal/` |
-| Rendered on the server | `public/templates/<surface>/` — today `templates/portal/` |
-| Stylesheet | `public/static/portal/portal.css` — the whole design system, ~250 lines |
-| Logo | `public/static/portal/crane.svg` — the brand svg with a `viewBox` added |
+| Served to a browser | `public/static/<surface>/` — `static/portal/`, `static/admin/` |
+| Rendered on the server | `public/templates/<surface>/` — `templates/portal/`, `templates/admin/` |
+| Stylesheet | one per surface: `portal/portal.css`, `admin/admin.css` |
+| Logo | `crane.svg`, copied into each surface's directory |
+| Email bodies | `public/templates/email/` — rendered, never served, and not a surface |
 | URL prefix | `/static/` — mapped to one surface's directory, never to `public/` |
 
 **The two halves are not the same thing.** `static/` is fetched byte for byte;
 `templates/` is rendered and never served. Serving `templates/` would hand out
 the shape of every page and every field name in one request, so nothing may point
-a file server at the root of that FS — `web.browserFiles` subs into
-`static/portal` first, and the admin surface will do the same into its own.
+a file server at the root of that FS — `web.browserFiles(surface)` subs into
+`static/<surface>`, so each surface sees its own assets and nothing else.
 
 Fonts are a stack, not files: nothing here may reach a font host at runtime, and
 the portal has to work on a network that cannot. Vazirmatn is first in every
