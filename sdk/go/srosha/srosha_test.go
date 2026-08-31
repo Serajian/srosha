@@ -154,7 +154,7 @@ func msg() srosha.Message {
 	return srosha.Message{
 		Title:  "Hello",
 		Body:   "world",
-		Routes: []srosha.Route{srosha.Email("a@b.test")},
+		Routes: []srosha.Route{srosha.EmailTo("a@b.test")},
 	}
 }
 
@@ -210,7 +210,7 @@ func TestASubmittedMessageComesBackWithItsReceipt(t *testing.T) {
 	m.Priority = srosha.PriorityCritical
 	m.ExpireAt = time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	m.Metadata = map[string]string{"order_id": "42"}
-	m.Routes = append(m.Routes, srosha.Telegram("123456789").From("alerts"))
+	m.Routes = append(m.Routes, srosha.TelegramTo("123456789").From("alerts"))
 
 	got, err := c.Submit(context.Background(), m)
 	if err != nil {
