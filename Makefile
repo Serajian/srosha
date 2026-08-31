@@ -48,6 +48,12 @@ DOCKER_IMAGE    := $(APP_NAME):latest
 DOCKER_ENV_FILE := .env
 
 MIGRATIONS_DIR := migrations
+# migrate-up runs goose ON THIS MACHINE and reaches postgres through the local
+# port mapping. It cannot work on the server: nothing there has goose, and the
+# deployed postgres publishes no host port at all -- "postgres:5432" is a name
+# that only resolves inside srosha-net. Use migrate-server there, which runs
+# goose from the image, in a container on that network.
+#
 # Migration target. Override per environment; never hard-code credentials here.
 #   make migrate-up DB_URL="postgres://user:pass@host:port/db?sslmode=disable"
 # Role and database name match the deployed cluster. The host and port are the
@@ -564,10 +570,10 @@ sync: ## [Git] Go to master, sync it with the remote, drop local branches alread
 # DOCKER
 # ==================================================================================== #
 .PHONY: docker-build
-docker-build: ## [Docker] Build the single image that carries both binaries
+docker-build: ## [Docker] Build the single image that carries all three binaries
 	@echo "$(COLOR_YELLOW)🐳 Building $(DOCKER_IMAGE)...$(COLOR_RESET)"
 	@docker build -t $(DOCKER_IMAGE) -f $(DOCKER_FILE) .
-	@echo "$(COLOR_GREEN)✅ Docker image built. gateway/dispatcher are selected by 'command'.$(COLOR_RESET)"
+	@echo "$(COLOR_GREEN)✅ Docker image built. The binary is selected by 'command'.$(COLOR_RESET)"
 
 .PHONY: docker-up
 docker-up: ## [Docker] Start docker-compose
@@ -684,6 +690,17 @@ dev-ready: ## [Dev] Ask each running binary whether it is ready
 migrate-up: ## [Migrations] Apply database migrations
 	@echo "$(COLOR_YELLOW)📂 Running migrations up...$(COLOR_RESET)"
 	@goose -dir $(MIGRATIONS_DIR) $(GOOSE_DRIVER) "$(DB_URL)" up
+	@echo "$(COLOR_GREEN)✅ Migrations applied.$(COLOR_RESET)"
+
+.PHONY: migrate-server
+migrate-server: ## [Migrations] Apply migrations ON THE SERVER, from the deployed image
+	@test -f $(DOCKER_DIR)/.env || { \
+	   echo "$(COLOR_RED)no $(DOCKER_DIR)/.env$(COLOR_RESET)"; \
+	   echo "This target runs on the server, in the directory Dokploy cloned"; \
+	   echo "into, where it writes that file. On a laptop use: make migrate-up"; \
+	   exit 1; }
+	@echo "$(COLOR_YELLOW)📂 Running migrations from the image...$(COLOR_RESET)"
+	@docker compose -f $(DOCKER_COMPOSE) --profile migrate run --rm migrate
 	@echo "$(COLOR_GREEN)✅ Migrations applied.$(COLOR_RESET)"
 
 .PHONY: migrate-down
