@@ -1,0 +1,187 @@
+# The application only. postgres, nats and the srosha-net network are already
+# deployed as their own Dokploy compose services -- see
+# docs/reference/srosha-infra-deploy.md section 2. Defining them here would
+# bring up a second database beside the real one, with an empty volume.
+#
+# Nothing publishes a host port. The only way in is Traefik, and only for the
+# three routers below.
+
+x-logging: &logging
+  # Unbounded json logs are the most common way a small host runs out of disk,
+  # and when the disk fills postgres dies with everything else.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-build: &build
+  context: ../..
+  dockerfile: deployment/app/Dockerfile
+
+services:
+  gateway:
+    build: *build
+    image: srosha:latest
+    command: ["/app/gateway"]
+    restart: unless-stopped
+    expose: ["50051", "8080"]
+    environment:
+      NOTIF_APP_ENV: ${NOTIF_APP_ENV}
+      NOTIF_GRPC_ADDR: ${NOTIF_GRPC_ADDR}
+      NOTIF_GRPC_HTTP_ADDR: ${NOTIF_GRPC_HTTP_ADDR}
+      NOTIF_DB_DSN: ${NOTIF_DB_DSN}
+      # Its own NATS user. A gateway credential cannot read anyone's
+      # notifications, and that split is verified by test -- see the
+      # permission table in the infra document.
+      NOTIF_MQ_URL: ${NOTIF_GATEWAY_MQ_URL}
+      NOTIF_CRYPTO_KEYS: ${NOTIF_CRYPTO_KEYS}
+      NOTIF_CRYPTO_KEY_ID: ${NOTIF_CRYPTO_KEY_ID}
+      NOTIF_RATELIMIT_PER_MINUTE: ${NOTIF_RATELIMIT_PER_MINUTE}
+      NOTIF_RETENTION_AGE: ${NOTIF_RETENTION_AGE}
+      NOTIF_TELEMETRY_LOG_LEVEL: ${NOTIF_TELEMETRY_LOG_LEVEL}
+    healthcheck:
+      test: ["CMD", "/app/gateway", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    # Both, explicitly. Attaching a domain makes Dokploy REPLACE a service's
+    # network with dokploy-network rather than add to it, so a service listing
+    # only srosha-net loses its database and broker the moment it gets a
+    # domain -- with no deploy-time error. Infra document, Trap 1.
+    networks:
+      - srosha-net
+      - dokploy-network
+    logging: *logging
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.srosha-api.rule=Host(`api.srosha.ir`)
+      - traefik.http.routers.srosha-api.entrypoints=websecure
+      - traefik.http.routers.srosha-api.tls.certresolver=letsencrypt
+      - traefik.http.routers.srosha-api.service=srosha-api
+      - traefik.http.services.srosha-api.loadbalancer.server.port=50051
+      # h2c is not optional: gRPC is HTTP/2 without TLS behind the terminator,
+      # and Traefik speaks HTTP/1.1 to a backend unless told otherwise.
+      - traefik.http.services.srosha-api.loadbalancer.server.scheme=h2c
+
+  dispatcher:
+    build: *build
+    image: srosha:latest
+    command: ["/app/dispatcher"]
+    restart: unless-stopped
+    expose: ["8081"]
+    environment:
+      NOTIF_APP_ENV: ${NOTIF_APP_ENV}
+      NOTIF_HTTP_ADDR: ${NOTIF_DISPATCHER_HTTP_ADDR}
+      NOTIF_DB_DSN: ${NOTIF_DB_DSN}
+      NOTIF_MQ_URL: ${NOTIF_DISPATCHER_MQ_URL}
+      NOTIF_CRYPTO_KEYS: ${NOTIF_CRYPTO_KEYS}
+      NOTIF_CRYPTO_KEY_ID: ${NOTIF_CRYPTO_KEY_ID}
+      NOTIF_RETENTION_AGE: ${NOTIF_RETENTION_AGE}
+      NOTIF_SENDER_SMTP_HOST: ${NOTIF_SENDER_SMTP_HOST}
+      NOTIF_SENDER_SMTP_PORT: ${NOTIF_SENDER_SMTP_PORT}
+      NOTIF_SENDER_SMTP_USER: ${NOTIF_SENDER_SMTP_USER}
+      NOTIF_SENDER_SMTP_PASSWORD: ${NOTIF_SENDER_SMTP_PASSWORD}
+      NOTIF_SENDER_TELEGRAM_TOKEN: ${NOTIF_SENDER_TELEGRAM_TOKEN}
+      NOTIF_SENDER_BALE_TOKEN: ${NOTIF_SENDER_BALE_TOKEN}
+      NOTIF_TELEMETRY_LOG_LEVEL: ${NOTIF_TELEMETRY_LOG_LEVEL}
+    healthcheck:
+      test: ["CMD", "/app/dispatcher", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    # No dokploy-network: no domain, and it must not be routable.
+    networks:
+      - srosha-net
+    logging: *logging
+
+  console:
+    build: *build
+    image: srosha:latest
+    command: ["/app/console"]
+    restart: unless-stopped
+    expose: ["8090", "8091", "8092"]
+    environment:
+      NOTIF_APP_ENV: ${NOTIF_APP_ENV}
+      # NOTIF_HTTP_ADDR defaults to :8081, which is the dispatcher's. The
+      # console's health listener is 8091 and has to be said.
+      NOTIF_HTTP_ADDR: ${NOTIF_CONSOLE_HTTP_ADDR}
+      NOTIF_PORTAL_ADDR: ${NOTIF_PORTAL_ADDR}
+      NOTIF_ADMIN_ADDR: ${NOTIF_ADMIN_ADDR}
+      NOTIF_ADMIN_LIST_LIMIT: ${NOTIF_ADMIN_LIST_LIMIT}
+      NOTIF_DB_DSN: ${NOTIF_DB_DSN}
+      NOTIF_CRYPTO_KEYS: ${NOTIF_CRYPTO_KEYS}
+      NOTIF_CRYPTO_KEY_ID: ${NOTIF_CRYPTO_KEY_ID}
+      NOTIF_CONSOLE_SMTP_HOST: ${NOTIF_CONSOLE_SMTP_HOST}
+      NOTIF_CONSOLE_SMTP_PORT: ${NOTIF_CONSOLE_SMTP_PORT}
+      NOTIF_CONSOLE_SMTP_USER: ${NOTIF_CONSOLE_SMTP_USER}
+      NOTIF_CONSOLE_SMTP_PASSWORD: ${NOTIF_CONSOLE_SMTP_PASSWORD}
+      NOTIF_CONSOLE_SMTP_FROM: ${NOTIF_CONSOLE_SMTP_FROM}
+      NOTIF_CONSOLE_SECURE_COOKIE: ${NOTIF_CONSOLE_SECURE_COOKIE}
+      NOTIF_TELEMETRY_LOG_LEVEL: ${NOTIF_TELEMETRY_LOG_LEVEL}
+    healthcheck:
+      test: ["CMD", "/app/console", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - srosha-net
+      - dokploy-network
+    logging: *logging
+    # Two routers on one container. The portal and the admin panel are two
+    # listeners in one process, separated by host and by cookie -- see
+    # docs/ARCHITECTURE.md.
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.srosha-panel.rule=Host(`panel.srosha.ir`)
+      - traefik.http.routers.srosha-panel.entrypoints=websecure
+      - traefik.http.routers.srosha-panel.tls.certresolver=letsencrypt
+      - traefik.http.routers.srosha-panel.service=srosha-panel
+      - traefik.http.services.srosha-panel.loadbalancer.server.port=8090
+      - traefik.http.routers.srosha-admin.rule=Host(`admin.srosha.ir`)
+      - traefik.http.routers.srosha-admin.entrypoints=websecure
+      - traefik.http.routers.srosha-admin.tls.certresolver=letsencrypt
+      - traefik.http.routers.srosha-admin.service=srosha-admin
+      - traefik.http.services.srosha-admin.loadbalancer.server.port=8092
+
+  # Never up during a deploy -- that is what the profile buys. Run it yourself,
+  # BEFORE merging the code that depends on the migration:
+  #
+  #   docker compose --profile migrate run --rm migrate
+  #
+  # Same image as the deploy, so the sql applied is the sql of this commit.
+  migrate:
+    build: *build
+    image: srosha:latest
+    profiles: ["migrate"]
+    restart: "no"
+    command: ["/app/goose", "up"]
+    environment:
+      GOOSE_DRIVER: postgres
+      GOOSE_MIGRATION_DIR: /app/migrations
+      GOOSE_DBSTRING: ${NOTIF_DB_DSN}
+    networks:
+      - srosha-net
+    logging: *logging
+
+networks:
+  srosha-net:
+    external: true
+  dokploy-network:
+    external: true
