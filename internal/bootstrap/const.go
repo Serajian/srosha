@@ -1,5 +1,7 @@
 package bootstrap
 
+import "time"
+
 // Which binary this is. It goes on every log line, because both write to one
 // collector and nothing else separates them there.
 const (
@@ -12,3 +14,8 @@ const (
 // limiter is spent by Admit, which is the sending path, and the console does
 // not send. It is a number so the type is satisfied, not a policy.
 const consoleRateLimit = 1_000_000
+
+// probeTimeout bounds one health check. Compose gives the command five
+// seconds, so this stays under it: a slow answer should be our error rather
+// than docker's kill.
+const probeTimeout = 3 * time.Second
