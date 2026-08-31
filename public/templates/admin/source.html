@@ -24,6 +24,34 @@
   </dd>
 </dl>
 
+<h3 class="sub-head">Where it sends</h3>
+<!-- Shown in FULL, never masked -- unlike /sources/:id/log, which masks the
+     RECIPIENT of a delivery: a third party the customer is sending to, not
+     this customer's own business. These are the customer's own declared
+     destinations, part of the configuration an operator is being asked to
+     judge here, and masking them would defeat the reason this section
+     exists: an operator approving a source without seeing where its
+     messages go would be approving blind. -->
+{{if not .Source.DefaultAddresses}}
+  <p class="sub">
+    No default addresses configured. This is ordinary at registration -- a
+    customer sets this up before it is approved, not after.
+    {{if not .Source.AllowCustomAddress}}
+      Combined with custom addresses not being allowed, this source has
+      nowhere to send and cannot be approved until the customer adds one.
+    {{end}}
+  </p>
+{{else}}
+  <ul class="cards">
+    {{range $channel, $address := .Source.DefaultAddresses}}
+    <li class="card">
+      <span class="nm">{{$channel}}</span>
+      <span class="id">{{$address}}</span>
+    </li>
+    {{end}}
+  </ul>
+{{end}}
+
 <h3 class="sub-head">What it sends as</h3>
 <!-- Never the secret, and nothing derived from it: credential.Credential has
      no field for one and no way to read it back, so this is name, channel,

@@ -19,6 +19,7 @@ import (
 type operatorRig struct {
 	ops         *usecase.Operators
 	log         *auditLog
+	repo        fakeSources
 	customer    *user.User
 	admin       *user.User
 	superAdmin  *user.User
@@ -54,7 +55,13 @@ func newOperatorRig(t *testing.T) *operatorRig {
 		t.Fatalf("user.New superAdmin: %v", err)
 	}
 
-	src, err := source.New("01J8XQ2M4E7N9V3B5C6D7F8SRC", customer.ID, "acme-billing", nil, at)
+	// A default address, so this rig's ordinary Approve calls succeed: most
+	// of this file's tests are about the decision flow, not about addresses.
+	// The guard on an unreachable source has its own dedicated tests below.
+	src, err := source.New(
+		"01J8XQ2M4E7N9V3B5C6D7F8SRC", customer.ID, "acme-billing",
+		map[shared.Channel]string{shared.ChannelEmail: "billing@acme.test"}, at,
+	)
 	if err != nil {
 		t.Fatalf("source.New: %v", err)
 	}
@@ -120,6 +127,7 @@ func newOperatorRig(t *testing.T) *operatorRig {
 			usecase.NewGate(log, seqIDs(), fixedNow(at)), fixedNow(at),
 		),
 		log:         log,
+		repo:        repo,
 		customer:    customer,
 		admin:       admin,
 		superAdmin:  superAdmin,
@@ -445,5 +453,63 @@ func TestASuperAdminMayDecideToo(t *testing.T) {
 
 	if err := rig.ops.Approve(context.Background(), rig.superAdmin, rig.sourceID); err != nil {
 		t.Fatalf("Approve: %v", err)
+	}
+}
+
+// A source with nowhere to send cannot be approved -- letting it out would
+// make it look like it works when every message it sends is going to fail.
+// Reached through the use case, and the refusal writes no audit row for a
+// decision that never happened, same as every other domain guard here.
+func TestApprovingASourceWithNowhereToSendIsRefused(t *testing.T) {
+	rig := newOperatorRig(t)
+	ctx := context.Background()
+
+	unreachable, err := source.New(
+		"01J8XQ2M4E7N9V3B5C6D7F8UNR", rig.customer.ID, "acme-unreachable", nil,
+		time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatalf("source.New: %v", err)
+	}
+	if err := rig.repo.Create(ctx, unreachable); err != nil {
+		t.Fatalf("seeding the source: %v", err)
+	}
+	wrote := len(rig.log.entries)
+
+	err = rig.ops.Approve(ctx, rig.admin, unreachable.ID)
+	if !errors.Is(err, source.ErrNoReachableAddress) {
+		t.Errorf("err = %v, want it to wrap source.ErrNoReachableAddress", err)
+	}
+	if len(rig.log.entries) != wrote {
+		t.Error("a refused approval still wrote an audit row")
+	}
+}
+
+// Restore is guarded the same way as Approve.
+func TestRestoringASourceWithNowhereToSendIsRefused(t *testing.T) {
+	rig := newOperatorRig(t)
+	ctx := context.Background()
+
+	unreachable, err := source.New(
+		"01J8XQ2M4E7N9V3B5C6D7F8UN2", rig.customer.ID, "acme-unreachable-2", nil,
+		time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatalf("source.New: %v", err)
+	}
+	if err := rig.repo.Create(ctx, unreachable); err != nil {
+		t.Fatalf("seeding the source: %v", err)
+	}
+	if err := rig.ops.Refuse(ctx, rig.admin, unreachable.ID, "no working address"); err != nil {
+		t.Fatalf("Refuse: %v", err)
+	}
+	wrote := len(rig.log.entries)
+
+	err = rig.ops.Restore(ctx, rig.admin, unreachable.ID)
+	if !errors.Is(err, source.ErrNoReachableAddress) {
+		t.Errorf("err = %v, want it to wrap source.ErrNoReachableAddress", err)
+	}
+	if len(rig.log.entries) != wrote {
+		t.Error("a refused restore still wrote an audit row")
 	}
 }

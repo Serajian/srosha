@@ -204,7 +204,10 @@ func TestApprovingClearsAnEarlierRefusal(t *testing.T) {
 	if err := src.Refuse("no working address", at); err != nil {
 		t.Fatalf("Refuse: %v", err)
 	}
-	src.Approve(at.Add(time.Hour))
+	src.AllowCustomAddress = true // otherwise Approve refuses: nowhere to send
+	if err := src.Approve(at.Add(time.Hour)); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
 
 	if src.ReviewNote != "" {
 		t.Errorf("the old refusal is still on it: %q", src.ReviewNote)
@@ -220,7 +223,10 @@ func TestSuspendingKeepsTheApproval(t *testing.T) {
 	src := waiting()
 	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
 
-	src.Approve(at)
+	src.AllowCustomAddress = true // otherwise Approve refuses: nowhere to send
+	if err := src.Approve(at); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
 	if err := src.Suspend(at.Add(time.Hour)); err != nil {
 		t.Fatalf("Suspend: %v", err)
 	}
@@ -244,6 +250,7 @@ func TestRestoringARefusedSourceRecordsTheApproval(t *testing.T) {
 	if err := src.Refuse("no working address", at); err != nil {
 		t.Fatalf("Refuse: %v", err)
 	}
+	src.AllowCustomAddress = true // otherwise Restore refuses: nowhere to send
 	if err := src.Restore(at.Add(time.Hour)); err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
@@ -311,7 +318,10 @@ func TestRefusingAnApprovedSourceIsRefused(t *testing.T) {
 	src := waiting()
 	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
 
-	src.Approve(at)
+	src.AllowCustomAddress = true // otherwise Approve refuses: nowhere to send
+	if err := src.Approve(at); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
 
 	err := src.Refuse("changed my mind", at.Add(time.Hour))
 	if err == nil {
@@ -322,5 +332,67 @@ func TestRefusingAnApprovedSourceIsRefused(t *testing.T) {
 	}
 	if !src.IsActive {
 		t.Error("the failed refusal switched the source off anyway")
+	}
+}
+
+// A source with nowhere to send cannot be approved: activating it would make
+// it look like it works when every message it sends is going to fail.
+func TestApprovingWithNowhereToSendIsRefused(t *testing.T) {
+	src := waiting() // no default addresses, custom addresses not allowed
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	err := src.Approve(at)
+	if !errors.Is(err, source.ErrNoReachableAddress) {
+		t.Errorf("err = %v, want it to wrap source.ErrNoReachableAddress", err)
+	}
+	if src.IsActive || src.IsApproved() || src.IsReviewed() {
+		t.Error("the refused approval changed the source anyway")
+	}
+}
+
+// A default address on any one channel is enough: the source can send to it.
+func TestApprovingWithADefaultAddressSucceeds(t *testing.T) {
+	src := waiting()
+	src.DefaultAddresses = map[shared.Channel]string{shared.ChannelEmail: "ops@acme.test"}
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	if err := src.Approve(at); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
+	if !src.IsActive {
+		t.Error("a source with a default address was not let out")
+	}
+}
+
+// No default is fine too, as long as a message may name where to go.
+func TestApprovingWithCustomAddressAllowedSucceedsWithNoDefaults(t *testing.T) {
+	src := waiting()
+	src.AllowCustomAddress = true
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	if err := src.Approve(at); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
+	if !src.IsActive {
+		t.Error("a source allowed a custom address was not let out")
+	}
+}
+
+// Restore is guarded the same way as Approve: a source switched off has
+// exactly as little to send to as one still in the queue.
+func TestRestoringWithNowhereToSendIsRefused(t *testing.T) {
+	src := waiting()
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	if err := src.Refuse("no working address", at); err != nil {
+		t.Fatalf("Refuse: %v", err)
+	}
+
+	err := src.Restore(at.Add(time.Hour))
+	if !errors.Is(err, source.ErrNoReachableAddress) {
+		t.Errorf("err = %v, want it to wrap source.ErrNoReachableAddress", err)
+	}
+	if src.IsActive {
+		t.Error("the refused restore let the source send anyway")
 	}
 }

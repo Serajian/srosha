@@ -151,7 +151,32 @@ func (h *reviewHandler) show(c *gin.Context) {
 	}
 	c.HTML(http.StatusOK, pageSource, adminSourcePage{
 		adminChrome: chromeFor(actor), Source: src, Senders: h.senders(c, src.ID),
+		Problem: cannotBeLetOut(src),
 	})
+}
+
+// cannotBeLetOut says why the button this page is about to offer -- Approve
+// for a source still in the queue, Restore for one switched off -- would
+// fail, so an operator sees the reason before pressing it rather than after.
+//
+// Asks Source.IsReachable directly rather than calling Approve or Restore to
+// find out: those exist to MOVE a source, and using either as a predicate
+// would mean any future side effect they grow -- a metric, a log line, a
+// call to something -- fires on every page render instead of on a real
+// decision.
+//
+// Restore has a second guard, IsReviewed, that this does not check -- but
+// this handler only ever reaches Restore's branch (below, in the template)
+// once IsReviewed is already true, so reachability is the only way either
+// button can fail from here. If Restore ever grows a guard IsReachable does
+// not cover, this stops being true and has to be revisited.
+func cannotBeLetOut(src *source.Source) string {
+	if src.IsActive || src.IsReachable() {
+		return ""
+	}
+	return "this source has nowhere to send: no default address is set for any " +
+		"channel, and custom addresses are not allowed. Only the customer can " +
+		"fix this, by adding an address."
 }
 
 // approve lets a source send. No reason needed -- the source works, which is

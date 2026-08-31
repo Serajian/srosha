@@ -806,6 +806,56 @@ func TestANewSourceSaysItIsWaitingForApproval(t *testing.T) {
 	}
 }
 
+// A source with no default address and no permission for a custom one cannot
+// possibly be approved -- not by waiting, and not by an operator, who cannot
+// add an address on the customer's behalf either. Telling this customer to
+// simply wait would be the same silent failure review_note exists to end,
+// just reached a different way: nothing here will ever move.
+func TestAWaitingSourceWithNoAddressIsToldToAddOne(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "me@acme.test")
+
+	post(t, p, "/sources", url.Values{"name": {"acme-billing"}}, cookie)
+	id := onlySourceID(t, p)
+
+	got := get(t, p, "/sources/"+id, cookie)
+	whole(t, "/sources/"+id, got)
+
+	if !strings.Contains(got.body, "nobody can approve it yet") {
+		t.Errorf("a source with nowhere to send does not tell the customer to add one:\n%s",
+			got.body)
+	}
+	if !strings.Contains(got.body, `href="/sources/`+id+`/edit"`) {
+		t.Errorf("the message does not point at the edit page:\n%s", got.body)
+	}
+	if strings.Contains(got.body, "it starts working the moment") {
+		t.Error("a source with nowhere to send still says it only needs to wait")
+	}
+}
+
+// A source that already has somewhere to send gets the ordinary message: it
+// really is only waiting.
+func TestAWaitingSourceWithAnAddressGetsTheOrdinaryMessage(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "me@acme.test")
+
+	post(t, p, "/sources", url.Values{
+		"name": {"acme-billing"}, "channel": {"email"}, "address": {"ops@acme.test"},
+	}, cookie)
+	id := onlySourceID(t, p)
+
+	got := get(t, p, "/sources/"+id, cookie)
+	whole(t, "/sources/"+id, got)
+
+	if !strings.Contains(got.body, "it starts working the moment") {
+		t.Errorf("a source with an address does not get the ordinary waiting message:\n%s",
+			got.body)
+	}
+	if strings.Contains(got.body, "nobody can approve it yet") {
+		t.Error("a source that already has an address is still told to add one")
+	}
+}
+
 // Ownership, from the outside. Somebody else's source is not found, and the
 // answer does not differ from an id that never existed.
 func TestACustomerCannotOpenSomebodyElsesSource(t *testing.T) {
@@ -876,7 +926,10 @@ func TestARefusedOrSuspendedSourceDoesNotReadAsWaitingOnTheList(t *testing.T) {
 	if err := refused.Refuse("no working address", now); err != nil {
 		t.Fatalf("Refuse: %v", err)
 	}
-	suspended.Approve(now)
+	suspended.AllowCustomAddress = true // otherwise Approve refuses: nowhere to send
+	if err := suspended.Approve(now); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
 	if err := suspended.Suspend(now); err != nil {
 		t.Fatalf("Suspend: %v", err)
 	}

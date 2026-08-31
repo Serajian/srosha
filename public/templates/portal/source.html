@@ -16,10 +16,20 @@
     <p class="problem" role="status">
       An operator switched this source off. Nothing it sends will go out.
     </p>
-  {{else}}
+  {{else if .Source.IsReachable}}
     <p class="problem" role="status">
       Waiting for approval. Set it up now — it starts working the moment
       somebody here approves it.
+    </p>
+  {{else}}
+    {{/* IsReachable is the same question Approve itself asks -- see
+         internal/core/domain/source/entity.go -- asked here rather than
+         re-derived, so the two cannot drift apart. */}}
+    <p class="problem" role="status">
+      Waiting for approval, but nobody can approve it yet: no default address
+      is set for any channel, and custom addresses are not allowed. Add an
+      address on the <a href="/sources/{{.Source.ID}}/edit">edit page</a> —
+      that part is yours to finish, not an operator's.
     </p>
   {{end}}
 {{end}}

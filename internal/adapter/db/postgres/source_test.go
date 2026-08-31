@@ -45,7 +45,9 @@ func letOut(t *testing.T, repo *postgres.SourceRepository, id string) {
 	if err != nil {
 		t.Fatalf("ReadByID before approving: %v", err)
 	}
-	s.Approve(time.Now().UTC())
+	if err := s.Approve(time.Now().UTC()); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
 	if err := repo.UpdateReview(ctx, s); err != nil {
 		t.Fatalf("UpdateReview approving: %v", err)
 	}

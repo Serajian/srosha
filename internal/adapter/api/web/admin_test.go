@@ -421,7 +421,10 @@ func signedInAs(t *testing.T, a *testAdmin, email string, role user.Role) *http.
 	return cookie
 }
 
-// aSourceInTheQueue registers one source waiting for a decision.
+// aSourceInTheQueue registers one source waiting for a decision, with a
+// default address -- most of this file's tests are about the review flow
+// itself, and Approve now refuses a source with nowhere to send. The
+// dedicated test for THAT guard builds its own source without one, below.
 //
 // The id is built from the name's first letter, so two sources in one test
 // need two different first letters. Asserted rather than assumed: "sending"
@@ -440,8 +443,32 @@ func aSourceInTheQueue(t *testing.T, a *testAdmin, name string) string {
 		id,
 		shared.ID("01K0OWNER00000000000000AA"),
 		name,
-		nil,
+		map[shared.Channel]string{shared.ChannelEmail: name + "@acme.test"},
 		now,
+	)
+	if err != nil {
+		t.Fatalf("source.New: %v", err)
+	}
+	if err := a.sources.Create(context.Background(), src); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	return src.ID
+}
+
+// aSourceWithNoAddress registers one source waiting for a decision that has
+// nowhere to send: no default address, custom addresses not allowed. It is
+// what the "cannot be approved yet" page test needs, and the only caller
+// that wants it -- every other test wants aSourceInTheQueue's reachable one.
+func aSourceWithNoAddress(t *testing.T, a *testAdmin, name string) string {
+	t.Helper()
+
+	id := "01K0SRCADMIN00000000000" + name[:1]
+	if _, err := a.sources.ReadByID(context.Background(), id); err == nil {
+		t.Fatalf("two sources in one test start with %q, so they share an id", name[:1])
+	}
+
+	src, err := source.New(
+		id, shared.ID("01K0OWNER00000000000000AA"), name, nil, time.Now().UTC(),
 	)
 	if err != nil {
 		t.Fatalf("source.New: %v", err)
@@ -1110,5 +1137,73 @@ func TestASourceWithNoSendersShowsTheEmptyState(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("the empty state does not say %q:\n%s", want, got.body)
 		}
+	}
+}
+
+// --- where a source sends ----------------------------------------------------
+
+// The most decision-relevant fact on the page: where a source's messages go
+// by default. Shown in full -- unlike a delivery's masked recipient at
+// /sources/:id/log, this is the customer's own declared configuration, not a
+// third party.
+func TestTheSourcePageShowsItsDefaultAddresses(t *testing.T) {
+	a := newTestAdmin(t)
+	cookie := signedInAs(t, a, "ops@srosha.ir", user.RoleAdmin)
+	id := aSourceInTheQueue(t, a, "acme") // seeds acme@acme.test on email
+
+	got := aget(t, a, "/sources/"+id, cookie)
+	whole(t, "/sources/"+id, got)
+
+	for _, want := range []string{"acme@acme.test", "email"} {
+		if !strings.Contains(got.body, want) {
+			t.Errorf("the source page does not show its default address %q:\n%s", want, got.body)
+		}
+	}
+}
+
+// A source with no addresses at all is the ordinary case at registration --
+// the page says so rather than looking like something is missing.
+func TestASourceWithNoDefaultAddressesShowsTheEmptyState(t *testing.T) {
+	a := newTestAdmin(t)
+	cookie := signedInAs(t, a, "ops@srosha.ir", user.RoleAdmin)
+	id := aSourceWithNoAddress(t, a, "bare")
+
+	got := aget(t, a, "/sources/"+id, cookie)
+	whole(t, "/sources/"+id, got)
+
+	body := strings.ToLower(got.body)
+	if !strings.Contains(body, "no default addresses configured") {
+		t.Errorf("the page does not say there are none:\n%s", got.body)
+	}
+}
+
+// A source with nowhere to send cannot be approved -- neither a default
+// address nor permission for a custom one. The operator sees why BEFORE
+// pressing Approve, not after it fails: the same words the domain's own
+// guard would return, previewed rather than duplicated on the template.
+func TestASourceWithNowhereToSendSaysSoBeforeApproving(t *testing.T) {
+	a := newTestAdmin(t)
+	cookie := signedInAs(t, a, "ops@srosha.ir", user.RoleAdmin)
+	id := aSourceWithNoAddress(t, a, "unreachable")
+
+	got := aget(t, a, "/sources/"+id, cookie)
+	whole(t, "/sources/"+id, got)
+
+	if !strings.Contains(got.body, "Only the customer can fix this, by adding an address") {
+		t.Errorf("the page does not say who can fix it:\n%s", got.body)
+	}
+}
+
+// A source that CAN be approved gets no such warning.
+func TestASourceThatCanBeApprovedShowsNoWarning(t *testing.T) {
+	a := newTestAdmin(t)
+	cookie := signedInAs(t, a, "ops@srosha.ir", user.RoleAdmin)
+	id := aSourceInTheQueue(t, a, "acme")
+
+	got := aget(t, a, "/sources/"+id, cookie)
+	whole(t, "/sources/"+id, got)
+
+	if strings.Contains(got.body, "Only the customer can fix this") {
+		t.Errorf("a source that can be approved is shown a warning anyway:\n%s", got.body)
 	}
 }

@@ -154,8 +154,23 @@ func (s *Source) EnsureActive() error {
 func (s *Source) IsApproved() bool { return s.ApprovedAt != nil }
 
 // Approve lets this source send. It is the only method here that turns
-// IsActive on.
-func (s *Source) Approve(now time.Time) {
+// IsActive on from a fresh queue entry.
+//
+// Refused when the source has nowhere to send -- see IsReachable -- because
+// approving it would make it look like it works when every message it sends
+// is going to fail. The message names what is missing and who can fix it: an
+// operator cannot add an address on somebody else's behalf, only the
+// customer can.
+func (s *Source) Approve(now time.Time) error {
+	if !s.IsReachable() {
+		return errs.InvalidInputErr(
+			"this source has nowhere to send: no default address is set for any " +
+				"channel, and custom addresses are not allowed. Only the customer can " +
+				"fix this, by adding an address.").
+			WithErr(ErrNoReachableAddress).
+			WithStr(fmt.Sprintf("source %q", s.ID))
+	}
+
 	if s.ApprovedAt == nil {
 		s.ApprovedAt = &now
 	}
@@ -163,6 +178,7 @@ func (s *Source) Approve(now time.Time) {
 	s.ReviewNote = ""
 	s.IsActive = true
 	s.UpdatedAt = now
+	return nil
 }
 
 // Refuse turns a source away, with a reason the customer will read.
@@ -239,6 +255,17 @@ func (s *Source) Restore(now time.Time) error {
 			WithStr(fmt.Sprintf("source %q", s.ID))
 	}
 
+	// Same guard as Approve, and for the same reason: a source switched off
+	// has exactly as little to send to as one still in the queue.
+	if !s.IsReachable() {
+		return errs.InvalidInputErr(
+			"this source has nowhere to send: no default address is set for any " +
+				"channel, and custom addresses are not allowed. Only the customer can " +
+				"fix this, by adding an address.").
+			WithErr(ErrNoReachableAddress).
+			WithStr(fmt.Sprintf("source %q", s.ID))
+	}
+
 	if s.ApprovedAt == nil {
 		s.ApprovedAt = &now
 	}
@@ -252,6 +279,20 @@ func (s *Source) Restore(now time.Time) error {
 // IsReviewed reports whether an operator has ever decided about this source.
 // It is the queue's question, and not the same one as IsApproved.
 func (s *Source) IsReviewed() bool { return s.ReviewedAt != nil }
+
+// IsReachable reports whether this source has anywhere to send a message: a
+// configured default address on at least one channel, or permission to be
+// given one per request. Either alone is enough -- a default can be sent to,
+// and a custom address can be named -- so this is false only for the
+// combination of neither.
+//
+// Approve and Restore refuse to turn a source on when this is false, and the
+// portal's own source page asks the same question rather than re-deriving
+// the rule: a source registered with nothing set up yet is the ordinary
+// case, not an error, right up until somebody tries to let it out.
+func (s *Source) IsReachable() bool {
+	return len(s.DefaultAddresses) > 0 || s.AllowCustomAddress
+}
 
 // Resolve turns one requested channel into the recipients to deliver to: the
 // given address if this source may name one, otherwise its configured default.

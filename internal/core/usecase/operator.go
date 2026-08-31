@@ -93,7 +93,12 @@ func (o *Operators) Approve(ctx context.Context, actor *user.User, id string) er
 		return err
 	}
 
-	src.Approve(o.now())
+	// Validated before the gate, like every other decision here: a source
+	// with nowhere to send must write no audit row for an approval that did
+	// not happen.
+	if err := src.Approve(o.now()); err != nil {
+		return err
+	}
 
 	act := Act{Verb: ActSourceApprove, TargetType: "source", TargetID: src.ID}
 	return o.gate.Do(ctx, actor, act, func(ctx context.Context) error {

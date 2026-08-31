@@ -15,9 +15,17 @@ var (
 
 	ErrMissingSource   = errors.New("source id is required")
 	ErrNoReason        = errors.New("source: a refusal needs a reason")
-	ErrAlreadyApproved = errors.New("source: an approved source cannot be refused, only suspended")
-	ErrNotApproved     = errors.New("source: a source that was never approved cannot be suspended")
-	ErrNotReviewed     = errors.New("source: a source nobody has decided about cannot be restored")
+	ErrAlreadyApproved = errors.New(
+		"source: an approved source cannot be refused, only suspended",
+	)
+	ErrNotApproved = errors.New(
+		"source: a source that was never approved cannot be suspended",
+	)
+	ErrNotReviewed = errors.New(
+		"source: a source nobody has decided about cannot be restored",
+	)
+	ErrNoReachableAddress = errors.New(
+		"source: has no default address and does not allow a custom one, so it cannot be activated")
 )
 
 // Sentinel errors of the API keys a source authenticates with.
