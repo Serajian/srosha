@@ -21,11 +21,12 @@ type Console struct {
 	// PortalAddr is where the customer pages are served. Public.
 	PortalAddr PortalAddr
 
-	// AdminAddr is where the operator pages are served. Never published --
-	// it defaults to the loopback interface rather than every interface, so
-	// staying off the network is a property of the process and not only a
-	// deployment fact. Health is a third listener on HTTP.Addr, because the
-	// portal is public and readiness is not.
+	// AdminAddr is where the operator pages are served. Public too, on their
+	// own host: what keeps a customer out is a cookie scoped to that host and
+	// the live role check, not the network -- see docs/ARCHITECTURE.md. The
+	// default is loopback because that is right for a laptop, and it is only
+	// a default. Health is a third listener on HTTP.Addr, because the pages
+	// are public and readiness is not.
 	AdminAddr AdminAddr
 
 	// AdminListLimit bounds every list a panel page reads: the queue, all
