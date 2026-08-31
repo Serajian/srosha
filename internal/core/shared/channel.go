@@ -24,6 +24,7 @@ const (
 	ChannelBale     Channel = "bale"
 	ChannelWhatsApp Channel = "whatsapp"
 	ChannelMatrix   Channel = "matrix"
+	ChannelGotify   Channel = "gotify"
 	ChannelFCM      Channel = "fcm"
 	ChannelAPNs     Channel = "apns"
 )
@@ -36,14 +37,14 @@ const (
 func AllChannels() []Channel {
 	return []Channel{
 		ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp,
-		ChannelMatrix, ChannelFCM, ChannelAPNs,
+		ChannelMatrix, ChannelGotify, ChannelFCM, ChannelAPNs,
 	}
 }
 
 func (c Channel) Valid() bool {
 	switch c {
 	case ChannelEmail, ChannelTelegram, ChannelBale, ChannelWhatsApp,
-		ChannelMatrix, ChannelFCM, ChannelAPNs:
+		ChannelMatrix, ChannelGotify, ChannelFCM, ChannelAPNs:
 		return true
 	default:
 		return false
@@ -134,6 +135,17 @@ func (c Channel) ValidateAddress(address string) error {
 			return invalidAddress(c, t, "not a matrix room id")
 		}
 
+	case ChannelGotify:
+		// The application id Gotify assigns when an application is created:
+		// its own primary key, a positive integer starting at 1 -- based on
+		// Gotify's documented data model, not verified against a live server.
+		// There is no other documented shape for it, so only that much is
+		// checked; a rule invented past this would one day refuse an id that
+		// works.
+		if !isGotifyAppID(t) {
+			return invalidAddress(c, t, "not a gotify application id")
+		}
+
 	default:
 		// Reached only if a channel constant is added above without a case
 		// here. Failing loudly beats silently accepting anything.
@@ -199,6 +211,15 @@ func isMatrixRoom(s string) bool {
 
 	name, server, found := strings.Cut(local, ":")
 	return found && name != "" && server != ""
+}
+
+// isGotifyAppID checks the value fits a positive integer, which is what
+// Gotify's own application id is: an auto-incrementing primary key starting
+// at 1. Unlike isChatID, negative and zero are refused -- there is no
+// application numbered that way.
+func isGotifyAppID(s string) bool {
+	n, err := strconv.ParseUint(s, 10, 64)
+	return err == nil && n > 0
 }
 
 func isE164(s string) bool {

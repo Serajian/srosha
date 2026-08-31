@@ -226,6 +226,12 @@ func TestEveryWiredChannelResolves(t *testing.T) {
 			}},
 			config: []byte(`{"homeserver":"https://matrix.theirs.test"}`),
 		},
+		shared.ChannelGotify: {
+			own: sender.Fallback{Gotify: sender.Gotify{
+				Token: ours, ServerURL: "https://gotify.acme.test",
+			}},
+			config: []byte(`{"server_url":"https://gotify.theirs.test"}`),
+		},
 		shared.ChannelWhatsApp: {
 			own: sender.Fallback{WhatsApp: sender.WhatsApp{
 				Token: ours, PhoneNumberID: "123456789",

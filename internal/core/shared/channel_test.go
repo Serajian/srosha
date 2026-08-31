@@ -42,7 +42,7 @@ func TestAllChannelsCoversEveryConstant(t *testing.T) {
 			t.Errorf("%q is listed in AllChannels but Valid() says otherwise", c)
 		}
 	}
-	if got := len(shared.AllChannels()); got != 7 {
+	if got := len(shared.AllChannels()); got != 8 {
 		t.Errorf("AllChannels has %d entries; update this test when adding a channel", got)
 	}
 }
@@ -295,6 +295,33 @@ func TestAMatrixAddressIsARoom(t *testing.T) {
 	for name, address := range bad {
 		t.Run(name, func(t *testing.T) {
 			if err := shared.ChannelMatrix.ValidateAddress(address); err == nil {
+				t.Errorf("ValidateAddress(%q) was accepted", address)
+			}
+		})
+	}
+}
+
+// Gotify's application id is a positive integer, its own primary key. There is
+// no other documented shape for it, so only that much is checked.
+func TestAGotifyAddressIsAPositiveInteger(t *testing.T) {
+	good := []string{"1", "2", "42", "9999999999"}
+	for _, address := range good {
+		if err := shared.ChannelGotify.ValidateAddress(address); err != nil {
+			t.Errorf("ValidateAddress(%q) = %v", address, err)
+		}
+	}
+
+	bad := map[string]string{
+		"zero":           "0",
+		"negative":       "-1",
+		"not a number":   "abc",
+		"a float":        "1.5",
+		"nothing at all": "",
+		"with spaces":    "1 2",
+	}
+	for name, address := range bad {
+		t.Run(name, func(t *testing.T) {
+			if err := shared.ChannelGotify.ValidateAddress(address); err == nil {
 				t.Errorf("ValidateAddress(%q) was accepted", address)
 			}
 		})

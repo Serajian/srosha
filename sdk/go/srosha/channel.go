@@ -15,6 +15,7 @@ const (
 	ChannelBale     Channel = "bale"
 	ChannelWhatsApp Channel = "whatsapp"
 	ChannelMatrix   Channel = "matrix"
+	ChannelGotify   Channel = "gotify"
 	ChannelFCM      Channel = "fcm"
 	ChannelAPNs     Channel = "apns"
 )
@@ -64,6 +65,11 @@ func WhatsApp(address string) Route { return Route{Channel: ChannelWhatsApp, Add
 // no way to message a person -- reaching one means finding or creating a
 // private room with them, which is conversation state srosha does not keep.
 func Matrix(room string) Route { return Route{Channel: ChannelMatrix, Address: room} }
+
+// Gotify routes to an application id on a self-hosted Gotify server.
+func Gotify(applicationID string) Route {
+	return Route{Channel: ChannelGotify, Address: applicationID}
+}
 
 // FCM routes to an Android device token.
 func FCM(deviceToken string) Route { return Route{Channel: ChannelFCM, Address: deviceToken} }

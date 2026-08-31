@@ -14,6 +14,7 @@ type Sender struct {
 	Bale     env.Secret
 	WhatsApp WhatsApp
 	Matrix   Matrix
+	Gotify   Gotify
 
 	// FCM is the service account json itself, already decoded. See LoadSender.
 	FCM env.Secret
@@ -42,6 +43,14 @@ type APNs struct {
 type Matrix struct {
 	Token      env.Secret
 	Homeserver string
+}
+
+// Gotify is srosha's own application. Two values, because the server is
+// self-hosted and there is no address that is right for everybody the way
+// there is one api.telegram.org.
+type Gotify struct {
+	Token     env.Secret
+	ServerURL string
 }
 
 // WhatsApp is srosha's own business number. Two values and not one, because Meta
@@ -80,6 +89,10 @@ func LoadSender(r *env.Reader) Sender {
 		Matrix: Matrix{
 			Token:      r.Secret("SENDER_MATRIX_TOKEN", ""),
 			Homeserver: r.Str("SENDER_MATRIX_HOMESERVER", ""),
+		},
+		Gotify: Gotify{
+			Token:     r.Secret("SENDER_GOTIFY_TOKEN", ""),
+			ServerURL: r.Str("SENDER_GOTIFY_SERVER_URL", ""),
 		},
 		FCM: fcmServiceAccount(r),
 		APNs: APNs{

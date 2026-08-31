@@ -42,6 +42,7 @@ var channelsOut = map[Channel]pb.Channel{
 	ChannelBale:     pb.Channel_CHANNEL_BALE,
 	ChannelWhatsApp: pb.Channel_CHANNEL_WHATSAPP,
 	ChannelMatrix:   pb.Channel_CHANNEL_MATRIX,
+	ChannelGotify:   pb.Channel_CHANNEL_GOTIFY,
 	ChannelFCM:      pb.Channel_CHANNEL_FCM,
 	ChannelAPNs:     pb.Channel_CHANNEL_APNS,
 }

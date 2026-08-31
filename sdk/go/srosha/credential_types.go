@@ -118,6 +118,34 @@ func (c MatrixCredential) String() string {
 	return fmt.Sprintf("MatrixCredential{Homeserver:%q}", c.Homeserver)
 }
 
+// GotifyCredential is an application on a self-hosted Gotify server.
+//
+// The server url is the one address in this service a source chooses rather
+// than a constant somewhere: Gotify is self-hosted, so there is no host that
+// is right for everybody. It must be https -- the application token travels
+// as a query parameter, not a header, so it would be a token in the clear
+// over plain http.
+//
+// Which application receives a message is decided by Token alone under
+// Gotify's documented API -- see the service's own gotify package for what
+// that means for the address a Route to this channel carries.
+type GotifyCredential struct {
+	ServerURL string
+
+	Token string `json:"-"`
+}
+
+func (c GotifyCredential) channel() Channel { return ChannelGotify }
+func (c GotifyCredential) secret() string   { return c.Token }
+
+func (c GotifyCredential) Settings() (string, error) {
+	return marshal(map[string]any{"server_url": c.ServerURL})
+}
+
+func (c GotifyCredential) String() string {
+	return fmt.Sprintf("GotifyCredential{ServerURL:%q}", c.ServerURL)
+}
+
 // WhatsAppCredential is a business number.
 //
 // Two values and not one, because Meta identifies the sending number separately

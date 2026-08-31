@@ -162,7 +162,7 @@ Every key, with its defaults and which binary needs it, is documented in
 | ratelimit | `NOTIF_RATELIMIT_PER_MINUTE` | ✅ | — | — |
 | crypto | `NOTIF_CRYPTO_KEYS`, `NOTIF_CRYPTO_KEY_ID` | ✅ | ✅ | ✅ |
 | dispatch | `NOTIF_DISPATCH_MAX_ATTEMPTS`, `NOTIF_DISPATCH_ACK_WAIT`, `NOTIF_DISPATCH_MAX_IN_FLIGHT` | — | ✅ | — |
-| sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN`, `NOTIF_SENDER_WHATSAPP_PHONE_NUMBER_ID`, `NOTIF_SENDER_MATRIX_TOKEN`, `NOTIF_SENDER_MATRIX_HOMESERVER`, `NOTIF_SENDER_FCM_SERVICE_ACCOUNT`, `NOTIF_SENDER_APNS_*` | — | ✅ | — |
+| sender | `NOTIF_SENDER_SMTP_*`, `NOTIF_SENDER_TELEGRAM_TOKEN`, `NOTIF_SENDER_BALE_TOKEN`, `NOTIF_SENDER_WHATSAPP_TOKEN`, `NOTIF_SENDER_WHATSAPP_PHONE_NUMBER_ID`, `NOTIF_SENDER_MATRIX_TOKEN`, `NOTIF_SENDER_MATRIX_HOMESERVER`, `NOTIF_SENDER_GOTIFY_TOKEN`, `NOTIF_SENDER_GOTIFY_SERVER_URL`, `NOTIF_SENDER_FCM_SERVICE_ACCOUNT`, `NOTIF_SENDER_APNS_*` | — | ✅ | — |
 | webhook policy | `NOTIF_WEBHOOK_ALLOW_INSECURE_URL`, `NOTIF_WEBHOOK_ALLOW_PRIVATE_URL` | ✅ | ✅ | ✅ |
 | webhook | `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ | — |
 | telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ | ✅ |
@@ -181,6 +181,17 @@ Matrix needs a homeserver as well as a token, and it is the one address in this
 service a source chooses rather than a constant somewhere: the protocol is
 federated, so there is no host that is right for everybody. It must be https —
 an access token over plain http is a token in the clear.
+
+Gotify needs a server url as well as an application token, and it is the one
+address in this service a source chooses rather than a constant somewhere:
+Gotify is self-hosted, so there is no host that is right for everybody. It
+must be https — the application token travels as a query parameter, not a
+header, so an http address would carry it in the clear.
+
+The application token is the secret, sealed like every other credential's. A
+source's registered application id — the recipient this credential's messages
+go to — is not part of the credential at all; it is the delivery address,
+supplied per message the same way a phone number or a chat id is.
 
 `NOTIF_SENDER_FCM_SERVICE_ACCOUNT` is **base64 of the whole service account json**,
 and it is the only key in this file that is encoded. A service account is
