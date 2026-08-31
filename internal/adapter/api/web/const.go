@@ -1,5 +1,13 @@
 package web
 
+// surfacePortal and surfaceAdmin name each surface's own directories under
+// public/ -- its templates and its assets. Neither can reach the other's; see
+// newPageRender and browserFiles.
+const (
+	surfacePortal = "portal"
+	surfaceAdmin  = "admin"
+)
+
 // sessionCookieName is deliberately not "session": a name that says which
 // service it belongs to is one less thing to guess at in a browser's cookie
 // list.

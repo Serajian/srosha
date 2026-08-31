@@ -1,17 +1,25 @@
-// Package portal is the customer's surface: where somebody signs up, signs in,
-// and runs their own sources.
+// portal.go is the customer's surface: PortalDeps and NewPortal -- where
+// somebody signs up, signs in, and runs their own sources.
 //
 // It is public, and it is the only surface a browser reaches from outside. The
-// operator's pages are web/admin -- a separate package on a separate listener,
-// which does not import this one and is not imported by it. Routing that put
-// both on one engine would be one mistake away from handing source creation to
-// the internet.
+// operator's pages are admin.go: a second struct in this same package, on a
+// listener of its own. `web/admin` does not exist and will not -- it was tried
+// and `make arch-check` refused it, correctly. What keeps the two apart is a
+// separate engine each, a role check on the admin guard, and a listener that
+// is never published; see docs/ARCHITECTURE.md.
+//
+// Routing that put both on one engine would be one mistake away from handing
+// source creation to the internet, and NewPortal returns a PortalHandler
+// rather than an http.Handler so it cannot be handed to the wrong listener.
 //
 // One file, one type, and no type's methods leave the file that declares it:
 //
-//	portal.go   Deps and New -- what exists, and who may reach it
-//	signin.go   signInHandler   getting in
-//	account.go  accountHandler  being in
+//	portal.go            PortalDeps and NewPortal
+//	portal_signin.go     signInHandler    getting in
+//	portal_account.go    accountHandler   being in
+//	portal_source.go     sourceHandler    a customer's own sources
+//	portal_key.go        keyHandler       their keys
+//	portal_identity.go   identityHandler  their senders and callback
 package web
 
 import (
@@ -83,23 +91,23 @@ var inside = chrome{SignedIn: true}
 // Every route the portal answers is in the one table below, so nobody has to
 // grep the package to find out what it serves or which pages need a session.
 // Every mutating route is POST, so a link cannot cause one.
-func NewPortal(d PortalDeps) (http.Handler, error) {
+func NewPortal(d PortalDeps) (PortalHandler, error) {
 	if err := d.validate(); err != nil {
-		return nil, err
+		return PortalHandler{}, err
 	}
 
-	pages, err := newPageRender(surface,
+	pages, err := newPageRender(surfacePortal,
 		pageSignIn, pageCode, pageAccount,
 		pageSources, pageSourceNew, pageSource, pageSourceEdit,
 		pageKeys, pageKeyIssued,
 		pageSenders, pageCallback, pageCallbackSecret,
 	)
 	if err != nil {
-		return nil, err
+		return PortalHandler{}, err
 	}
-	assets, err := browserFiles(surface)
+	assets, err := browserFiles(surfacePortal)
 	if err != nil {
-		return nil, err
+		return PortalHandler{}, err
 	}
 
 	engine := newEngine(engineConfig{Debug: d.Debug, Render: pages, Log: d.Log})
@@ -147,5 +155,5 @@ func NewPortal(d PortalDeps) (http.Handler, error) {
 	// --- files a browser fetches -----------------------------------------
 	engine.StaticFS(pathStatic, http.FS(assets))
 
-	return engine, nil
+	return PortalHandler{engine}, nil
 }

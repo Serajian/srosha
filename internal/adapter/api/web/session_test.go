@@ -46,14 +46,25 @@ func person(t *testing.T, role user.Role) *user.User {
 
 // behind builds one guarded route and reports what a request carrying a cookie
 // gets, and whether the page ran.
-func behind(t *testing.T, may may, u *user.User) (status int, ran bool) {
+func behind(t *testing.T, rule may, u *user.User) (status int, ran bool) {
 	t.Helper()
+
+	rec, ran := guarded(t, rule, u)
+	return rec.Code, ran
+}
+
+// guarded is behind with the whole response, for the tests that need to know
+// what happened to the cookie.
+func guarded(t *testing.T, rule may, u *user.User) (*httptest.ResponseRecorder, bool) {
+	t.Helper()
+
+	var ran bool
 
 	gin.SetMode(gin.TestMode)
 	sessions := newSessions(whoever{u: u}, false)
 
 	engine := gin.New()
-	engine.GET("/x", sessions.guard(may, "/signin"), func(c *gin.Context) {
+	engine.GET("/x", sessions.guard(rule, "/signin"), func(c *gin.Context) {
 		ran = true
 		c.Status(http.StatusOK)
 	})
@@ -63,7 +74,66 @@ func behind(t *testing.T, may may, u *user.User) (status int, ran bool) {
 
 	rec := httptest.NewRecorder()
 	engine.ServeHTTP(rec, req)
-	return rec.Code, ran
+	return rec, ran
+}
+
+// cleared reports whether the response told the browser to drop the session
+// cookie.
+func cleared(rec *httptest.ResponseRecorder) bool {
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == sessionCookieName && c.Value == "" {
+			return true
+		}
+	}
+	return false
+}
+
+// An admin who opens a super_admin page is refused and STAYS SIGNED IN.
+//
+// Clearing the cookie on every refusal is about not telling a customer that
+// the admin listener answers at all -- see may.endsSession. Whoever is asking
+// here has already proven they are an operator; signing them out costs them
+// their session mid-task and an emailed code to get it back, and hides
+// nothing they cannot already see in the nav.
+func TestARefusedSuperAdminPageKeepsTheOperatorSignedIn(t *testing.T) {
+	rec, ran := guarded(t, superAdmin, person(t, user.RoleAdmin))
+
+	if ran {
+		t.Fatal("an admin reached a page guarded for super_admins")
+	}
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("status = %d, want a redirect", rec.Code)
+	}
+	if cleared(rec) {
+		t.Error("an admin was signed out for opening a page they may not open")
+	}
+}
+
+// The other half, and the one that must not change: under the operator rule a
+// refusal still ends the session, because the caller may be a customer.
+func TestARefusedOperatorPageStillEndsTheSession(t *testing.T) {
+	rec, _ := guarded(t, operator, person(t, user.RoleCustomer))
+	if !cleared(rec) {
+		t.Error("a customer refused by the operator rule kept their cookie")
+	}
+}
+
+// A session the core will not answer for is cleared under every rule: there is
+// nothing left to keep.
+func TestAStaleSessionIsClearedUnderEveryRule(t *testing.T) {
+	for name, rule := range map[string]may{
+		"anybody": anybody, "operator": operator, "superAdmin": superAdmin,
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec, ran := guarded(t, rule, nil)
+			if ran {
+				t.Fatal("a page ran for a session the core does not know")
+			}
+			if !cleared(rec) {
+				t.Error("a stale cookie was left in the browser")
+			}
+		})
+	}
 }
 
 // THE boundary between a customer and the admin surface.

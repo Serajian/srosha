@@ -1,0 +1,38 @@
+{{define "content"}}
+<h2 class="head">All sources</h2>
+<p class="sub">Every source, whatever state it is in.</p>
+
+<nav class="nav filters" aria-label="State">
+  <a href="/sources"{{if not .Selected}} aria-current="page"{{end}}>All</a>
+  <a href="/sources?state=waiting"{{if eq .Selected "waiting"}} aria-current="page"{{end}}>Waiting</a>
+  <a href="/sources?state=sending"{{if eq .Selected "sending"}} aria-current="page"{{end}}>Sending</a>
+  <a href="/sources?state=suspended"{{if eq .Selected "suspended"}} aria-current="page"{{end}}>Suspended</a>
+  <a href="/sources?state=refused"{{if eq .Selected "refused"}} aria-current="page"{{end}}>Refused</a>
+</nav>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+{{if not .Sources}}
+  <div class="empty"><h3>{{if .Selected}}No sources in that state{{else}}No sources yet{{end}}</h3></div>
+{{else}}
+  <ul class="cards">
+    {{range .Sources}}
+    <li class="card">
+      <a class="nm" href="/sources/{{.ID}}">{{.Name}}</a>
+      <span class="id">{{.ID}}</span>
+      {{if .IsActive}}
+        <span class="pill ok">Sending</span>
+      {{else if .IsReviewed}}
+        {{if .IsApproved}}
+          <span class="pill off">Suspended</span>
+        {{else}}
+          <span class="pill bad">Refused</span>
+        {{end}}
+      {{else}}
+        <span class="pill hold">Waiting</span>
+      {{end}}
+    </li>
+    {{end}}
+  </ul>
+{{end}}
+{{end}}

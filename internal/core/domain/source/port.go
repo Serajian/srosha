@@ -20,6 +20,16 @@ type Repository interface {
 	// between the two is which columns a caller can reach. A name that hid that
 	// difference would be the bug.
 	UpdateSettings(ctx context.Context, s *Source) error
+
+	// UpdateReview writes an operator's decision: the switch, the approval
+	// record, and the reason. It cannot reach a customer's own columns, which
+	// is the same promise UpdateSettings makes in the other direction.
+	UpdateReview(ctx context.Context, s *Source) error
+
+	// ListForReview is the queue. ListAll is everything, for the page that
+	// filters.
+	ListForReview(ctx context.Context) ([]Source, error)
+	ListAll(ctx context.Context) ([]Source, error)
 }
 
 // KeyRepository is the authentication path, and only that. Issuing, listing and

@@ -1,11 +1,21 @@
 // Package web is the shared half of the html surfaces: the engine they are
 // built on, the cookie they share, and the way a page becomes a response.
 //
-// It serves no routes itself. Each surface is a subpackage that mounts its own
-// engine -- `web/portal` today, `web/admin` next -- and they do not import each
-// other. That is deliberate: the two audiences could not be further apart, and
-// a shared package would put every admin handler in reach of the portal's route
-// table, one typo from being mounted there.
+// It serves no routes itself. Each surface is a STRUCT in this package that
+// builds an engine of its own -- NewPortal and NewAdmin -- and they share the
+// code and never an instance.
+//
+// Two structs and not two packages, which was tried twice and refused twice:
+// `web/portal` and then `web/admin` would each have to import `web` for the
+// engine, the session and the guard, and `make arch-check` allows a parent to
+// import its subpackage and not the reverse. See docs/ARCHITECTURE.md, "Two
+// surfaces in one binary, and what keeps them apart".
+//
+// What a package would have added is a compiler that refuses to let one
+// surface reach into the other's route table -- every admin handler is in
+// scope from portal.go, one typo from being mounted there. That is held by
+// TestNoAdminRouteAnswersOnThePortal instead, which reads the admin engine's
+// own route table back and asserts each route 404s on the portal's handler.
 //
 // Gin is confined to this adapter. Nothing in core, infra or registry knows it
 // exists, and gin.Engine satisfies http.Handler, so registry serves a surface
@@ -37,6 +47,28 @@ type SignIn interface {
 	Whoami(ctx context.Context, sessionID shared.ID) (*user.User, error)
 	End(ctx context.Context, sessionID shared.ID) error
 }
+
+// PortalHandler and AdminHandler are what NewPortal and NewAdmin hand back.
+//
+// Two distinct types rather than http.Handler twice, and the reason is the one
+// mistake this whole section of docs/ARCHITECTURE.md exists to prevent: the
+// two handlers go to two listeners, one published to the internet and one
+// bound to loopback, and until these types existed swapping them in
+// bootstrap.Console compiled, passed every test, and served the admin panel on
+// the public port. Now it does not compile.
+//
+// A struct wrapping the handler, not `type PortalHandler http.Handler`: two
+// interface types with the same method set are assignable to each other, so
+// the named-interface version would have let the swap through unchanged. Two
+// struct types are not.
+//
+// The addresses are typed for the same reason -- settings.PortalAddr and
+// settings.AdminAddr -- because swapping only those would have been the same
+// outage with the handlers left alone.
+type (
+	PortalHandler struct{ http.Handler }
+	AdminHandler  struct{ http.Handler }
+)
 
 // engineConfig is what every surface's engine is built from.
 type engineConfig struct {

@@ -16,6 +16,11 @@ type Act struct {
 
 	TargetType string
 	TargetID   string
+
+	// Note is why, when the verb does not say it on its own -- a refusal's
+	// reason, or what a role change was for. Empty is ordinary: approving needs
+	// no justification.
+	Note string
 }
 
 // AuditEntry is one row of who did what.
@@ -32,6 +37,7 @@ type AuditEntry struct {
 	Verb       string
 	TargetType string
 	TargetID   string
+	Note       string
 }
 
 // AuditLog is where the record is kept.
@@ -40,6 +46,10 @@ type AuditEntry struct {
 // this package never learns which database that is.
 type AuditLog interface {
 	Record(ctx context.Context, e AuditEntry) error
+
+	// List is the newest rows first, capped at limit. No filter yet -- see
+	// Operators.Audit for why.
+	List(ctx context.Context, limit int32) ([]AuditEntry, error)
 }
 
 // Gate is the one place every change goes through.
@@ -77,6 +87,7 @@ func (g *Gate) Do(
 		Verb:       act.Verb,
 		TargetType: act.TargetType,
 		TargetID:   act.TargetID,
+		Note:       act.Note,
 	}
 	if err := g.log.Record(ctx, entry); err != nil {
 		return err

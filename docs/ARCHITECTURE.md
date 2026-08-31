@@ -366,9 +366,21 @@ exactly why the check below is not optional.
 
 ### What holds it
 
-**Three handlers, no shared mux.** `web` builds the portal's, `adminweb` will
-build its own, and each is passed to its own listener. There is no router that
+**Three handlers, no shared mux.** `NewPortal` builds the portal's, `NewAdmin`
+builds its own, and each is passed to its own listener. There is no router that
 knows both, so there is no line to move that mounts one on the other's port.
+
+Both live in `internal/adapter/api/web`, one file per surface, rather than in
+packages of their own. That is not a preference: a surface in `web/admin` would
+have to import `web` for the engine, the session and the guard, and
+`make arch-check` refuses a subpackage importing its parent -- the rule allows
+the other direction only. `web/portal` was tried first and refused for exactly
+this reason.
+
+The separation the rule is about is the handler and the listener, and a struct
+per surface holds that as completely as a package would. What a package would
+have added is a compiler that refuses to let one surface reach into the other's
+internals; instead that is held by the test below.
 
 **The admin guard reads the role, from the live row, on every request.** Not from
 the session, and not from the cookie:
@@ -396,9 +408,18 @@ comment rather than a property:
 a customer's session is refused by the admin guard      DONE
    -> TestOperatorPagesRefuseACustomer, and three beside it
 
-every admin route answers 404 on the portal's handler   when web/admin exists
-   -> a mounting mistake fails the build instead of shipping
+every admin route answers 404 on the portal's handler    DONE
+   -> TestNoAdminRouteAnswersOnThePortal
 ```
+
+`web/admin` will never exist — see four lines above — so both surfaces are
+structs in one package, with every handler of each in scope from the other.
+That is exactly why the second test is the one holding this: it reads the admin
+engine's OWN route table back and asserts each route on the portal's handler,
+rather than iterating a list written by hand beside it. A hand-written list is
+how the first version came to check `/queue`, which is a path on neither
+surface, while missing all seven routes that genuinely share the portal's
+`/sources/:id/...` shape.
 
 The second is what a fourth binary would have given for free. This is the price
 of not building one, and it is paid once.

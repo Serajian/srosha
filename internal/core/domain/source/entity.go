@@ -33,6 +33,14 @@ type Source struct {
 	// never looked at.
 	ApprovedAt *time.Time
 
+	// ReviewedAt is when an operator last decided about this source, whichever
+	// way they decided. Nil is the review queue.
+	ReviewedAt *time.Time
+
+	// ReviewNote is why, in the operator's words. The customer reads it, which
+	// is the whole reason a refusal is not silent.
+	ReviewNote string
+
 	// False bounds the damage of a leaked key: the source can then only reach
 	// the addresses configured below, never a stranger.
 	AllowCustomAddress bool
@@ -144,6 +152,106 @@ func (s *Source) EnsureActive() error {
 // not the same question as EnsureActive: a source approved in March and
 // switched off in August answers yes here and refuses there.
 func (s *Source) IsApproved() bool { return s.ApprovedAt != nil }
+
+// Approve lets this source send. It is the only method here that turns
+// IsActive on.
+func (s *Source) Approve(now time.Time) {
+	if s.ApprovedAt == nil {
+		s.ApprovedAt = &now
+	}
+	s.ReviewedAt = &now
+	s.ReviewNote = ""
+	s.IsActive = true
+	s.UpdatedAt = now
+}
+
+// Refuse turns a source away, with a reason the customer will read.
+//
+// The reason is required and the refusal does not happen without one: a source
+// that silently never works is the failure this whole state exists to prevent.
+//
+// A source already approved cannot be refused: refusing is a decision at the
+// door, and approved_at set alongside a refusal would be indistinguishable
+// from suspended. Suspend is the way to stop one that already got through.
+func (s *Source) Refuse(note string, now time.Time) error {
+	if s.IsApproved() {
+		return errs.InvalidInputErr("an approved source cannot be refused, only suspended").
+			WithErr(ErrAlreadyApproved).
+			WithStr(fmt.Sprintf("source %q", s.ID))
+	}
+
+	trimmed := strings.TrimSpace(note)
+	if trimmed == "" {
+		return errs.InvalidInputErr("a refusal needs a reason").WithErr(ErrNoReason)
+	}
+	if len(trimmed) > maxReviewNoteLen {
+		return errs.InvalidInputErr("that reason is too long").
+			WithErr(ErrNoReason).
+			WithStr(fmt.Sprintf("%d chars, max %d", len(trimmed), maxReviewNoteLen))
+	}
+
+	s.ReviewedAt = &now
+	s.ReviewNote = trimmed
+	s.IsActive = false
+	s.UpdatedAt = now
+	return nil
+}
+
+// Suspend stops a source that was working. ApprovedAt is left alone, so this
+// stays distinguishable from a source that was turned away at the door.
+//
+// A source that was never approved cannot be suspended, which is Refuse's
+// guard read the other way round. Without it, suspending something still in
+// the queue left is_active=f, approved_at=null, reviewed_at=set and
+// review_note="" -- byte for byte a refusal with no reason, which is the exact
+// state review_note was added to make impossible. The customer's page then
+// reads "This source was not approved." followed by an empty sentence.
+func (s *Source) Suspend(now time.Time) error {
+	if !s.IsApproved() {
+		return errs.InvalidInputErr(
+			"a source that was never approved cannot be suspended, only refused").
+			WithErr(ErrNotApproved).
+			WithStr(fmt.Sprintf("source %q", s.ID))
+	}
+
+	s.ReviewedAt = &now
+	s.IsActive = false
+	s.UpdatedAt = now
+	return nil
+}
+
+// Restore is the way back from Suspend. Also the way back from Refuse: a
+// source restored straight from a refusal is being let out for the first
+// time, and approved_at is what records that -- without it, a restored
+// refusal would read as active and never approved, a state the table this
+// column is built on does not have.
+//
+// "The way back" is the whole meaning, so there has to be somewhere to come
+// back from. A source nobody has decided about yet is not suspended and not
+// refused, and restoring it would approve it while the audit row said
+// source.restore -- a first decision recorded under a verb that says it was
+// the second. Approve is what a queued source takes, and it says so.
+func (s *Source) Restore(now time.Time) error {
+	if !s.IsReviewed() {
+		return errs.InvalidInputErr(
+			"this source has never been decided about, so approve it rather than restore it").
+			WithErr(ErrNotReviewed).
+			WithStr(fmt.Sprintf("source %q", s.ID))
+	}
+
+	if s.ApprovedAt == nil {
+		s.ApprovedAt = &now
+	}
+	s.ReviewedAt = &now
+	s.ReviewNote = ""
+	s.IsActive = true
+	s.UpdatedAt = now
+	return nil
+}
+
+// IsReviewed reports whether an operator has ever decided about this source.
+// It is the queue's question, and not the same one as IsApproved.
+func (s *Source) IsReviewed() bool { return s.ReviewedAt != nil }
 
 // Resolve turns one requested channel into the recipients to deliver to: the
 // given address if this source may name one, otherwise its configured default.

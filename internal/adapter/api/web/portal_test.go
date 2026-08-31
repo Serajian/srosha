@@ -61,6 +61,40 @@ func (m *memUsers) ReadByID(_ context.Context, id shared.ID) (*user.User, error)
 	return nil, errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
 }
 
+func (m *memUsers) List(_ context.Context) ([]user.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]user.User, 0, len(m.rows))
+	for _, u := range m.rows {
+		out = append(out, *u)
+	}
+	return out, nil
+}
+
+func (m *memUsers) UpdateRole(_ context.Context, u *user.User) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	row, ok := m.rows[u.Email]
+	if !ok {
+		return errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
+	}
+	row.Role = u.Role
+	row.UpdatedAt = u.UpdatedAt
+	return nil
+}
+
+func (m *memUsers) SetActive(_ context.Context, u *user.User) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	row, ok := m.rows[u.Email]
+	if !ok {
+		return errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
+	}
+	row.IsActive = u.IsActive
+	row.UpdatedAt = u.UpdatedAt
+	return nil
+}
+
 type memCodes struct {
 	mu   sync.Mutex
 	rows []*logincode.LoginCode
@@ -160,6 +194,19 @@ func (m *memMailer) lastCode(t *testing.T) string {
 type memSources struct {
 	mu   sync.Mutex
 	rows []*source.Source
+
+	// readFails, when set, is what ReadByID answers instead of looking. It
+	// stands in for a database that will not answer, which is a different
+	// thing from an id nothing matches and must not be reported as one.
+	readFails error
+}
+
+// breakReads makes every ReadByID fail with something that is not a
+// not-found.
+func (m *memSources) breakReads(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.readFails = err
 }
 
 func (m *memSources) Create(_ context.Context, s *source.Source) error {
@@ -187,15 +234,66 @@ func (m *memSources) UpdateSettings(_ context.Context, s *source.Source) error {
 	return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
 }
 
+// ReadByID hands back a COPY, never the stored pointer.
+//
+// A real repository builds a struct from a row, so a caller that mutates what
+// it read changes nothing until it writes. Handing out the pointer made the
+// fake the opposite: Approve mutating the source it read would have "landed"
+// with no UpdateReview at all, and TestApprovingLetsASourceLeaveTheQueue would
+// have passed on a use case that never wrote anything. fakeSources in the use
+// case package was fixed for this; this one, which the branch's only
+// end-to-end suite runs on, was missed.
 func (m *memSources) ReadByID(_ context.Context, id string) (*source.Source, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.readFails != nil {
+		return nil, m.readFails
+	}
 	for _, s := range m.rows {
 		if s.ID == id {
-			return s, nil
+			got := *s
+			return &got, nil
 		}
 	}
 	return nil, errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
+}
+
+func (m *memSources) UpdateReview(_ context.Context, s *source.Source) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, row := range m.rows {
+		if row.ID == s.ID {
+			row.IsActive = s.IsActive
+			row.ApprovedAt = s.ApprovedAt
+			row.ReviewedAt = s.ReviewedAt
+			row.ReviewNote = s.ReviewNote
+			row.UpdatedAt = s.UpdatedAt
+			return nil
+		}
+	}
+	return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
+}
+
+func (m *memSources) ListForReview(_ context.Context) ([]source.Source, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []source.Source{}
+	for _, s := range m.rows {
+		if !s.IsReviewed() {
+			out = append(out, *s)
+		}
+	}
+	return out, nil
+}
+
+func (m *memSources) ListAll(_ context.Context) ([]source.Source, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []source.Source{}
+	for _, s := range m.rows {
+		out = append(out, *s)
+	}
+	return out, nil
 }
 
 func (m *memSources) ListByOwner(
@@ -225,6 +323,22 @@ func (m *memAudit) Record(_ context.Context, e usecase.AuditEntry) error {
 	defer m.mu.Unlock()
 	m.entries = append(m.entries, e)
 	return nil
+}
+
+// List satisfies usecase.AuditLog. Nothing in this package's tests reads the
+// admin surface yet, so it hands back copies and nothing exercises it.
+func (m *memAudit) List(_ context.Context, limit int32) ([]usecase.AuditEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := len(m.entries)
+	if int32(n) > limit {
+		n = int(limit)
+	}
+	out := make([]usecase.AuditEntry, n)
+	for i := 0; i < n; i++ {
+		out[i] = m.entries[len(m.entries)-1-i]
+	}
+	return out, nil
 }
 
 // memKeys is the key store these tests run over. It records the hashes so a
@@ -711,6 +825,67 @@ func TestACustomerCannotOpenSomebodyElsesSource(t *testing.T) {
 	}
 	if strings.Contains(got.body, "mine") {
 		t.Error("somebody else's source name was rendered")
+	}
+}
+
+// A refusal a customer cannot read is a source that silently never works --
+// the failure the "waiting for approval" message exists to avoid.
+func TestARefusedSourceShowsItsReason(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "me@acme.test")
+
+	post(t, p, "/sources", url.Values{"name": {"acme-billing"}}, cookie)
+	id := onlySourceID(t, p)
+
+	at := time.Now().UTC()
+	if err := p.sources.rows[0].Refuse("no working address", at); err != nil {
+		t.Fatalf("Refuse: %v", err)
+	}
+
+	got := get(t, p, "/sources/"+id, cookie)
+	whole(t, "/sources/"+id, got)
+
+	if !strings.Contains(got.body, "no working address") {
+		t.Error("the customer is not told why")
+	}
+	if strings.Contains(strings.ToLower(got.body), "waiting for approval") {
+		t.Error("a refused source still says it is waiting")
+	}
+}
+
+// The list is the first thing a customer sees. If it still says "waiting"
+// for a source that was refused or suspended weeks ago, the fix on the
+// detail page never mattered -- nobody opens a source that claims to be
+// fine already.
+func TestARefusedOrSuspendedSourceDoesNotReadAsWaitingOnTheList(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "me@acme.test")
+
+	post(t, p, "/sources", url.Values{"name": {"refused-one"}}, cookie)
+	post(t, p, "/sources", url.Values{"name": {"suspended-one"}}, cookie)
+
+	p.sources.mu.Lock()
+	if len(p.sources.rows) != 2 {
+		p.sources.mu.Unlock()
+		t.Fatalf("there are %d sources, want exactly two", len(p.sources.rows))
+	}
+	refused, suspended := p.sources.rows[0], p.sources.rows[1]
+	p.sources.mu.Unlock()
+
+	now := time.Now().UTC()
+	if err := refused.Refuse("no working address", now); err != nil {
+		t.Fatalf("Refuse: %v", err)
+	}
+	suspended.Approve(now)
+	if err := suspended.Suspend(now); err != nil {
+		t.Fatalf("Suspend: %v", err)
+	}
+
+	got := get(t, p, "/sources", cookie)
+	whole(t, "/sources", got)
+
+	if strings.Contains(strings.ToLower(got.body), "waiting for approval") {
+		t.Error("a refused or suspended source still reads as waiting for approval")
 	}
 }
 

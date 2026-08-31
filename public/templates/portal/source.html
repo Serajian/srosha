@@ -3,15 +3,25 @@
 <p class="sub"><span class="mono">{{.Source.ID}}</span></p>
 {{if .Source.Description}}<p class="sub">{{.Source.Description}}</p>{{end}}
 
+{{/* Refused is checked before waiting: a refused source is also not
+     approved. Suspend never writes ReviewNote (only Refuse does), so the
+     suspended branch has nothing of the operator's to show -- it says what
+     happened and leaves it there. */}}
 {{if not .Source.IsActive}}
-  <p class="problem" role="status">
-    {{if .Source.IsApproved}}
+  {{if and .Source.IsReviewed (not .Source.IsApproved)}}
+    <p class="problem" role="status">
+      This source was not approved. {{.Source.ReviewNote}}
+    </p>
+  {{else if .Source.IsApproved}}
+    <p class="problem" role="status">
       An operator switched this source off. Nothing it sends will go out.
-    {{else}}
+    </p>
+  {{else}}
+    <p class="problem" role="status">
       Waiting for approval. Set it up now — it starts working the moment
       somebody here approves it.
-    {{end}}
-  </p>
+    </p>
+  {{end}}
 {{end}}
 
 <dl class="facts">

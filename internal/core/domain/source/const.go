@@ -12,3 +12,7 @@ const maxNameLen = 64
 // for a sentence saying what it is for, short enough that it stays a label
 // rather than becoming documentation nobody reads.
 const maxDescriptionLen = 280
+
+// maxReviewNoteLen bounds an operator's reason. A sentence or two, because the
+// customer reads it on a page and a refusal is not a support ticket.
+const maxReviewNoteLen = 500

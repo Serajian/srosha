@@ -21,8 +21,14 @@
     <li class="card">
       <a class="nm" href="/sources/{{.ID}}">{{.Name}}</a>
       <span class="id">{{.ID}}</span>
+      {{/* Refused is checked before the waiting fallback: a refused source
+           is also not approved. See public/templates/portal/source.html for
+           the same order and the same reason. */}}
       {{if .IsActive}}
         <span class="pill ok">Sending</span>
+      {{else if and .IsReviewed (not .IsApproved)}}
+        <span class="pill bad">Not approved</span>
+        <p class="why">Open it to read why.</p>
       {{else if .IsApproved}}
         <span class="pill off">Switched off</span>
         <p class="why">An operator switched this source off. Nothing it sends will go out.</p>

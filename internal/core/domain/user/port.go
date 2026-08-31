@@ -15,4 +15,7 @@ type Repository interface {
 	Create(ctx context.Context, u *User) error
 	ReadByEmail(ctx context.Context, email string) (*User, error)
 	ReadByID(ctx context.Context, id shared.ID) (*User, error)
+	List(ctx context.Context) ([]User, error)
+	UpdateRole(ctx context.Context, u *User) error
+	SetActive(ctx context.Context, u *User) error
 }

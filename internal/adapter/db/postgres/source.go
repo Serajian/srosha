@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"encoding/json"
-	"time"
 
 	"github.com/Serajian/srosha/internal/adapter/db/postgres/gen"
 	"github.com/Serajian/srosha/internal/core/domain/source"
@@ -55,16 +54,7 @@ func (r *SourceRepository) ListByOwner(
 	if err != nil {
 		return nil, failed("list sources by owner", err)
 	}
-
-	out := make([]source.Source, 0, len(rows))
-	for _, row := range rows {
-		s, err := toSource(row)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, *s)
-	}
-	return out, nil
+	return toSources(rows)
 }
 
 // ReadByID returns a suspended source like any other. Refusing it here would
@@ -81,35 +71,15 @@ func (r *SourceRepository) ReadByID(ctx context.Context, id string) (*source.Sou
 	return toSource(row)
 }
 
-// Update writes what changes over a customer's life. Switching a source off is
-// not one of them -- that is Deactivate, so a rename cannot flip it by accident.
-func (r *SourceRepository) Update(ctx context.Context, s *source.Source, now time.Time) error {
-	addresses, err := fromAddresses(s.DefaultAddresses)
-	if err != nil {
-		return badRow("source", s.ID, "default_addresses", err)
-	}
-
-	rows, err := r.q(ctx).UpdateSource(ctx, gen.UpdateSourceParams{
-		ID:                 s.ID,
-		Name:               s.Name,
-		MaxPriority:        s.MaxPriority.String(),
-		AllowCustomAddress: s.AllowCustomAddress,
-		DefaultAddresses:   addresses,
-		UpdatedAt:          now,
-	})
-	if err != nil {
-		return failed("update source", err)
-	}
-	if rows == 0 {
-		return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
-	}
-	return nil
-}
-
-// UpdateSettings writes the three columns the customer owns. It is a separate
-// method from Update rather than a flag on it, because the difference is which
-// columns are written and that is exactly the thing a call site must not get
-// wrong: Update carries the ceiling, this cannot reach it.
+// UpdateSettings writes the three columns the customer owns.
+//
+// There is no method here that writes them all. There was one -- Update, which
+// carried max_priority and allow_custom_address too -- and it went with
+// Deactivate and Activate once nothing in production called any of the three:
+// Activate set is_active without touching approved_at or reviewed_at, which is
+// a fifth state the table has no meaning for. A source moves in exactly two
+// ways now, and which columns each may reach is the whole difference between
+// them: this, and UpdateReview.
 func (r *SourceRepository) UpdateSettings(ctx context.Context, s *source.Source) error {
 	addresses, err := fromAddresses(s.DefaultAddresses)
 	if err != nil {
@@ -132,17 +102,38 @@ func (r *SourceRepository) UpdateSettings(ctx context.Context, s *source.Source)
 	return nil
 }
 
-// Deactivate and Activate report a source that was already in the asked-for
-// state as not found, because nothing was changed and saying otherwise would
-// claim an act that did not happen.
-func (r *SourceRepository) Deactivate(ctx context.Context, id string, now time.Time) error {
-	rows, err := r.q(ctx).DeactivateSource(ctx, gen.DeactivateSourceParams{ID: id, UpdatedAt: now})
-	return changed(rows, err, "deactivate source")
+func (r *SourceRepository) UpdateReview(ctx context.Context, s *source.Source) error {
+	rows, err := r.q(ctx).UpdateReview(ctx, gen.UpdateReviewParams{
+		ID:         s.ID,
+		IsActive:   s.IsActive,
+		ApprovedAt: s.ApprovedAt,
+		ReviewedAt: s.ReviewedAt,
+		ReviewNote: s.ReviewNote,
+		UpdatedAt:  s.UpdatedAt,
+	})
+	if err != nil {
+		return failed("update review", err)
+	}
+	if rows == 0 {
+		return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
+	}
+	return nil
 }
 
-func (r *SourceRepository) Activate(ctx context.Context, id string, now time.Time) error {
-	rows, err := r.q(ctx).ActivateSource(ctx, gen.ActivateSourceParams{ID: id, UpdatedAt: now})
-	return changed(rows, err, "activate source")
+func (r *SourceRepository) ListForReview(ctx context.Context) ([]source.Source, error) {
+	rows, err := r.q(ctx).ListForReview(ctx)
+	if err != nil {
+		return nil, failed("list for review", err)
+	}
+	return toSources(rows)
+}
+
+func (r *SourceRepository) ListAll(ctx context.Context) ([]source.Source, error) {
+	rows, err := r.q(ctx).ListAllSources(ctx)
+	if err != nil {
+		return nil, failed("list all sources", err)
+	}
+	return toSources(rows)
 }
 
 func changed(rows int64, err error, op string) error {
@@ -176,11 +167,28 @@ func toSource(row gen.Source) (*source.Source, error) {
 		MaxPriority:        priority,
 		IsActive:           row.IsActive,
 		ApprovedAt:         row.ApprovedAt,
+		ReviewedAt:         row.ReviewedAt,
+		ReviewNote:         row.ReviewNote,
 		AllowCustomAddress: row.AllowCustomAddress,
 		DefaultAddresses:   addresses,
 		CreatedAt:          row.CreatedAt,
 		UpdatedAt:          row.UpdatedAt,
 	}, nil
+}
+
+// toSources maps a page of rows the same way toSource maps one, so the three
+// listing methods share the same rules for a bad row instead of each risking
+// its own.
+func toSources(rows []gen.Source) ([]source.Source, error) {
+	out := make([]source.Source, 0, len(rows))
+	for _, row := range rows {
+		s, err := toSource(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *s)
+	}
+	return out, nil
 }
 
 // toAddresses reads the jsonb map. A null or absent value is an empty map and

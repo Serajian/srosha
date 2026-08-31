@@ -10,9 +10,44 @@ import (
 	"time"
 )
 
+const listAudit = `-- name: ListAudit :many
+SELECT id, at, actor_id, actor_email, verb, target_type, target_id, note FROM audit_log ORDER BY at DESC LIMIT $1
+`
+
+// ListAudit is the newest rows first, with no filter. See
+// usecase.Operators.Audit for why there is no filter yet.
+func (q *Queries) ListAudit(ctx context.Context, rowLimit int32) ([]AuditLog, error) {
+	rows, err := q.db.Query(ctx, listAudit, rowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditLog{}
+	for rows.Next() {
+		var i AuditLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.At,
+			&i.ActorID,
+			&i.ActorEmail,
+			&i.Verb,
+			&i.TargetType,
+			&i.TargetID,
+			&i.Note,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recordAudit = `-- name: RecordAudit :exec
-INSERT INTO audit_log (id, at, actor_id, actor_email, verb, target_type, target_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO audit_log (id, at, actor_id, actor_email, verb, target_type, target_id, note)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 
 type RecordAuditParams struct {
@@ -23,6 +58,7 @@ type RecordAuditParams struct {
 	Verb       string
 	TargetType string
 	TargetID   string
+	Note       string
 }
 
 // There is no update and no delete, and there will not be. See the migration.
@@ -35,6 +71,7 @@ func (q *Queries) RecordAudit(ctx context.Context, arg RecordAuditParams) error 
 		arg.Verb,
 		arg.TargetType,
 		arg.TargetID,
+		arg.Note,
 	)
 	return err
 }

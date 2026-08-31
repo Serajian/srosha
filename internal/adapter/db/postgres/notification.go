@@ -163,6 +163,33 @@ func (r *NotificationRepository) ReadByIdempotencyKey(
 	return toNotification(row)
 }
 
+// ListForOperator answers what an operator may see of a source's messages:
+// when, on what, how it went -- never what it said. The statement selects no
+// title and no body, so there is nothing here to carry either by mistake.
+func (r *NotificationRepository) ListForOperator(
+	ctx context.Context, sourceID string, limit int,
+) ([]notification.OperatorRow, error) {
+	rows, err := r.q(ctx).ListMessagesForOperator(ctx, gen.ListMessagesForOperatorParams{
+		SourceID: sourceID,
+		RowLimit: int32(limit), //nolint:gosec // a page size, bounded by the caller
+	})
+	if err != nil {
+		return nil, failed("list messages for operator", err)
+	}
+
+	out := make([]notification.OperatorRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, notification.OperatorRow{
+			ID:        shared.ID(row.ID),
+			Channels:  row.Channels,
+			Failed:    int(row.Failed),
+			Total:     int(row.Total),
+			CreatedAt: row.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
 // --- mapping -----------------------------------------------------------------
 
 func toNotification(row gen.Notification) (*notification.Notification, error) {

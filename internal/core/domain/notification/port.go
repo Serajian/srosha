@@ -28,4 +28,10 @@ type Repository interface {
 	// One batch rather than all of them, so a table that has been collecting for
 	// a year is not cleared inside a single transaction holding locks on it.
 	DeleteOlderThan(ctx context.Context, before time.Time, limit int) (int, error)
+
+	// ListForOperator answers what an operator may see of a source's messages:
+	// when, on what, how it went -- never what it said. The statement behind
+	// this never selects title or body, so there is nothing in OperatorRow to
+	// carry either by mistake.
+	ListForOperator(ctx context.Context, sourceID string, limit int) ([]OperatorRow, error)
 }

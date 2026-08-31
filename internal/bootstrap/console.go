@@ -12,11 +12,13 @@ import (
 	"github.com/Serajian/srosha/internal/adapter/secret"
 	"github.com/Serajian/srosha/internal/adapter/system"
 	"github.com/Serajian/srosha/internal/config"
+	"github.com/Serajian/srosha/internal/config/settings"
 	"github.com/Serajian/srosha/internal/core/domain/credential"
 	"github.com/Serajian/srosha/internal/core/domain/source"
 	"github.com/Serajian/srosha/internal/core/domain/webhook"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
+	"github.com/Serajian/srosha/internal/infra/httpserver"
 	"github.com/Serajian/srosha/internal/infra/smtp"
 	"github.com/Serajian/srosha/internal/registry"
 	"github.com/Serajian/srosha/pkg/crypto"
@@ -79,11 +81,21 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 		return abandon(ctx, res, err)
 	}
 
-	// Two listeners on purpose. The pages are public, and readiness is not:
-	// putting both on one port would publish it to the internet.
-	portal, err := registry.HTTPServer(
-		ctx, "portal pages", cfg.Console.PortalAddr, cfg.HTTPServer, pages, res,
-	)
+	panel, err := web.NewAdmin(web.AdminDeps{
+		SignIn:       core.signIn,
+		Operators:    core.operators,
+		SecureCookie: cfg.Console.SecureCookie,
+		Debug:        !cfg.App.IsProduction(),
+		Log:          log,
+	})
+	if err != nil {
+		return abandon(ctx, res, err)
+	}
+
+	// Three listeners on purpose. The portal is public, readiness is not, and
+	// the admin panel must not be reachable from either -- putting any two of
+	// these on one port would publish something that must not be.
+	portal, err := servePortal(ctx, cfg.Console.PortalAddr, cfg.HTTPServer, pages, res)
 	if err != nil {
 		return abandon(ctx, res, err)
 	}
@@ -93,14 +105,47 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 		return abandon(ctx, res, err)
 	}
 
+	// cfg.Console.AdminAddr defaults to the loopback interface, not every
+	// interface, so this listener stays off the network a customer can reach
+	// as a property of the process -- see docs/ARCHITECTURE.md, "Two surfaces
+	// in one binary, and what keeps them apart".
+	admin, err := serveAdmin(ctx, cfg.Console.AdminAddr, cfg.HTTPServer, panel, res)
+	if err != nil {
+		return abandon(ctx, res, err)
+	}
+
 	log.InfoContext(ctx, "console started",
-		"env", cfg.App.Env, "portal", portal.Addr(), "http", health.Addr())
+		"env", cfg.App.Env, "portal", portal.Addr(), "http", health.Addr(), "admin", admin.Addr())
 
 	return &App{
 		log:       log,
 		resources: res,
-		failed:    watch(portal.Err(), health.Err()),
+		failed:    watch(portal.Err(), health.Err(), admin.Err()),
 	}, nil
+}
+
+// servePortal and serveAdmin are the only two ways a surface reaches a
+// listener, and the whole point of them is that each takes ONE surface's
+// address type and ONE surface's handler type.
+//
+// Both used to be a bare registry.HTTPServer call taking a string and an
+// http.Handler, which meant swapping the two arguments compiled, passed every
+// test, and served the admin panel on the port Traefik publishes. There is no
+// test that catches that -- both listeners answer, and each answers correctly
+// -- so it is held by the types instead: see web.PortalHandler and
+// settings.PortalAddr.
+func servePortal(
+	ctx context.Context, addr settings.PortalAddr, s settings.HTTPServer,
+	h web.PortalHandler, res *registry.Resources,
+) (*httpserver.Server, error) {
+	return registry.HTTPServer(ctx, "portal pages", string(addr), s, h, res)
+}
+
+func serveAdmin(
+	ctx context.Context, addr settings.AdminAddr, s settings.HTTPServer,
+	h web.AdminHandler, res *registry.Resources,
+) (*httpserver.Server, error) {
+	return registry.HTTPServer(ctx, "admin pages", string(addr), s, h, res)
 }
 
 // buildPortalCore assembles the one use case the portal stands on.
@@ -115,6 +160,7 @@ type consoleCore struct {
 	keys      *usecase.Keys
 	senders   *usecase.Credentials
 	callbacks *usecase.Registrar
+	operators *usecase.Operators
 }
 
 func buildConsoleCore(
@@ -140,8 +186,10 @@ func buildConsoleCore(
 	}
 
 	// The gate is the one point every mutating change goes through, and it
-	// writes the audit row before the change runs.
-	gate := usecase.NewGate(postgres.NewAuditRepository(pool), ids.Generate, now)
+	// writes the audit row before the change runs. Operators reads the same
+	// log below, so the repository is kept rather than built twice.
+	auditRows := postgres.NewAuditRepository(pool)
+	gate := usecase.NewGate(auditRows, ids.Generate, now)
 
 	core.signIn = usecase.NewSignIn(
 		postgres.NewUserRepository(pool),
@@ -162,6 +210,20 @@ func buildConsoleCore(
 	if err := buildIdentityCore(&core, cfg, pool, ids, now, log); err != nil {
 		return core, err
 	}
+
+	// Operators is the admin surface's one use case. Every repository it needs
+	// is already opened above -- source, user and credential rows the portal's
+	// use cases already read, plus notification and delivery rows for the
+	// queue's message and delivery views -- so this wraps the same pool again
+	// rather than opening anything twice.
+	core.operators = usecase.NewOperators(
+		postgres.NewSourceRepository(pool),
+		postgres.NewUserRepository(pool),
+		postgres.NewNotificationRepository(pool),
+		postgres.NewDeliveryRepository(pool, now),
+		postgres.NewCredentialRepository(pool),
+		auditRows, gate, now,
+	)
 	return core, nil
 }
 

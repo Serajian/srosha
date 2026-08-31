@@ -29,6 +29,44 @@ func aSource(id string) *source.Source {
 	}
 }
 
+// letOut and suspendSource move a source the only two ways an operator now can:
+// through the domain's own transitions and UpdateReview.
+//
+// They replace repo.Activate and repo.Deactivate, which were deleted with
+// repo.Update once nothing in production called any of the three. Activate in
+// particular set is_active while leaving approved_at and reviewed_at alone,
+// which is a fifth state the table has no meaning for -- so a fixture built on
+// it was setting up a row the service cannot produce.
+func letOut(t *testing.T, repo *postgres.SourceRepository, id string) {
+	t.Helper()
+
+	ctx := context.Background()
+	s, err := repo.ReadByID(ctx, id)
+	if err != nil {
+		t.Fatalf("ReadByID before approving: %v", err)
+	}
+	s.Approve(time.Now().UTC())
+	if err := repo.UpdateReview(ctx, s); err != nil {
+		t.Fatalf("UpdateReview approving: %v", err)
+	}
+}
+
+func suspendSource(t *testing.T, repo *postgres.SourceRepository, id string) {
+	t.Helper()
+
+	ctx := context.Background()
+	s, err := repo.ReadByID(ctx, id)
+	if err != nil {
+		t.Fatalf("ReadByID before suspending: %v", err)
+	}
+	if err := s.Suspend(time.Now().UTC()); err != nil {
+		t.Fatalf("Suspend: %v", err)
+	}
+	if err := repo.UpdateReview(ctx, s); err != nil {
+		t.Fatalf("UpdateReview suspending: %v", err)
+	}
+}
+
 func TestSourceRoundTrips(t *testing.T) {
 	pool := connect(t)
 	truncate(t, pool)
@@ -83,14 +121,10 @@ func TestSuspendedSourceStillReadsBack(t *testing.T) {
 	}
 
 	// A source is created waiting for approval, so being switched off is its
-	// first state and not something Deactivate can reach. Approving it is what
-	// an operator does, and what these transitions start from.
-	if err := repo.Activate(ctx, s.ID, time.Now().UTC()); err != nil {
-		t.Fatalf("Activate: %v", err)
-	}
-	if err := repo.Deactivate(ctx, s.ID, time.Now().UTC()); err != nil {
-		t.Fatalf("Deactivate: %v", err)
-	}
+	// first state. Approving it is what an operator does, and what these
+	// transitions start from.
+	letOut(t, repo, s.ID)
+	suspendSource(t, repo, s.ID)
 
 	got, err := repo.ReadByID(ctx, s.ID)
 	if err != nil {
@@ -117,83 +151,22 @@ func TestMissingSourceIsNotFound(t *testing.T) {
 	}
 }
 
-// Renaming a customer must not bring a suspended one back.
-func TestUpdateLeavesTheActiveFlagAlone(t *testing.T) {
+// The two statements that write a source both report "no such source" rather
+// than succeeding silently. This was Update's test; Update is gone, and the
+// question outlived it.
+func TestWritingASourceThatIsNotThere(t *testing.T) {
 	pool := connect(t)
 	truncate(t, pool)
 
 	repo := postgres.NewSourceRepository(pool)
 	ctx := context.Background()
-	s := aSource(ulid("S3"))
+	ghost := aSource(ulid("ZZ"))
 
-	if err := repo.Create(ctx, s); err != nil {
-		t.Fatalf("Create: %v", err)
+	if err := repo.UpdateSettings(ctx, ghost); !errors.Is(err, source.ErrNotFound) {
+		t.Errorf("UpdateSettings = %v, want source.ErrNotFound", err)
 	}
-
-	// A source is created waiting for approval, so being switched off is its
-	// first state and not something Deactivate can reach. Approving it is what
-	// an operator does, and what these transitions start from.
-	if err := repo.Activate(ctx, s.ID, time.Now().UTC()); err != nil {
-		t.Fatalf("Activate: %v", err)
-	}
-	if err := repo.Deactivate(ctx, s.ID, time.Now().UTC()); err != nil {
-		t.Fatalf("Deactivate: %v", err)
-	}
-
-	s.Name = "Acme Renamed"
-	s.MaxPriority = shared.PriorityCritical
-	if err := repo.Update(ctx, s, time.Now().UTC()); err != nil {
-		t.Fatalf("Update: %v", err)
-	}
-
-	got, err := repo.ReadByID(ctx, s.ID)
-	if err != nil {
-		t.Fatalf("ReadByID: %v", err)
-	}
-	if got.Name != "Acme Renamed" || got.MaxPriority != shared.PriorityCritical {
-		t.Errorf("update did not land: %+v", got)
-	}
-	if got.IsActive {
-		t.Error("renaming a source switched it back on")
-	}
-}
-
-func TestUpdatingASourceThatIsNotThere(t *testing.T) {
-	pool := connect(t)
-	truncate(t, pool)
-
-	err := postgres.NewSourceRepository(pool).
-		Update(context.Background(), aSource(ulid("ZZ")), time.Now())
-	if !errors.Is(err, source.ErrNotFound) {
-		t.Fatalf("error = %v, want source.ErrNotFound", err)
-	}
-}
-
-func TestChangingToTheStateItIsAlreadyIn(t *testing.T) {
-	pool := connect(t)
-	truncate(t, pool)
-
-	repo := postgres.NewSourceRepository(pool)
-	ctx := context.Background()
-	s := aSource(ulid("S4"))
-
-	if err := repo.Create(ctx, s); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	// A source is created waiting for approval, so being switched off is its
-	// first state and not something Deactivate can reach. Approving it is what
-	// an operator does, and what these transitions start from.
-	if err := repo.Activate(ctx, s.ID, time.Now().UTC()); err != nil {
-		t.Fatalf("Activate: %v", err)
-	}
-
-	now := time.Now().UTC()
-	if err := repo.Deactivate(ctx, s.ID, now); err != nil {
-		t.Fatalf("first Deactivate: %v", err)
-	}
-	if err := repo.Deactivate(ctx, s.ID, now); !errs.IsType(err, errs.ErrNotFound) {
-		t.Errorf("second Deactivate = %v, want a not-found", err)
+	if err := repo.UpdateReview(ctx, ghost); !errors.Is(err, source.ErrNotFound) {
+		t.Errorf("UpdateReview = %v, want source.ErrNotFound", err)
 	}
 }
 
@@ -271,9 +244,7 @@ func TestUpdateSettingsCannotCarryTheCeiling(t *testing.T) {
 	if err := repo.Create(ctx, s); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := repo.Activate(ctx, s.ID, time.Now().UTC()); err != nil {
-		t.Fatalf("Activate: %v", err)
-	}
+	letOut(t, repo, s.ID)
 
 	// Everything a customer must not be able to move, moved in memory.
 	s.Name = "acme-alerts"
@@ -303,5 +274,86 @@ func TestUpdateSettingsCannotCarryTheCeiling(t *testing.T) {
 	}
 	if !got.IsActive {
 		t.Error("the statement switched the source off")
+	}
+}
+
+// The queue is what nobody has decided about. A refused source has been decided
+// about, so it must not come back -- which is the entire reason reviewed_at
+// exists as a column separate from approved_at.
+func TestARefusedSourceLeavesTheQueue(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	repo := postgres.NewSourceRepository(pool)
+	ctx := context.Background()
+	s := aSource(ulid("S8"))
+
+	if err := repo.Create(ctx, s); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	queue, err := repo.ListForReview(ctx)
+	if err != nil {
+		t.Fatalf("ListForReview: %v", err)
+	}
+	if len(queue) != 1 {
+		t.Fatalf("a new source is not in the queue: %d rows", len(queue))
+	}
+
+	if err := s.Refuse("no working address", time.Now().UTC()); err != nil {
+		t.Fatalf("Refuse: %v", err)
+	}
+	if err := repo.UpdateReview(ctx, s); err != nil {
+		t.Fatalf("UpdateReview: %v", err)
+	}
+
+	queue, err = repo.ListForReview(ctx)
+	if err != nil {
+		t.Fatalf("ListForReview: %v", err)
+	}
+	if len(queue) != 0 {
+		t.Errorf("a refused source is back in the queue: %d rows", len(queue))
+	}
+
+	got, err := repo.ReadByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("ReadByID: %v", err)
+	}
+	if got.ReviewNote != "no working address" {
+		t.Errorf("the reason did not survive: %q", got.ReviewNote)
+	}
+}
+
+// The mirror of TestUpdateSettingsCannotCarryTheCeiling: a decision must not be
+// able to rename somebody's source.
+func TestUpdateReviewCannotRename(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	repo := postgres.NewSourceRepository(pool)
+	ctx := context.Background()
+	s := aSource(ulid("S9"))
+
+	if err := repo.Create(ctx, s); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	before := s.Name
+	s.Name = "renamed by an operator"
+	s.Approve(time.Now().UTC())
+
+	if err := repo.UpdateReview(ctx, s); err != nil {
+		t.Fatalf("UpdateReview: %v", err)
+	}
+
+	got, err := repo.ReadByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("ReadByID: %v", err)
+	}
+	if got.Name != before {
+		t.Errorf("a decision renamed the source to %q", got.Name)
+	}
+	if !got.IsActive {
+		t.Error("the approval did not land")
 	}
 }

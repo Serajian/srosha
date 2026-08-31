@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Serajian/srosha/internal/adapter/db/postgres"
+	"github.com/Serajian/srosha/internal/core/domain/delivery"
 	"github.com/Serajian/srosha/internal/core/domain/notification"
 	"github.com/Serajian/srosha/internal/core/domain/source"
 	"github.com/Serajian/srosha/internal/core/shared"
@@ -358,6 +359,81 @@ func TestDeleteOlderThanTakesOneBatch(t *testing.T) {
 	}
 	if first+total != 5 {
 		t.Errorf("deleted %d in total, want 5", first+total)
+	}
+}
+
+// The whole point of this statement: it never selects title or body, and a
+// message whose deliveries were never written still shows up, because the
+// join is LEFT and count(d.id) rather than count(*).
+func TestListForOperatorLeavesOutContentAndKeepsUndelivered(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+	ctx := context.Background()
+
+	src := aSource(ulid("LO"))
+	if err := postgres.NewSourceRepository(pool).Create(ctx, src); err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+
+	repo := postgres.NewNotificationRepository(pool)
+
+	// One message with two deliveries, one of them failed.
+	sent := aMessage(t, ulid("LO1"), src.ID, "")
+	if err := repo.Create(ctx, sent); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	deliveries := postgres.NewDeliveryRepository(pool, func() time.Time { return time.Now().UTC() })
+	ds := makeDeliveries(t, sent, "a@acme.com", "b@acme.com")
+	if err := ds[0].MarkFailed(
+		delivery.FailurePermanent, "rejected", 1, time.Now().UTC().Truncate(time.Microsecond),
+	); err != nil {
+		t.Fatalf("MarkFailed: %v", err)
+	}
+	if err := deliveries.CreateByList(ctx, ds); err != nil {
+		t.Fatalf("CreateByList: %v", err)
+	}
+	if err := deliveries.Update(ctx, &ds[0]); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	// A second message whose deliveries were never written -- the row an
+	// operator debugging a failure is looking for, and the one an inner join
+	// would have hidden.
+	orphan := aMessage(t, ulid("LO2"), src.ID, "")
+	if err := repo.Create(ctx, orphan); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := repo.ListForOperator(ctx, src.ID, 10)
+	if err != nil {
+		t.Fatalf("ListForOperator: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d rows, want 2", len(got))
+	}
+
+	// Newest first.
+	if got[0].ID != orphan.ID || got[1].ID != sent.ID {
+		t.Fatalf("order = %s, %s, want the orphan first", got[0].ID, got[1].ID)
+	}
+
+	withDeliveries := got[1]
+	if withDeliveries.Total != 2 {
+		t.Errorf("total = %d, want 2", withDeliveries.Total)
+	}
+	if withDeliveries.Failed != 1 {
+		t.Errorf("failed = %d, want 1", withDeliveries.Failed)
+	}
+	if len(withDeliveries.Channels) != 1 || withDeliveries.Channels[0] != "email" {
+		t.Errorf("channels = %v, want [email]", withDeliveries.Channels)
+	}
+
+	noDeliveries := got[0]
+	if noDeliveries.Total != 0 || noDeliveries.Failed != 0 {
+		t.Errorf("orphan totals = %d/%d, want 0/0", noDeliveries.Total, noDeliveries.Failed)
+	}
+	if len(noDeliveries.Channels) != 0 {
+		t.Errorf("orphan channels = %v, want none", noDeliveries.Channels)
 	}
 }
 

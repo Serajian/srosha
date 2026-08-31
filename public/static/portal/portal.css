@@ -360,6 +360,7 @@ button.quiet:hover { color: var(--text); border-color: var(--edge); }
 .pill.ok { background: rgba(51, 165, 222, .12); color: #6FC0EC; border: 1px solid rgba(51, 165, 222, .26); }
 .pill.hold { background: rgba(217, 164, 65, .1); color: var(--gold); border: 1px solid rgba(217, 164, 65, .3); }
 .pill.off { background: rgba(124, 147, 200, .08); color: var(--muted); border: 1px solid var(--edge); }
+.pill.bad { background: rgba(228, 114, 106, .1); color: var(--bad); border: 1px solid rgba(228, 114, 106, .3); }
 
 .why {
   grid-column: 1 / -1;

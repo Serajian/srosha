@@ -1,0 +1,78 @@
+{{define "content"}}
+<h2 class="head">{{.Source.Name}}</h2>
+<p class="sub">
+  <span class="mono">{{.Source.ID}}</span> · owner <span class="mono">{{.Source.OwnerUserID}}</span>
+</p>
+{{if .Source.Description}}<p class="sub">{{.Source.Description}}</p>{{end}}
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+{{if .Source.ReviewNote}}
+  <p class="problem" role="status">{{.Source.ReviewNote}}</p>
+{{end}}
+
+<dl class="facts">
+  <dt>Registered</dt><dd class="mono">{{.Source.CreatedAt.Format "2 Jan 2006"}}</dd>
+  <dt>Highest priority</dt><dd class="mono">{{.Source.MaxPriority}}</dd>
+  <dt>Custom address</dt>
+  <dd class="mono">{{if .Source.AllowCustomAddress}}allowed{{else}}not allowed{{end}}</dd>
+  <dt>Status</dt>
+  <dd class="mono">
+    {{if .Source.IsActive}}sending
+    {{else if .Source.IsReviewed}}{{if .Source.IsApproved}}suspended{{else}}refused{{end}}
+    {{else}}waiting{{end}}
+  </dd>
+</dl>
+
+<h3 class="sub-head">What it sends as</h3>
+<!-- Never the secret, and nothing derived from it: credential.Credential has
+     no field for one and no way to read it back, so this is name, channel,
+     and whether each is switched on -- the whole of what the type can show. -->
+{{if not .Senders}}
+  <p class="sub">
+    Nothing registered. This is ordinary, not missing anything: it sends as
+    srosha, which is what makes a first message work.
+  </p>
+{{else}}
+  <ul class="cards">
+    {{range .Senders}}
+    <li class="card">
+      <span class="nm">{{.Name}}</span>
+      <span class="id">{{.Channel}}</span>
+      {{if .IsActive}}
+        <span class="pill ok">In use</span>
+      {{else}}
+        <span class="pill off">Switched off</span>
+      {{end}}
+    </li>
+    {{end}}
+  </ul>
+{{end}}
+
+<div class="decisions">
+{{if not .Source.IsReviewed}}
+  <form method="post" action="/sources/{{.Source.ID}}/approve">
+    <button type="submit">Approve</button>
+  </form>
+  <form method="post" action="/sources/{{.Source.ID}}/refuse">
+    <label for="refuse-note">Reason for refusing</label>
+    <input id="refuse-note" name="note" type="text" placeholder="why this is turned away" required>
+    <button type="submit" class="danger">Refuse</button>
+  </form>
+{{else if .Source.IsActive}}
+  <form method="post" action="/sources/{{.Source.ID}}/suspend">
+    <label for="suspend-note">Reason for suspending <span class="optional">— optional</span></label>
+    <input id="suspend-note" name="note" type="text" placeholder="what this source did">
+    <button type="submit" class="danger">Suspend</button>
+  </form>
+{{else}}
+  <form method="post" action="/sources/{{.Source.ID}}/restore">
+    <button type="submit">Restore</button>
+  </form>
+{{end}}
+</div>
+
+<nav class="fine">
+  <a href="/sources/{{.Source.ID}}/log">Message log</a>
+</nav>
+{{end}}

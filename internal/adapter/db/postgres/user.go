@@ -52,6 +52,42 @@ func (r *UserRepository) ReadByID(ctx context.Context, id shared.ID) (*user.User
 	return toUser(row.ID, row.Email, row.Role, row.IsActive, row.CreatedAt, row.UpdatedAt), nil
 }
 
+func (r *UserRepository) List(ctx context.Context) ([]user.User, error) {
+	rows, err := r.q(ctx).ListUsers(ctx)
+	if err != nil {
+		return nil, failed("list users", err)
+	}
+	out := make([]user.User, 0, len(rows))
+	for _, row := range rows {
+		out = append(
+			out,
+			*toUser(row.ID, row.Email, row.Role, row.IsActive, row.CreatedAt, row.UpdatedAt),
+		)
+	}
+	return out, nil
+}
+
+// UpdateRole writes the role, and nothing a reactivation would.
+func (r *UserRepository) UpdateRole(ctx context.Context, u *user.User) error {
+	rows, err := r.q(ctx).UpdateUserRole(ctx, gen.UpdateUserRoleParams{
+		ID:        u.ID.String(),
+		Role:      u.Role.String(),
+		UpdatedAt: u.UpdatedAt,
+	})
+	return changed(rows, err, "update user role")
+}
+
+// SetActive writes whether somebody may sign in, and nothing a role change
+// would.
+func (r *UserRepository) SetActive(ctx context.Context, u *user.User) error {
+	rows, err := r.q(ctx).SetUserActive(ctx, gen.SetUserActiveParams{
+		ID:        u.ID.String(),
+		IsActive:  u.IsActive,
+		UpdatedAt: u.UpdatedAt,
+	})
+	return changed(rows, err, "set user active")
+}
+
 // readUserErr turns "no rows" into the domain's own sentinel. A caller has to
 // tell an address nobody has used from a database that would not answer.
 func readUserErr(what string, err error) error {

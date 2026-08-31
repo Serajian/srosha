@@ -106,6 +106,66 @@ func (q *Queries) DeleteNotificationsBefore(ctx context.Context, arg DeleteNotif
 	return result.RowsAffected(), nil
 }
 
+const listMessagesForOperator = `-- name: ListMessagesForOperator :many
+SELECT n.id, n.created_at,
+       array_remove(array_agg(DISTINCT d.channel), NULL)::text[] AS channels,
+       count(d.id) FILTER (WHERE d.status = 'FAILED') AS failed,
+       count(d.id) AS total
+FROM notifications n
+LEFT JOIN deliveries d ON d.notification_id = n.id
+WHERE n.source_id = $1
+GROUP BY n.id, n.created_at
+ORDER BY n.created_at DESC
+LIMIT $2
+`
+
+type ListMessagesForOperatorParams struct {
+	SourceID string
+	RowLimit int32
+}
+
+type ListMessagesForOperatorRow struct {
+	ID        string
+	CreatedAt time.Time
+	Channels  []string
+	Failed    int64
+	Total     int64
+}
+
+// ListMessagesForOperator is the same two levels a customer's own query has,
+// with the content left out. title and body are not selected: a column that is
+// never read cannot be rendered by mistake.
+//
+// LEFT JOIN, and count(d.id) rather than count(*): a message whose deliveries
+// were never written is exactly the one an operator is looking for, and an
+// inner join would hide it. array_remove strips the NULL that a message with no
+// deliveries would otherwise contribute to the channel list.
+func (q *Queries) ListMessagesForOperator(ctx context.Context, arg ListMessagesForOperatorParams) ([]ListMessagesForOperatorRow, error) {
+	rows, err := q.db.Query(ctx, listMessagesForOperator, arg.SourceID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMessagesForOperatorRow{}
+	for rows.Next() {
+		var i ListMessagesForOperatorRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.Channels,
+			&i.Failed,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pageNotificationsBySource = `-- name: PageNotificationsBySource :many
 SELECT id, source_id, idempotency_key, source_name, title, body, requested_priority, effective_priority, expire_at, metadata, created_at FROM notifications
 WHERE source_id = $1

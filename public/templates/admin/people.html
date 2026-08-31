@@ -1,0 +1,26 @@
+{{define "content"}}
+<h2 class="head">People</h2>
+<p class="sub">Everybody with an account.</p>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+{{if not .People}}
+  <div class="empty"><h3>Nobody yet</h3></div>
+{{else}}
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>Email</th><th>Role</th><th>Signed in</th><th>Member since</th></tr></thead>
+  <tbody>
+    {{range .People}}
+    <tr>
+      <td><a href="/people/{{.ID}}">{{.Email}}</a></td>
+      <td class="mono">{{.Role}}</td>
+      <td class="mono">{{if .IsActive}}yes{{else}}no{{end}}</td>
+      <td class="mono">{{.CreatedAt.Format "2 Jan 2006"}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+{{end}}

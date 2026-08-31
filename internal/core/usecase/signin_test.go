@@ -51,14 +51,20 @@ func (r *signInRig) addUser(t *testing.T, email string, active bool) *user.User 
 	return u
 }
 
+// deactivate writes straight into the fake's storage rather than mutating what
+// a read returned -- ReadByEmail hands back a copy, as postgres would, so a
+// mutation on it would not stick and this precondition would silently not
+// hold.
 func (r *signInRig) deactivate(t *testing.T, email string) {
 	t.Helper()
 
-	u, err := r.users.ReadByEmail(context.Background(), email)
-	if err != nil {
-		t.Fatalf("ReadByEmail: %v", err)
+	r.users.mu.Lock()
+	defer r.users.mu.Unlock()
+	row, ok := r.users.rows[email]
+	if !ok {
+		t.Fatalf("no such user: %q", email)
 	}
-	u.IsActive = false
+	row.IsActive = false
 }
 
 // The whole security argument in one test: a new address, a known one, and a

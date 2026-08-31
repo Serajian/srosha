@@ -13,7 +13,11 @@ var (
 	ErrCustomAddressNotAllowed = errors.New("source is not allowed to specify a custom address")
 	ErrNoAddressForChannel     = errors.New("no address configured for this channel")
 
-	ErrMissingSource = errors.New("source id is required")
+	ErrMissingSource   = errors.New("source id is required")
+	ErrNoReason        = errors.New("source: a refusal needs a reason")
+	ErrAlreadyApproved = errors.New("source: an approved source cannot be refused, only suspended")
+	ErrNotApproved     = errors.New("source: a source that was never approved cannot be suspended")
+	ErrNotReviewed     = errors.New("source: a source nobody has decided about cannot be restored")
 )
 
 // Sentinel errors of the API keys a source authenticates with.

@@ -1,0 +1,23 @@
+{{define "content"}}
+<h2 class="head">Queue</h2>
+<p class="sub">Sources nobody has decided about, oldest first.</p>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+{{if not .Sources}}
+  <div class="empty">
+    <h3>Nothing waiting</h3>
+    <p>Every source that has registered has a decision on it.</p>
+  </div>
+{{else}}
+  <ul class="cards">
+    {{range .Sources}}
+    <li class="card">
+      <a class="nm" href="/sources/{{.ID}}">{{.Name}}</a>
+      <span class="id">{{.ID}} · registered {{.CreatedAt.Format "2 Jan 2006"}}</span>
+      <span class="pill hold">Waiting</span>
+    </li>
+    {{end}}
+  </ul>
+{{end}}
+{{end}}

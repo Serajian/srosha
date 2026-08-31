@@ -73,12 +73,53 @@ func (r fakeSources) UpdateSettings(_ context.Context, s *source.Source) error {
 	return nil
 }
 
+// ReadByID hands back a copy, as postgres would: a row read out of storage,
+// not a live handle into it. Returning the stored pointer directly would let
+// a caller's mutation land in the map before any Update call, which would
+// make every write guard below unobservable -- exactly the failure mode this
+// fake exists to catch.
 func (r fakeSources) ReadByID(_ context.Context, id string) (*source.Source, error) {
 	s, ok := r.byID[id]
 	if !ok {
 		return nil, errs.NotFoundErr("source not found")
 	}
-	return s, nil
+	got := *s
+	return &got, nil
+}
+
+// UpdateReview writes only the columns the real statement writes. The fake
+// mirroring that is the point: a test that saved the whole struct would pass
+// even if the use case had carried something else in, such as a rename riding
+// along with an approval.
+func (r fakeSources) UpdateReview(_ context.Context, s *source.Source) error {
+	row, ok := r.byID[s.ID]
+	if !ok {
+		return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
+	}
+	row.IsActive = s.IsActive
+	row.ApprovedAt = s.ApprovedAt
+	row.ReviewedAt = s.ReviewedAt
+	row.ReviewNote = s.ReviewNote
+	row.UpdatedAt = s.UpdatedAt
+	return nil
+}
+
+func (r fakeSources) ListForReview(_ context.Context) ([]source.Source, error) {
+	out := []source.Source{}
+	for _, s := range r.byID {
+		if !s.IsReviewed() {
+			out = append(out, *s)
+		}
+	}
+	return out, nil
+}
+
+func (r fakeSources) ListAll(_ context.Context) ([]source.Source, error) {
+	out := []source.Source{}
+	for _, s := range r.byID {
+		out = append(out, *s)
+	}
+	return out, nil
 }
 
 // fakeCredentials keeps the identities by id, which is what the port asks for
@@ -210,6 +251,12 @@ type fakeNotifications struct {
 	// check and our write. Create refuses once and leaves the message behind,
 	// which is exactly what the database does.
 	loseRaceTo *notification.Notification
+
+	// deliveries is what ListForOperator joins against. This fake has no join
+	// of its own -- it is handed the other store directly and reads it, the
+	// same two stores the real statement joins, kept apart the way the ports
+	// keep them apart. Nil is fine for every test that never calls Messages.
+	deliveries *fakeDeliveries
 }
 
 func newFakeNotifications() *fakeNotifications {
@@ -336,6 +383,52 @@ func (r *fakeNotifications) ReadByIdempotencyKey(
 		}
 	}
 	return nil, nil
+}
+
+// ListForOperator mirrors the join it stands in for: every message of one
+// source, newest first, each carrying the channel and failure counts read out
+// of the deliveries store handed to it. Never Title, never Body -- there is
+// nowhere on notification.OperatorRow to put either.
+func (r *fakeNotifications) ListForOperator(
+	_ context.Context, sourceID string, limit int,
+) ([]notification.OperatorRow, error) {
+	r.mu.Lock()
+	var all []*notification.Notification
+	for _, n := range r.byID {
+		if n.SourceID == sourceID {
+			all = append(all, n)
+		}
+	}
+	r.mu.Unlock()
+
+	slices.SortFunc(all, func(a, b *notification.Notification) int {
+		return strings.Compare(string(b.ID), string(a.ID)) // newest first
+	})
+	if len(all) > limit {
+		all = all[:limit]
+	}
+
+	out := make([]notification.OperatorRow, 0, len(all))
+	for _, n := range all {
+		var channels []string
+		failed, total := 0, 0
+		if r.deliveries != nil {
+			for _, d := range r.deliveries.all(n.ID) {
+				total++
+				if d.Status() == delivery.StatusFailed {
+					failed++
+				}
+				ch := string(d.Recipient.Channel)
+				if !slices.Contains(channels, ch) {
+					channels = append(channels, ch)
+				}
+			}
+		}
+		out = append(out, notification.OperatorRow{
+			ID: n.ID, Channels: channels, Failed: failed, Total: total, CreatedAt: n.CreatedAt,
+		})
+	}
+	return out, nil
 }
 
 type fakeDeliveries struct {
@@ -744,24 +837,69 @@ func (f *fakeUsers) Create(_ context.Context, u *user.User) error {
 	return nil
 }
 
+// ReadByEmail hands back a copy, as postgres would: a row read out of storage,
+// not a live handle into it. Returning the stored pointer would let a caller's
+// mutation land before any UpdateRole or SetActive call, making the write
+// guard around those unobservable.
 func (f *fakeUsers) ReadByEmail(_ context.Context, email string) (*user.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if u, ok := f.rows[email]; ok {
-		return u, nil
+		got := *u
+		return &got, nil
 	}
 	return nil, errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
 }
 
+// ReadByID hands back a copy too, for the same reason.
 func (f *fakeUsers) ReadByID(_ context.Context, id shared.ID) (*user.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, u := range f.rows {
 		if u.ID == id {
-			return u, nil
+			got := *u
+			return &got, nil
 		}
 	}
 	return nil, errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
+}
+
+func (f *fakeUsers) List(_ context.Context) ([]user.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]user.User, 0, len(f.rows))
+	for _, u := range f.rows {
+		out = append(out, *u)
+	}
+	return out, nil
+}
+
+// UpdateRole writes only what the real statement writes -- role and
+// updated_at -- so a use case that carried something else in would leave it
+// behind here too, same as fakeSources.UpdateReview.
+func (f *fakeUsers) UpdateRole(_ context.Context, u *user.User) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	row, ok := f.rows[u.Email]
+	if !ok {
+		return errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
+	}
+	row.Role = u.Role
+	row.UpdatedAt = u.UpdatedAt
+	return nil
+}
+
+// SetActive writes only is_active and updated_at.
+func (f *fakeUsers) SetActive(_ context.Context, u *user.User) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	row, ok := f.rows[u.Email]
+	if !ok {
+		return errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
+	}
+	row.IsActive = u.IsActive
+	row.UpdatedAt = u.UpdatedAt
+	return nil
 }
 
 type fakeCodes struct {
