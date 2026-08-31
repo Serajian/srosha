@@ -36,13 +36,26 @@ RUN go build -ldflags="-s -w" -trimpath -o /out/gateway    ./cmd/gateway \
  && go build -ldflags="-s -w" -trimpath -o /out/console    ./cmd/console
 
 
-# distroless/static carries ca-certificates, tzdata and a nonroot user, and
-# nothing else -- no shell, no package manager, no wget.
+# alpine, and not distroless, for one reason that has nothing to do with which
+# is better: the deploy server cannot reach gcr.io. The build failed there with
+# a 403 on the manifest while Docker Hub pulled fine, so the base image has to
+# come from a registry that answers.
 #
-# Certificates matter: every channel is TLS, and without them each send fails
-# with an opaque x509 error that reads like a bug in our code. The absence of
-# wget is why cmd/* learned `healthcheck`.
-FROM gcr.io/distroless/static-debian12:nonroot
+# ca-certificates because every channel is TLS, and without them each send
+# fails with an opaque x509 error that reads like a bug in our code. tzdata
+# because a schedule is read in UTC and a container with no zone database
+# cannot say so.
+#
+# The shell that comes with it is not why cmd/* learned `healthcheck`. That
+# subcommand still earns its place: it asks the same /readyz an orchestrator
+# would, so the check cannot drift from what readiness actually means.
+FROM alpine:3.22
+
+RUN apk add --no-cache ca-certificates tzdata
+
+# Not root. Nothing here writes to disk: the templates and assets are compiled
+# into the console binary by go:embed, and the only state is postgres and nats.
+RUN adduser -D -u 10001 srosha
 
 WORKDIR /app
 
@@ -53,7 +66,7 @@ COPY --from=build /go/bin/goose ./goose
 # commit than the binaries that expect it.
 COPY migrations/ ./migrations/
 
-USER nonroot
+USER srosha
 
 # No ENTRYPOINT and no CMD on purpose: every service names its own command, and
 # a default here would be a fourth answer to a question already answered three
