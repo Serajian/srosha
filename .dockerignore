@@ -1,0 +1,23 @@
+# Read from the build context's root, which is this directory: the image is
+# built with `context: ../..` from deployment/app/docker-compose.yml, so a
+# .dockerignore beside the Dockerfile would not be read at all.
+
+.git
+.idea
+build/
+
+# Never in an image. The values live in Dokploy's Environment tab.
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Prose. Nothing in the three binaries reads it.
+docs/
+*.md
+
+# sdk/ is NOT excluded, and must not be. It looks like a separate module with
+# its own tag, but go.mod has `replace github.com/Serajian/srosha/sdk/go =>
+# ./sdk/go`, and the generated protobuf that internal/adapter/api/grpcsrv
+# imports lives inside it. Excluding it fails `go mod download` before a single
+# line is compiled.

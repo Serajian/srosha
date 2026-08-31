@@ -35,18 +35,36 @@ Host: one Linux server running Docker + Dokploy, shared with unrelated apps.
 | --- | --- |
 | Dokploy project | `srosha` |
 | Service type | Compose with a Git source (never Application or Database) |
-| Compose path | `deployment/app/docker-compose.yml` |
-| Dockerfile | `deployment/app/Dockerfile` — one image, both binaries |
+| Compose path | `deployment/app/docker-compose.yml` — **the application only**, see below |
+| Dockerfile | `deployment/app/Dockerfile` — one image: all three binaries, goose, and `migrations/` |
+| Ignore file | `.dockerignore` at the **repository root**, because that is the build context |
 | Image | `srosha:latest`; the binary is selected by `command` |
-| Domain | on the **gateway service only**; the dispatcher has none |
+| Runtime base | `gcr.io/distroless/static-debian12:nonroot` — no shell, so healthchecks run the binary |
 | Isolated Deployment | OFF |
+
+| Hostname | Reaches |
+| --- | --- |
+| `api.srosha.ir` | gateway, gRPC — the router sets `scheme=h2c` |
+| `panel.srosha.ir` | console, the customer portal |
+| `admin.srosha.ir` | console, the admin panel |
+
+**The compose file deploys the application and nothing else.** `postgres` and
+`nats` are already live as their own Dokploy compose services; defining them
+again would bring up a second database beside the real one, with an empty
+volume. See `docs/reference/srosha-infra-deploy.md`.
 
 ### Networks
 
 | Name | Purpose |
 | --- | --- |
-| `srosha-net` | private bridge, `external: true`, created by hand. Both binaries plus postgres and nats. |
-| `dokploy-network` | Traefik's shared network. **Gateway only**, and it must be declared *alongside* `srosha-net`, never instead of it. |
+| `srosha-net` | private bridge, `external: true`, created by hand. All three binaries, plus the separately-deployed postgres and nats. |
+| `dokploy-network` | Traefik's shared network, `external: true`. **Only the services that carry a domain** — gateway and console — and it must be declared *alongside* `srosha-net`, never instead of it. |
+
+Neither network is created by the compose file, so a missing one is a deploy
+that fails at start. Listing both on a service with a domain is not tidiness:
+attaching a domain makes Dokploy **replace** the service's network rather than
+add to it, so a service listing only `srosha-net` loses its database and broker
+the moment it gets a domain — with no deploy-time error.
 
 ### Watch paths for auto-deploy
 
@@ -173,6 +191,19 @@ Every key, with its defaults and which binary needs it, is documented in
 | admin | `NOTIF_ADMIN_ADDR`, `NOTIF_ADMIN_LIST_LIMIT` | — | — | ✅ |
 
 `NOTIF_MQ_URL` carries a **different** NATS user per binary. Do not collapse them.
+
+### Names that exist only in the compose file
+
+These are not application config keys. They are substitution names the deployed
+compose reads from Dokploy's Environment tab, because one application key needs
+a different value per service:
+
+| Compose name | Feeds | Why it is separate |
+| --- | --- | --- |
+| `NOTIF_GATEWAY_MQ_URL` | the gateway's `NOTIF_MQ_URL` | one NATS user per binary, never shared |
+| `NOTIF_DISPATCHER_MQ_URL` | the dispatcher's `NOTIF_MQ_URL` | the same |
+| `NOTIF_DISPATCHER_HTTP_ADDR` | the dispatcher's `NOTIF_HTTP_ADDR` | `:8081` |
+| `NOTIF_CONSOLE_HTTP_ADDR` | the console's `NOTIF_HTTP_ADDR` | `:8091`. The key's own default is `:8081`, which is the dispatcher's, so the console's health listener would sit on the wrong port if this were left out |
 
 WhatsApp needs two values, not one: Meta identifies the sending number
 separately from the account that owns it. The id goes in the url and the token
@@ -349,6 +380,16 @@ cannot share a wire.
 | Directory | `migrations/` |
 | Env keys | `GOOSE_DRIVER`, `GOOSE_MIGRATION_DIR`, `GOOSE_DBSTRING` |
 | When | a separate deployment step, never from an application entrypoint |
+| Deployed as | `docker compose --profile migrate run --rm migrate` |
+| Version in the image | goose **`v3.27.3`**, pinned |
+
+The `migrate` service is under a profile, so it never comes up during a deploy,
+and it uses the same image as the deploy — the sql it applies is the sql of that
+commit. Run it **before** merging the code that depends on it: with auto-deploy
+there is no window in which the old code is guaranteed to be gone.
+
+`make setup-dev` installs goose `@latest` instead. That is right for a laptop
+and wrong for an image that has to be rebuildable, which is why the two differ.
 
 The numbering was rearranged when sources gained an owner: `users` is `00002` and
 `sources` is `00003`, because `sources.owner_user_id` is a foreign key into a

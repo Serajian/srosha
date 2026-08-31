@@ -28,6 +28,14 @@ func run() error {
 		return err
 	}
 
+	// argv is the process's own, like the signals below. Checked after the
+	// config loads, deliberately: a container whose configuration no longer
+	// reads is not a healthy one either, and saying so is the truth rather
+	// than a false negative.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		return bootstrap.Probe(cfg.HTTP.Addr)
+	}
+
 	// Signals are the one thing that is genuinely the process's own, so they
 	// stay here rather than in bootstrap.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
