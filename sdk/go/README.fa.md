@@ -121,7 +121,7 @@ func main() {
 	r, err := c.Submit(ctx, srosha.Message{
 		Title:  "سفارش شما ارسال شد",
 		Body:   "کد رهگیری: ۱۲۳",
-		Routes: []srosha.Route{srosha.Email("customer@example.com")},
+		Routes: []srosha.Route{srosha.EmailTo("customer@example.com")},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -228,8 +228,8 @@ c.Submit(ctx, srosha.Message{
 
 	// حداقل یکی. هرکدام یک تحویلِ جدا با سرنوشتِ خودش است.
 	Routes: []srosha.Route{
-		srosha.Email("a@b.test"),
-		srosha.Telegram("123456789").From("marketing"),
+		srosha.EmailTo("a@b.test"),
+		srosha.TelegramTo("123456789").From("marketing"),
 	},
 })
 ```
@@ -256,9 +256,9 @@ c.Submit(ctx, srosha.Message{
 
 ```go
 Routes: []srosha.Route{
-	srosha.Email("a@b.test"),
-	srosha.Telegram("123456789"),
-	srosha.APNs(deviceToken),
+	srosha.EmailTo("a@b.test"),
+	srosha.TelegramTo("123456789"),
+	srosha.APNsTo(deviceToken),
 }
 ```
 
@@ -266,15 +266,15 @@ Routes: []srosha.Route{
 
 ```go
 Routes: []srosha.Route{
-	srosha.Email("a@acme.test"),
-	srosha.Email("b@acme.test"),
+	srosha.EmailTo("a@acme.test"),
+	srosha.EmailTo("b@acme.test"),
 }
 ```
 
 **از هویتِ مشخصی از خودتان**، وقتی یک کانال بیش از یکی دارد:
 
 ```go
-srosha.Telegram("123456789").From("marketing")
+srosha.TelegramTo("123456789").From("marketing")
 ```
 
 **روی کانالی که این نسخه سازنده‌ای برایش ندارد** — سرویسِ جدیدتر:
@@ -384,6 +384,20 @@ for n, err := range c.List(ctx, srosha.LastDay) {
 
 ## ۶ — آدرس، به‌ازای هر کانال
 
+هر کانال دو سازنده دارد. شکلِ ساده — `srosha.Email()`، `srosha.Telegram()` —
+به آدرسِ پیش‌فرضِ همین source می‌رود، که حالتِ رایج است: یک بار در پورتال
+تنظیمش می‌کنید و بیشترِ پیام‌ها هرگز آدرسی نام نمی‌برند. شکلِ `To` —
+`srosha.EmailTo(address)`، `srosha.TelegramTo(address)` — به آدرسی می‌رود که
+خودِ پیام نام می‌برد.
+
+```go
+Routes: []srosha.Route{
+	srosha.EmailTo("someone@acme.test"),      // آدرسی که پیام نام می‌برد
+	srosha.Telegram(),                        // پیش‌فرضِ source
+	srosha.GotifyTo("42").From("ops"),        // یک app id، از طرفِ "ops"
+}
+```
+
 آدرسی که شکلش غلط باشد سرِ `Submit` رد می‌شود، **قبل از اینکه چیزی ذخیره شود** —
 پس یک اشتباه برایتان یک خطا هزینه دارد، نه یک تحویلِ شکست‌خورده چند ساعت بعد.
 
@@ -420,14 +434,14 @@ _, err := c.Credentials.Register(ctx, srosha.Registration{
 ```go
 c.Submit(ctx, srosha.Message{
 	Body:   "…",
-	Routes: []srosha.Route{srosha.Telegram("123456789")},  // از "alerts" می‌رود
+	Routes: []srosha.Route{srosha.TelegramTo("123456789")},  // از "alerts" می‌رود
 })
 ```
 
 فقط وقتی یک کانال بیش از یک هویت دارد، می‌گویید کدام:
 
 ```go
-srosha.Telegram("123456789").From("marketing")
+srosha.TelegramTo("123456789").From("marketing")
 ```
 
 نام‌ها حروفِ کوچکِ انگلیسی، رقم و خط تیره‌اند، چون در url و در کلیدِ پیکربندی

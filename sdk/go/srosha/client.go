@@ -11,7 +11,7 @@
 //	r, err := c.Submit(ctx, srosha.Message{
 //	    Title: "Your order shipped",
 //	    Body:  "Tracking: 123",
-//	    Routes: []srosha.Route{srosha.Email("a@b.test")},
+//	    Routes: []srosha.Route{srosha.EmailTo("a@b.test")},
 //	})
 //
 // Nothing in this package's surface is protobuf or gRPC. Times are time.Time,

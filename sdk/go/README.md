@@ -119,7 +119,7 @@ func main() {
 	r, err := c.Submit(ctx, srosha.Message{
 		Title:  "Your order shipped",
 		Body:   "Tracking: 123",
-		Routes: []srosha.Route{srosha.Email("customer@example.com")},
+		Routes: []srosha.Route{srosha.EmailTo("customer@example.com")},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -230,8 +230,8 @@ c.Submit(ctx, srosha.Message{
 
 	// At least one. Each is a separate delivery with its own outcome.
 	Routes: []srosha.Route{
-		srosha.Email("a@b.test"),
-		srosha.Telegram("123456789").From("marketing"),
+		srosha.EmailTo("a@b.test"),
+		srosha.TelegramTo("123456789").From("marketing"),
 	},
 })
 ```
@@ -259,9 +259,9 @@ outcome, and one failing does not stop the others:
 
 ```go
 Routes: []srosha.Route{
-	srosha.Email("a@b.test"),
-	srosha.Telegram("123456789"),
-	srosha.APNs(deviceToken),
+	srosha.EmailTo("a@b.test"),
+	srosha.TelegramTo("123456789"),
+	srosha.APNsTo(deviceToken),
 }
 ```
 
@@ -269,15 +269,15 @@ Routes: []srosha.Route{
 
 ```go
 Routes: []srosha.Route{
-	srosha.Email("a@acme.test"),
-	srosha.Email("b@acme.test"),
+	srosha.EmailTo("a@acme.test"),
+	srosha.EmailTo("b@acme.test"),
 }
 ```
 
 **As a particular identity of yours**, when a channel has more than one:
 
 ```go
-srosha.Telegram("123456789").From("marketing")
+srosha.TelegramTo("123456789").From("marketing")
 ```
 
 **On a channel this build has no constructor for** — a newer service:
@@ -386,6 +386,20 @@ longer than it keeps and you get `ErrInvalidRequest` naming the real limit.
 
 ## 6. Addresses, per channel
 
+Each channel has two constructors. The bare form — `srosha.Email()`,
+`srosha.Telegram()` — routes to this source's configured default address,
+which is the common case: set it once in the portal and most messages never
+name one. The `To` form — `srosha.EmailTo(address)`,
+`srosha.TelegramTo(address)` — routes to an address the message itself names.
+
+```go
+Routes: []srosha.Route{
+	srosha.EmailTo("someone@acme.test"),      // an address the message names
+	srosha.Telegram(),                        // the source's default
+	srosha.GotifyTo("42").From("ops"),        // an app id, sent from "ops"
+}
+```
+
 An address in the wrong shape is refused at `Submit`, before anything is
 stored — so a mistake costs you an error, not a failed delivery hours later.
 
@@ -422,14 +436,14 @@ identity, and the default is used:
 ```go
 c.Submit(ctx, srosha.Message{
 	Body:   "…",
-	Routes: []srosha.Route{srosha.Telegram("123456789")},  // goes out as "alerts"
+	Routes: []srosha.Route{srosha.TelegramTo("123456789")},  // goes out as "alerts"
 })
 ```
 
 Only when a channel has more than one identity do you say which:
 
 ```go
-srosha.Telegram("123456789").From("marketing")
+srosha.TelegramTo("123456789").From("marketing")
 ```
 
 Names are lowercase letters, digits and hyphens, because they travel in a url

@@ -61,8 +61,8 @@ c.Submit(ctx, srosha.Message{
     Title: "Your order shipped",
     Body:  "Tracking: 123",
     Routes: []srosha.Route{
-        srosha.Email("a@b.test"),
-        srosha.Telegram("123456789"),
+        srosha.EmailTo("a@b.test"),
+        srosha.TelegramTo("123456789"),
     },
 })
 ```

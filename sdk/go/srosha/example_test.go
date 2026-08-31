@@ -28,8 +28,8 @@ func Example() {
 		Title:          "Your order shipped",
 		Body:           "Tracking: 123",
 		Routes: []srosha.Route{
-			srosha.Email("a@b.test"),
-			srosha.Telegram("123456789").From("alerts"),
+			srosha.EmailTo("a@b.test"),
+			srosha.TelegramTo("123456789").From("alerts"),
 		},
 	})
 	if err != nil {
@@ -66,7 +66,7 @@ func ExampleError() {
 
 	_, err := c.Submit(context.Background(), srosha.Message{
 		Body:   "hello",
-		Routes: []srosha.Route{srosha.Email("not-an-address")},
+		Routes: []srosha.Route{srosha.EmailTo("not-an-address")},
 	})
 	switch {
 	case err == nil:
