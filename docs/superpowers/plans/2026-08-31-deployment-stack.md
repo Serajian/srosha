@@ -307,14 +307,23 @@ Write `docs/changes/2026-08-31-healthcheck-subcommand.md` in Persian, then
 - Produces: an image tagged `srosha:latest` containing `/app/gateway`,
   `/app/dispatcher`, `/app/console`, `/app/goose` and `/app/migrations/`.
 
-**Distroless, decided.** The runtime stage is
-`gcr.io/distroless/static-debian12:nonroot`, which is what the `healthcheck`
-subcommand makes possible: no shell, no package manager, no wget. The cost is
-known and accepted — `docker exec … sh` does not exist, so a running container
-cannot be poked at from inside. What replaces that is the binary itself: it
-answers `healthcheck`, and its logs go to the docker json driver bounded below.
-Do not substitute alpine to make a verification step easier; the steps below are
-written for an image with no shell on purpose.
+**Distroless was decided and then reversed by the server.** The runtime stage
+was `gcr.io/distroless/static-debian12:nonroot`, which the `healthcheck`
+subcommand had made possible. The first real deploy failed on it:
+
+```
+gcr.io/v2/distroless/static-debian12/manifests/nonroot: 403 Forbidden
+```
+
+The deploy host cannot reach `gcr.io`, while Docker Hub pulls fine. A base
+image the deploy server cannot fetch is not a choice, so the runtime is
+`alpine:3.22`. The verification steps below were written for an image with no
+shell; with alpine they still hold, and `docker exec … sh` works besides.
+
+The `healthcheck` subcommand is not wasted. It asks the same `/readyz` an
+orchestrator would, so the check cannot drift from what readiness means — that
+was always the better half of the argument, and busybox `wget` would only have
+given the weaker half back.
 
 - [ ] **Step 1: Write the `.dockerignore`**
 

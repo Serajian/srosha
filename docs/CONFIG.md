@@ -39,7 +39,7 @@ Host: one Linux server running Docker + Dokploy, shared with unrelated apps.
 | Dockerfile | `deployment/app/Dockerfile` — one image: all three binaries, goose, and `migrations/` |
 | Ignore file | `.dockerignore` at the **repository root**, because that is the build context |
 | Image | `srosha:latest`; the binary is selected by `command` |
-| Runtime base | `gcr.io/distroless/static-debian12:nonroot` — no shell, so healthchecks run the binary |
+| Runtime base | `alpine:3.22` — distroless was tried and the server cannot reach `gcr.io` |
 | Isolated Deployment | OFF |
 
 | Hostname | Reaches |
