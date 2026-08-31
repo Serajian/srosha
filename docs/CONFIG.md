@@ -168,7 +168,7 @@ Every key, with its defaults and which binary needs it, is documented in
 | telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ | ✅ |
 | console | `NOTIF_CONSOLE_SMTP_HOST`, `NOTIF_CONSOLE_SMTP_PORT`, `NOTIF_CONSOLE_SMTP_USER`, `NOTIF_CONSOLE_SMTP_PASSWORD`, `NOTIF_CONSOLE_SMTP_FROM`, `NOTIF_CONSOLE_SMTP_TIMEOUT`, `NOTIF_CONSOLE_SECURE_COOKIE` | — | — | ✅ |
 | portal | `NOTIF_PORTAL_ADDR` | — | — | ✅ |
-| admin | `NOTIF_ADMIN_ADDR` | — | — | ✅ |
+| admin | `NOTIF_ADMIN_ADDR`, `NOTIF_ADMIN_LIST_LIMIT` | — | — | ✅ |
 
 `NOTIF_MQ_URL` carries a **different** NATS user per binary. Do not collapse them.
 
@@ -242,6 +242,17 @@ to fix is a trap.
 
 `NOTIF_CONSOLE_SECURE_COOKIE` is off only for local development over plain http,
 and the console refuses to start in production with it off.
+
+`NOTIF_ADMIN_LIST_LIMIT` bounds every list the admin panel reads: the queue,
+all sources, a source's message log, a source's own decision history, the
+roster, and the global audit feed. One key for all of them, because it is one
+concept -- how many rows one panel listing shows -- and separate keys per page
+would be separate numbers that drift apart with nothing to notice. Default
+`200`. Loading refuses a value at or below zero: a limit of zero would read as
+a page with nothing on it, which is indistinguishable from a page that
+genuinely has nothing to show. A listing that hits the cap says so on the
+page, because a page that silently shows the newest N of a larger set is
+telling an operator they are looking at everything when they are not.
 
 ### Password rule
 

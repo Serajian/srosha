@@ -30,19 +30,39 @@ type Operators struct {
 	audit         AuditLog
 	gate          *Gate
 	now           shared.NowFunc
+
+	// listLimit bounds every list this type reads: the queue, all sources, a
+	// source's message log, a source's own decision history, the roster, and
+	// the audit feed. One field for all of them -- see settings.Console's
+	// AdminListLimit, which this is read from.
+	listLimit int32
 }
 
 func NewOperators(
 	repo source.Repository, users user.Repository,
 	notifications notification.Repository, deliveries delivery.Repository,
 	credentials credential.Repository,
-	audit AuditLog, gate *Gate, now shared.NowFunc,
+	audit AuditLog, gate *Gate, now shared.NowFunc, listLimit int32,
 ) *Operators {
 	return &Operators{
 		repo: repo, users: users,
 		notifications: notifications, deliveries: deliveries, credentials: credentials,
-		audit: audit, gate: gate, now: now,
+		audit: audit, gate: gate, now: now, listLimit: listLimit,
 	}
+}
+
+// truncate keeps at most limit items and reports whether more existed.
+//
+// Every caller here asks its repository for limit+1 rows. Getting more than
+// limit back IS the answer to "was this truncated" -- cheaper than a second
+// query to count what a screen was never going to read past the first limit
+// rows of anyway, and it cannot disagree with what is actually shown, because
+// the same slice this trims is the one rendered.
+func truncate[T any](rows []T, limit int32) ([]T, bool) {
+	if int32(len(rows)) > limit { //nolint:gosec // rows is limit+1 at most, bounded by config
+		return rows[:limit], true
+	}
+	return rows, false
 }
 
 // mayOperate is the check every method here begins with.
@@ -59,20 +79,35 @@ func (o *Operators) mayOperate(actor *user.User) error {
 	return nil
 }
 
-// Queue is every source waiting for a first decision.
-func (o *Operators) Queue(ctx context.Context, actor *user.User) ([]source.Source, error) {
+// Queue is every source waiting for a first decision, capped at listLimit.
+// The bool says whether more were waiting than fit -- see truncate.
+func (o *Operators) Queue(
+	ctx context.Context, actor *user.User,
+) ([]source.Source, bool, error) {
 	if err := o.mayOperate(actor); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return o.repo.ListForReview(ctx)
+	rows, err := o.repo.ListForReview(ctx, o.listLimit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	rows, truncated := truncate(rows, o.listLimit)
+	return rows, truncated, nil
 }
 
-// AllSources is every source, for the page that filters.
-func (o *Operators) AllSources(ctx context.Context, actor *user.User) ([]source.Source, error) {
+// AllSources is every source, for the page that filters, capped at listLimit.
+func (o *Operators) AllSources(
+	ctx context.Context, actor *user.User,
+) ([]source.Source, bool, error) {
 	if err := o.mayOperate(actor); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return o.repo.ListAll(ctx)
+	rows, err := o.repo.ListAll(ctx, o.listLimit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	rows, truncated := truncate(rows, o.listLimit)
+	return rows, truncated, nil
 }
 
 // Source is one source, by id, for an operator rather than its owner -- no

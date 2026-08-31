@@ -294,7 +294,7 @@ func TestARefusedSourceLeavesTheQueue(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	queue, err := repo.ListForReview(ctx)
+	queue, err := repo.ListForReview(ctx, 100)
 	if err != nil {
 		t.Fatalf("ListForReview: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestARefusedSourceLeavesTheQueue(t *testing.T) {
 		t.Fatalf("UpdateReview: %v", err)
 	}
 
-	queue, err = repo.ListForReview(ctx)
+	queue, err = repo.ListForReview(ctx, 100)
 	if err != nil {
 		t.Fatalf("ListForReview: %v", err)
 	}

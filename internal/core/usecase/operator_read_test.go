@@ -37,7 +37,7 @@ func TestAnOperatorSeesNoMessageBody(t *testing.T) {
 	rig := newOperatorRig(t)
 	ctx := context.Background()
 
-	messages, err := rig.ops.Messages(ctx, rig.admin, rig.sourceID)
+	messages, _, err := rig.ops.Messages(ctx, rig.admin, rig.sourceID)
 	if err != nil {
 		t.Fatalf("Messages: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestAnOperatorSeesNoMessageBody(t *testing.T) {
 func TestMessagesSummarizesWithoutContent(t *testing.T) {
 	rig := newOperatorRig(t)
 
-	got, err := rig.ops.Messages(context.Background(), rig.admin, rig.sourceID)
+	got, _, err := rig.ops.Messages(context.Background(), rig.admin, rig.sourceID)
 	if err != nil {
 		t.Fatalf("Messages: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestACustomerCannotReadAnotherSourcesLog(t *testing.T) {
 	rig := newOperatorRig(t)
 	ctx := context.Background()
 
-	if _, err := rig.ops.Messages(ctx, rig.customer, rig.sourceID); err == nil {
+	if _, _, err := rig.ops.Messages(ctx, rig.customer, rig.sourceID); err == nil {
 		t.Error("a customer read the message log")
 	} else if !errors.Is(err, usecase.ErrNotOperator) {
 		t.Errorf("err = %v, want it to wrap usecase.ErrNotOperator", err)
@@ -140,19 +140,19 @@ func TestOnlyASuperAdminReadsTheAuditLog(t *testing.T) {
 		t.Fatalf("Approve: %v", err)
 	}
 
-	if _, err := rig.ops.Audit(ctx, rig.customer); err == nil {
+	if _, _, err := rig.ops.Audit(ctx, rig.customer); err == nil {
 		t.Error("a customer read the audit log")
 	} else if !errors.Is(err, usecase.ErrNotOperator) {
 		t.Errorf("err = %v, want it to wrap usecase.ErrNotOperator", err)
 	}
 
-	if _, err := rig.ops.Audit(ctx, rig.admin); err == nil {
+	if _, _, err := rig.ops.Audit(ctx, rig.admin); err == nil {
 		t.Error("an admin read the audit log")
 	} else if !errors.Is(err, usecase.ErrNotSuperAdmin) {
 		t.Errorf("err = %v, want it to wrap usecase.ErrNotSuperAdmin", err)
 	}
 
-	rows, err := rig.ops.Audit(ctx, rig.superAdmin)
+	rows, _, err := rig.ops.Audit(ctx, rig.superAdmin)
 	if err != nil {
 		t.Fatalf("a super_admin could not read the audit log: %v", err)
 	}

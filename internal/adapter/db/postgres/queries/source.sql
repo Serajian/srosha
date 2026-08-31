@@ -69,15 +69,19 @@ WHERE id = @id;
 
 -- ListForReview is the queue: what nobody has decided about, oldest first,
 -- because the person who has waited longest is the one to answer next.
+-- Capped at row_limit -- see usecase.Operators.Queue, which asks for one more
+-- than it means to show so it can tell "that is everything" from "that is
+-- all that fit".
 --
 -- name: ListForReview :many
-SELECT * FROM sources WHERE reviewed_at IS NULL ORDER BY created_at;
+SELECT * FROM sources WHERE reviewed_at IS NULL ORDER BY created_at LIMIT @row_limit;
 
 -- ListAllSources is every source, newest first. No filter: the operator's page
 -- filters in the handler, because the states are four and the counts are small.
 -- The handler is web.reviewHandler.list, and the four states are inState
 -- beside it -- an operator flips between them on one screen, and a round trip
--- per flip buys nothing on a set one person reads by eye.
+-- per flip buys nothing on a set one person reads by eye. Capped at row_limit,
+-- the same way and for the same reason as ListForReview above.
 --
 -- name: ListAllSources :many
-SELECT * FROM sources ORDER BY created_at DESC;
+SELECT * FROM sources ORDER BY created_at DESC LIMIT @row_limit;

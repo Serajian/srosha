@@ -104,22 +104,32 @@ func (r fakeSources) UpdateReview(_ context.Context, s *source.Source) error {
 	return nil
 }
 
-func (r fakeSources) ListForReview(_ context.Context) ([]source.Source, error) {
+func (r fakeSources) ListForReview(_ context.Context, limit int32) ([]source.Source, error) {
 	out := []source.Source{}
 	for _, s := range r.byID {
 		if !s.IsReviewed() {
 			out = append(out, *s)
 		}
 	}
-	return out, nil
+	return capRows(out, limit), nil
 }
 
-func (r fakeSources) ListAll(_ context.Context) ([]source.Source, error) {
+func (r fakeSources) ListAll(_ context.Context, limit int32) ([]source.Source, error) {
 	out := []source.Source{}
 	for _, s := range r.byID {
 		out = append(out, *s)
 	}
-	return out, nil
+	return capRows(out, limit), nil
+}
+
+// capRows mirrors what every LIMIT clause in this package's real statements
+// does: never more rows than asked for. A fake that ignored the limit would
+// let a use case's own truncate logic go untested by every test that uses it.
+func capRows[T any](rows []T, limit int32) []T {
+	if int32(len(rows)) > limit {
+		return rows[:limit]
+	}
+	return rows
 }
 
 // fakeCredentials keeps the identities by id, which is what the port asks for
@@ -864,14 +874,14 @@ func (f *fakeUsers) ReadByID(_ context.Context, id shared.ID) (*user.User, error
 	return nil, errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
 }
 
-func (f *fakeUsers) List(_ context.Context) ([]user.User, error) {
+func (f *fakeUsers) List(_ context.Context, limit int32) ([]user.User, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	out := make([]user.User, 0, len(f.rows))
 	for _, u := range f.rows {
 		out = append(out, *u)
 	}
-	return out, nil
+	return capRows(out, limit), nil
 }
 
 // UpdateRole writes only what the real statement writes -- role and

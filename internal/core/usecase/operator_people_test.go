@@ -170,7 +170,7 @@ func TestSwitchingSomebodyBackOnWritesADifferentVerb(t *testing.T) {
 func TestAnAdminCannotListPeople(t *testing.T) {
 	rig := newOperatorRig(t)
 
-	_, err := rig.ops.People(context.Background(), rig.admin)
+	_, _, err := rig.ops.People(context.Background(), rig.admin)
 	if err == nil {
 		t.Fatal("an admin read the roster")
 	}
@@ -183,7 +183,7 @@ func TestAnAdminCannotListPeople(t *testing.T) {
 func TestASuperAdminMayListPeople(t *testing.T) {
 	rig := newOperatorRig(t)
 
-	got, err := rig.ops.People(context.Background(), rig.superAdmin)
+	got, _, err := rig.ops.People(context.Background(), rig.superAdmin)
 	if err != nil {
 		t.Fatalf("People: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestASuperAdminMayListPeople(t *testing.T) {
 func TestACustomerCannotListPeople(t *testing.T) {
 	rig := newOperatorRig(t)
 
-	if _, err := rig.ops.People(context.Background(), rig.customer); err == nil {
+	if _, _, err := rig.ops.People(context.Background(), rig.customer); err == nil {
 		t.Error("a customer read the roster")
 	}
 }

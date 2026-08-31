@@ -148,7 +148,7 @@ func TestListAnswersEveryAccount(t *testing.T) {
 
 	repo := postgres.NewUserRepository(pool)
 
-	before, err := repo.List(ctx)
+	before, err := repo.List(ctx, 100)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestListAnswersEveryAccount(t *testing.T) {
 	aStoredUser(t, pool, "US1", "a@acme.test")
 	aStoredUser(t, pool, "US2", "b@acme.test")
 
-	got, err := repo.List(ctx)
+	got, err := repo.List(ctx, 100)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}

@@ -40,6 +40,7 @@ const listUsers = `-- name: ListUsers :many
 SELECT id, email, role, is_active, created_at, updated_at
 FROM users
 ORDER BY created_at DESC
+LIMIT $1
 `
 
 // ListUsers is every account, newest first, for the page that manages them.
@@ -47,8 +48,9 @@ ORDER BY created_at DESC
 // operator flips between and /people has none to flip between -- a role and
 // an is_active flag are shown on the row, and the page is short enough to
 // read. When it stops being short the answer is a page cursor, not a filter.
-func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := q.db.Query(ctx, listUsers)
+// Capped at row_limit -- see usecase.Operators.People.
+func (q *Queries) ListUsers(ctx context.Context, rowLimit int32) ([]User, error) {
+	rows, err := q.db.Query(ctx, listUsers, rowLimit)
 	if err != nil {
 		return nil, err
 	}

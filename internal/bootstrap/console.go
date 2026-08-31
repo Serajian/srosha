@@ -222,7 +222,7 @@ func buildConsoleCore(
 		postgres.NewNotificationRepository(pool),
 		postgres.NewDeliveryRepository(pool, now),
 		postgres.NewCredentialRepository(pool),
-		auditRows, gate, now,
+		auditRows, gate, now, cfg.Console.AdminListLimit,
 	)
 	return core, nil
 }

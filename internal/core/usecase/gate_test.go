@@ -43,6 +43,36 @@ func (a *auditLog) List(_ context.Context, limit int32) ([]usecase.AuditEntry, e
 	return out, nil
 }
 
+// ListByTarget mirrors postgres's own statement: target_type, target_id and
+// the given verb set, newest first, capped at limit. A fake that ignored the
+// verb list would let usecase.sourceDecisionVerbs drift without any unit test
+// noticing -- this is what makes TestSourceHistory... in
+// operator_listlimit_test.go a real test of that list, not a test of a fake
+// that always agrees.
+func (a *auditLog) ListByTarget(
+	_ context.Context, targetType, targetID string, verbs []string, limit int32,
+) ([]usecase.AuditEntry, error) {
+	if a.err != nil {
+		return nil, a.err
+	}
+	allowed := make(map[string]bool, len(verbs))
+	for _, v := range verbs {
+		allowed[v] = true
+	}
+
+	var matched []usecase.AuditEntry
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := a.entries[i]
+		if e.TargetType == targetType && e.TargetID == targetID && allowed[e.Verb] {
+			matched = append(matched, e)
+		}
+	}
+	if int32(len(matched)) > limit {
+		matched = matched[:limit]
+	}
+	return matched, nil
+}
+
 var gateNow = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 
 func anActor(t *testing.T) *user.User {

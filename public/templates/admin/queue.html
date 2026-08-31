@@ -3,6 +3,7 @@
 <p class="sub">Sources nobody has decided about, oldest first.</p>
 
 {{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+{{if .Truncated}}{{template "truncated" .}}{{end}}
 
 {{if not .Sources}}
   <div class="empty">

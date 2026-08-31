@@ -50,6 +50,15 @@ type AuditLog interface {
 	// List is the newest rows first, capped at limit. No filter yet -- see
 	// Operators.Audit for why.
 	List(ctx context.Context, limit int32) ([]AuditEntry, error)
+
+	// ListByTarget is one thing's own history: every row naming it, narrowed
+	// to the given verbs, newest first, capped at limit. See
+	// Operators.SourceHistory for why the verb set is not optional -- it is
+	// what makes this read safe for an audience /audit itself is locked away
+	// from.
+	ListByTarget(
+		ctx context.Context, targetType, targetID string, verbs []string, limit int32,
+	) ([]AuditEntry, error)
 }
 
 // Gate is the one place every change goes through.

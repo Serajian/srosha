@@ -52,16 +52,17 @@ func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) erro
 }
 
 const listAllSources = `-- name: ListAllSources :many
-SELECT id, name, description, max_priority, owner_user_id, is_active, approved_at, reviewed_at, review_note, allow_custom_address, default_addresses, created_at, updated_at FROM sources ORDER BY created_at DESC
+SELECT id, name, description, max_priority, owner_user_id, is_active, approved_at, reviewed_at, review_note, allow_custom_address, default_addresses, created_at, updated_at FROM sources ORDER BY created_at DESC LIMIT $1
 `
 
 // ListAllSources is every source, newest first. No filter: the operator's page
 // filters in the handler, because the states are four and the counts are small.
 // The handler is web.reviewHandler.list, and the four states are inState
 // beside it -- an operator flips between them on one screen, and a round trip
-// per flip buys nothing on a set one person reads by eye.
-func (q *Queries) ListAllSources(ctx context.Context) ([]Source, error) {
-	rows, err := q.db.Query(ctx, listAllSources)
+// per flip buys nothing on a set one person reads by eye. Capped at row_limit,
+// the same way and for the same reason as ListForReview above.
+func (q *Queries) ListAllSources(ctx context.Context, rowLimit int32) ([]Source, error) {
+	rows, err := q.db.Query(ctx, listAllSources, rowLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -95,13 +96,16 @@ func (q *Queries) ListAllSources(ctx context.Context) ([]Source, error) {
 }
 
 const listForReview = `-- name: ListForReview :many
-SELECT id, name, description, max_priority, owner_user_id, is_active, approved_at, reviewed_at, review_note, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE reviewed_at IS NULL ORDER BY created_at
+SELECT id, name, description, max_priority, owner_user_id, is_active, approved_at, reviewed_at, review_note, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE reviewed_at IS NULL ORDER BY created_at LIMIT $1
 `
 
 // ListForReview is the queue: what nobody has decided about, oldest first,
 // because the person who has waited longest is the one to answer next.
-func (q *Queries) ListForReview(ctx context.Context) ([]Source, error) {
-	rows, err := q.db.Query(ctx, listForReview)
+// Capped at row_limit -- see usecase.Operators.Queue, which asks for one more
+// than it means to show so it can tell "that is everything" from "that is
+// all that fit".
+func (q *Queries) ListForReview(ctx context.Context, rowLimit int32) ([]Source, error) {
+	rows, err := q.db.Query(ctx, listForReview, rowLimit)
 	if err != nil {
 		return nil, err
 	}

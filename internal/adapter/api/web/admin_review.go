@@ -24,28 +24,38 @@ type reviewHandler struct {
 type (
 	queuePage struct {
 		adminChrome
-		Sources []source.Source
-		Problem string
+		Sources   []source.Source
+		Truncated bool
+		Problem   string
 	}
 	// adminSourcesPage carries Selected so the page can say which state it is
 	// showing and mark the link that is on -- a filtered list that looks
 	// identical to the whole list is a list somebody misreads.
 	adminSourcesPage struct {
 		adminChrome
-		Sources  []source.Source
-		Selected string
-		Problem  string
+		Sources   []source.Source
+		Truncated bool
+		Selected  string
+		Problem   string
 	}
 	// adminSourcePage carries Senders, its owner's own registered identities,
 	// so an operator deciding a source is not deciding blind. Never a secret:
 	// credential.Credential keeps its own unexported and gives no way to read
 	// it back -- this is what an owner is configured to send as, nothing this
 	// type could show even by mistake.
+	//
+	// History is this source's own decisions -- approve, refuse, suspend,
+	// restore -- and is safe on this page even though /audit is
+	// super_admin-only: see usecase.Operators.SourceHistory and
+	// sourceDecisionVerbs for why those four verbs never carry a customer's
+	// address the way the rest of audit_log does.
 	adminSourcePage struct {
 		adminChrome
-		Source  *source.Source
-		Senders []credential.Credential
-		Problem string
+		Source           *source.Source
+		Senders          []credential.Credential
+		History          []usecase.AuditEntry
+		HistoryTruncated bool
+		Problem          string
 	}
 	// adminLogPage carries Deliveries only for the one message Selected names --
 	// fetching every message's deliveries up front would be a fan-out nobody
@@ -54,6 +64,7 @@ type (
 		adminChrome
 		SourceID   string
 		Messages   []usecase.OperatorMessage
+		Truncated  bool
 		Selected   string
 		Deliveries []usecase.OperatorDelivery
 		Problem    string
@@ -63,14 +74,16 @@ type (
 func (h *reviewHandler) queue(c *gin.Context) {
 	actor := signedInUser(c)
 
-	list, err := h.ops.Queue(c.Request.Context(), actor)
+	list, truncated, err := h.ops.Queue(c.Request.Context(), actor)
 	if err != nil {
 		h.log.ErrorContext(c.Request.Context(), "could not read the queue", "error", err)
 		c.HTML(http.StatusOK, pageQueue,
 			queuePage{adminChrome: chromeFor(actor), Problem: message(err)})
 		return
 	}
-	c.HTML(http.StatusOK, pageQueue, queuePage{adminChrome: chromeFor(actor), Sources: list})
+	c.HTML(http.StatusOK, pageQueue, queuePage{
+		adminChrome: chromeFor(actor), Sources: list, Truncated: truncated,
+	})
 }
 
 // list is every source, narrowed by the `state` query string when there is
@@ -84,7 +97,7 @@ func (h *reviewHandler) queue(c *gin.Context) {
 func (h *reviewHandler) list(c *gin.Context) {
 	actor := signedInUser(c)
 
-	all, err := h.ops.AllSources(c.Request.Context(), actor)
+	all, truncated, err := h.ops.AllSources(c.Request.Context(), actor)
 	if err != nil {
 		h.log.ErrorContext(c.Request.Context(), "could not list sources", "error", err)
 		c.HTML(http.StatusOK, pageSources,
@@ -96,7 +109,8 @@ func (h *reviewHandler) list(c *gin.Context) {
 	shown, problem := inState(all, state)
 
 	c.HTML(http.StatusOK, pageSources, adminSourcesPage{
-		adminChrome: chromeFor(actor), Sources: shown, Selected: state, Problem: problem,
+		adminChrome: chromeFor(actor), Sources: shown, Truncated: truncated,
+		Selected: state, Problem: problem,
 	})
 }
 
@@ -149,8 +163,10 @@ func (h *reviewHandler) show(c *gin.Context) {
 	if !ok {
 		return
 	}
+	history, historyTruncated := h.history(c, src.ID)
 	c.HTML(http.StatusOK, pageSource, adminSourcePage{
 		adminChrome: chromeFor(actor), Source: src, Senders: h.senders(c, src.ID),
+		History: history, HistoryTruncated: historyTruncated,
 		Problem: cannotBeLetOut(src),
 	})
 }
@@ -254,13 +270,15 @@ func (h *reviewHandler) messages(c *gin.Context) {
 		return
 	}
 
-	msgs, err := h.ops.Messages(c.Request.Context(), actor, id)
+	msgs, truncated, err := h.ops.Messages(c.Request.Context(), actor, id)
 	if err != nil {
 		h.refuseRead(c, "messages", id, err)
 		return
 	}
 
-	page := adminLogPage{adminChrome: chromeFor(actor), SourceID: id, Messages: msgs}
+	page := adminLogPage{
+		adminChrome: chromeFor(actor), SourceID: id, Messages: msgs, Truncated: truncated,
+	}
 
 	if selected := c.Query(fieldMessage); selected != "" {
 		deliveries, err := h.ops.Deliveries(c.Request.Context(), actor, id, selected)
@@ -314,10 +332,24 @@ func (h *reviewHandler) showWith(c *gin.Context, id, problem string) {
 	if !ok {
 		return
 	}
+	history, historyTruncated := h.history(c, src.ID)
 	c.HTML(http.StatusOK, pageSource, adminSourcePage{
 		adminChrome: chromeFor(signedInUser(c)), Source: src, Senders: h.senders(c, src.ID),
+		History: history, HistoryTruncated: historyTruncated,
 		Problem: problem,
 	})
+}
+
+// history reads a source's own decisions. A failure here does not stop the
+// source page from rendering, the same as senders below: it is a secondary
+// fact about a source that already loaded.
+func (h *reviewHandler) history(c *gin.Context, sourceID string) ([]usecase.AuditEntry, bool) {
+	rows, truncated, err := h.ops.SourceHistory(c.Request.Context(), signedInUser(c), sourceID)
+	if err != nil {
+		h.log.WarnContext(c.Request.Context(), "could not read source history", "error", err)
+		return nil, false
+	}
+	return rows, truncated
 }
 
 // senders reads what a source is configured to send as. A failure here does

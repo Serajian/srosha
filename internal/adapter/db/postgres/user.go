@@ -52,8 +52,8 @@ func (r *UserRepository) ReadByID(ctx context.Context, id shared.ID) (*user.User
 	return toUser(row.ID, row.Email, row.Role, row.IsActive, row.CreatedAt, row.UpdatedAt), nil
 }
 
-func (r *UserRepository) List(ctx context.Context) ([]user.User, error) {
-	rows, err := r.q(ctx).ListUsers(ctx)
+func (r *UserRepository) List(ctx context.Context, limit int32) ([]user.User, error) {
+	rows, err := r.q(ctx).ListUsers(ctx, limit)
 	if err != nil {
 		return nil, failed("list users", err)
 	}

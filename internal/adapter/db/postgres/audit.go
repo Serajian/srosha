@@ -57,3 +57,36 @@ func (r *AuditRepository) List(ctx context.Context, limit int32) ([]usecase.Audi
 	}
 	return out, nil
 }
+
+// ListByTarget is one thing's own history, narrowed to the given verbs. The
+// statement enforces whatever verb set it is handed -- see the query's own
+// comment and usecase.sourceDecisionVerbs for why the caller may never widen
+// that set to "everything for this target".
+func (r *AuditRepository) ListByTarget(
+	ctx context.Context, targetType, targetID string, verbs []string, limit int32,
+) ([]usecase.AuditEntry, error) {
+	rows, err := r.q(ctx).ListAuditByTarget(ctx, gen.ListAuditByTargetParams{
+		TargetType: targetType,
+		TargetID:   targetID,
+		Verbs:      verbs,
+		RowLimit:   limit,
+	})
+	if err != nil {
+		return nil, failed("list audit by target", err)
+	}
+
+	out := make([]usecase.AuditEntry, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, usecase.AuditEntry{
+			ID:         shared.ID(row.ID),
+			At:         row.At,
+			ActorID:    shared.ID(row.ActorID),
+			ActorEmail: row.ActorEmail,
+			Verb:       row.Verb,
+			TargetType: row.TargetType,
+			TargetID:   row.TargetID,
+			Note:       row.Note,
+		})
+	}
+	return out, nil
+}

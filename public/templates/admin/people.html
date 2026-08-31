@@ -3,6 +3,7 @@
 <p class="sub">Everybody with an account.</p>
 
 {{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+{{if .Truncated}}{{template "truncated" .}}{{end}}
 
 {{if not .People}}
   <div class="empty"><h3>Nobody yet</h3></div>

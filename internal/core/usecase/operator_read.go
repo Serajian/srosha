@@ -43,21 +43,23 @@ type OperatorDelivery struct {
 
 // Messages is what an operator sees of a source's own message log: when, on
 // what channel, how many of its deliveries failed -- never what it said.
+// Capped at listLimit; the bool says whether more existed than fit.
 //
 // Ordinary operator work, so it takes mayOperate rather than the super_admin
 // check: an operator debugging a customer's complaint does not need the
 // roster, only this.
 func (o *Operators) Messages(
 	ctx context.Context, actor *user.User, sourceID string,
-) ([]OperatorMessage, error) {
+) ([]OperatorMessage, bool, error) {
 	if err := o.mayOperate(actor); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	rows, err := o.notifications.ListForOperator(ctx, sourceID, MaxOperatorMessages)
+	rows, err := o.notifications.ListForOperator(ctx, sourceID, int(o.listLimit)+1)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
+	rows, truncated := truncate(rows, o.listLimit)
 
 	out := make([]OperatorMessage, 0, len(rows))
 	for _, r := range rows {
@@ -69,7 +71,7 @@ func (o *Operators) Messages(
 			CreatedAt: r.CreatedAt,
 		})
 	}
-	return out, nil
+	return out, truncated, nil
 }
 
 // Deliveries is one message's recipients, as an operator may see them: every
@@ -166,17 +168,45 @@ func (o *Operators) Senders(
 // and those are what reviewing a source takes.
 //
 // No filter: this is the newest N rows, full stop. "What happened to this
-// source" is a real question and this does not answer it, but nothing here
-// has asked it yet -- Queue, AllSources and Source already give an operator a
-// source to look at, and grepping one page of rows by eye covers the gap
-// until something needs more. Adding a filter nobody has asked for yet is the
-// same mistake as the port that grows one method per query: it stops being
-// this task's smallest shippable read and becomes a guess at the next one.
-func (o *Operators) Audit(ctx context.Context, actor *user.User) ([]AuditEntry, error) {
+// source" is answered by SourceHistory below, which came later, once there
+// was a source page to put it on -- reading it does not need this any more,
+// and this still answers "what has happened everywhere", which nothing else
+// does. Capped at listLimit; the bool says whether more existed than fit.
+func (o *Operators) Audit(ctx context.Context, actor *user.User) ([]AuditEntry, bool, error) {
 	if err := o.mayGovernPeople(actor); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return o.audit.List(ctx, MaxOperatorAudit)
+	rows, err := o.audit.List(ctx, o.listLimit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	rows, truncated := truncate(rows, o.listLimit)
+	return rows, truncated, nil
+}
+
+// SourceHistory is one source's own decisions: who approved it, refused it,
+// suspended it or restored it, when, and why. Capped at listLimit, the same
+// as every other list here; the bool says whether more existed than fit.
+//
+// Ordinary operator work, so it takes mayOperate rather than the
+// super_admin check Audit takes -- and that is not a smaller version of the
+// same rule, it is a different rule entirely. See sourceDecisionVerbs in
+// const.go for why filtering to those four verbs is what makes that safe:
+// their actor is always an operator, never the customer who owns the source.
+func (o *Operators) SourceHistory(
+	ctx context.Context, actor *user.User, sourceID string,
+) ([]AuditEntry, bool, error) {
+	if err := o.mayOperate(actor); err != nil {
+		return nil, false, err
+	}
+	rows, err := o.audit.ListByTarget(
+		ctx, "source", sourceID, sourceDecisionVerbs, o.listLimit+1,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	rows, truncated := truncate(rows, o.listLimit)
+	return rows, truncated, nil
 }
 
 // mask keeps enough of an address to recognize and not enough to use.

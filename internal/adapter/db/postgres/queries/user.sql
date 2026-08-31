@@ -19,10 +19,12 @@ WHERE id = @id;
 -- operator flips between and /people has none to flip between -- a role and
 -- an is_active flag are shown on the row, and the page is short enough to
 -- read. When it stops being short the answer is a page cursor, not a filter.
+-- Capped at row_limit -- see usecase.Operators.People.
 -- name: ListUsers :many
 SELECT id, email, role, is_active, created_at, updated_at
 FROM users
-ORDER BY created_at DESC;
+ORDER BY created_at DESC
+LIMIT @row_limit;
 
 -- UpdateUserRole writes the one field a person cannot set for themselves, and
 -- nothing else -- a role change must not be able to carry a reactivation along

@@ -23,19 +23,22 @@ type auditHandler struct {
 
 type auditPage struct {
 	adminChrome
-	Entries []usecase.AuditEntry
-	Problem string
+	Entries   []usecase.AuditEntry
+	Truncated bool
+	Problem   string
 }
 
 func (h *auditHandler) show(c *gin.Context) {
 	actor := signedInUser(c)
 
-	entries, err := h.ops.Audit(c.Request.Context(), actor)
+	entries, truncated, err := h.ops.Audit(c.Request.Context(), actor)
 	if err != nil {
 		h.log.ErrorContext(c.Request.Context(), "could not read the audit log", "error", err)
 		c.HTML(http.StatusOK, pageAudit,
 			auditPage{adminChrome: chromeFor(actor), Problem: message(err)})
 		return
 	}
-	c.HTML(http.StatusOK, pageAudit, auditPage{adminChrome: chromeFor(actor), Entries: entries})
+	c.HTML(http.StatusOK, pageAudit, auditPage{
+		adminChrome: chromeFor(actor), Entries: entries, Truncated: truncated,
+	})
 }

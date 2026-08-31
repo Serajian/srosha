@@ -313,7 +313,14 @@ type testAdmin struct {
 	deliveries    *memDeliveries
 }
 
-func newTestAdmin(t *testing.T) *testAdmin {
+// testAdminListLimit is generous enough that no ordinary fixture in this file
+// truncates by accident. TestATruncatedListingSaysSo below builds its own
+// admin with a limit small enough to trigger it on purpose.
+const testAdminListLimit = 50
+
+func newTestAdmin(t *testing.T) *testAdmin { return newTestAdminWithLimit(t, testAdminListLimit) }
+
+func newTestAdminWithLimit(t *testing.T, listLimit int32) *testAdmin {
 	t.Helper()
 
 	users := &memUsers{rows: map[string]*user.User{}}
@@ -341,7 +348,7 @@ func newTestAdmin(t *testing.T) *testAdmin {
 	gate := usecase.NewGate(audit, ids, now)
 
 	ops := usecase.NewOperators(
-		sources, users, notifications, deliveries, credentials, audit, gate, now,
+		sources, users, notifications, deliveries, credentials, audit, gate, now, listLimit,
 	)
 
 	handler, err := web.NewAdmin(web.AdminDeps{
@@ -645,6 +652,44 @@ func TestAnAdminIsRefusedOnTheAuditLog(t *testing.T) {
 	}
 	if !strings.Contains(page.body, "billing@acme.test") {
 		t.Errorf("the audit page does not show the actor it read:\n%s", page.body)
+	}
+}
+
+// A source's own page is exactly where /audit's own boundary would be worth
+// breaking to widen: this proves it stays narrow. The four operator verbs
+// (approve, refuse, suspend, restore) are safe for an admin because their
+// actor is always an operator, never the customer who owns the source --
+// unlike source.create, whose actor_email IS the customer's address, the
+// whole reason /audit itself is locked away above. An admin reaching
+// /sources/:id must see the former and never the latter, on the very same
+// source.
+func TestASourcesOwnHistoryNeverShowsACustomerAddress(t *testing.T) {
+	a := newTestAdmin(t)
+	cookie := signedInAs(t, a, "ops@srosha.ir", user.RoleAdmin)
+
+	// "acme" makes aSourceInTheQueue build the id memAudit.seed hard-codes,
+	// so the customer's row below lands on the very source this test reads.
+	id := aSourceInTheQueue(t, a, "acme")
+
+	// The customer's own act on this source -- nothing on this listener
+	// writes one, registering a source is the portal's, so it stands in for
+	// what a real gate wrote there.
+	a.audit.seed("billing@acme.test", usecase.ActSourceCreate)
+
+	// An operator's own decision, through the real path, on the same source.
+	if res := apost(t, a, "/sources/"+id+"/approve", url.Values{}, cookie); res.status != http.StatusSeeOther {
+		t.Fatalf("approve = %d\n%s", res.status, res.body)
+	}
+
+	page := aget(t, a, "/sources/"+id, cookie)
+	if page.status != http.StatusOK {
+		t.Fatalf("an admin cannot reach its own source's page: %d", page.status)
+	}
+	if strings.Contains(page.body, "billing@acme.test") {
+		t.Errorf("a customer's address reached an admin's source page:\n%s", page.body)
+	}
+	if !strings.Contains(page.body, usecase.ActSourceApprove) {
+		t.Errorf("the operator's own decision is missing from its history:\n%s", page.body)
 	}
 }
 
@@ -1021,6 +1066,43 @@ func TestAnUnknownStateSaysSoRatherThanShowingNothing(t *testing.T) {
 	}
 	if !strings.Contains(page.body, id) {
 		t.Error("an unknown state hid every source instead of showing them")
+	}
+}
+
+// A listing that hits its cap says so on the page, in words that say what to
+// do about it -- this is what NOTIF_ADMIN_LIST_LIMIT and truncate exist for.
+// A limit of two and three sources is enough to prove it end to end, from
+// config through the use case to the rendered page.
+func TestATruncatedListingSaysSoOnThePage(t *testing.T) {
+	a := newTestAdminWithLimit(t, 2)
+	cookie := signedInAs(t, a, "ops@srosha.ir", user.RoleAdmin)
+
+	aSourceInTheQueue(t, a, "acme")
+	aSourceInTheQueue(t, a, "billing")
+	aSourceInTheQueue(t, a, "care")
+
+	queue := aget(t, a, "/", cookie)
+	if !strings.Contains(queue.body, "Not everything is shown") {
+		t.Errorf("the queue does not say it was truncated:\n%s", queue.body)
+	}
+
+	all := aget(t, a, "/sources", cookie)
+	if !strings.Contains(all.body, "Not everything is shown") {
+		t.Errorf("/sources does not say it was truncated:\n%s", all.body)
+	}
+}
+
+// The other half: a page under its cap must not claim there is more than
+// there is -- that would be exactly as dishonest as never saying so.
+func TestAnUntruncatedListingSaysNothingAboutIt(t *testing.T) {
+	a := newTestAdmin(t)
+	cookie := signedInAs(t, a, "ops@srosha.ir", user.RoleAdmin)
+
+	aSourceInTheQueue(t, a, "acme")
+
+	queue := aget(t, a, "/", cookie)
+	if strings.Contains(queue.body, "Not everything is shown") {
+		t.Errorf("the queue claimed to be truncated when everything fit:\n%s", queue.body)
 	}
 }
 

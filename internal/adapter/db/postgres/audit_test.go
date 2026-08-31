@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Serajian/srosha/internal/adapter/db/postgres"
+	"github.com/Serajian/srosha/internal/core/domain/user"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
 )
@@ -139,6 +140,90 @@ func TestListIsNewestFirstAndCapped(t *testing.T) {
 	if got[0].Verb != "source.suspend" || got[1].Verb != "source.approve" {
 		t.Errorf("verbs = [%q, %q], want the two newest, newest first",
 			got[0].Verb, got[1].Verb)
+	}
+}
+
+// ListByTarget is what /sources/:id's own decision history reads through,
+// and its whole point is the verb filter: usecase.sourceDecisionVerbs names
+// the four operator verbs, and this proves the statement itself -- not just
+// the use case above it -- refuses to hand back a row outside that set, even
+// when the row names the very target being asked about. A customer's own
+// source.create sits right beside the operator's source.approve on the same
+// target_id here, and only the approve may come back.
+//
+// It also proves the OTHER half of the filter: a row for a different source,
+// carrying a verb that IS in the set, must not leak in through target_id
+// alone.
+func TestListByTargetFiltersToTheGivenVerbsAndTarget(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+	ctx := context.Background()
+
+	operator := aUser(t, ulid("OP1"), "ops@acme.test")
+	customer := aUser(t, ulid("CU1"), "billing@acme.test")
+	for _, u := range []*user.User{operator, customer} {
+		if err := postgres.NewUserRepository(pool).Create(ctx, u); err != nil {
+			t.Fatalf("Create user: %v", err)
+		}
+	}
+
+	repo := postgres.NewAuditRepository(pool)
+	base := time.Now().UTC().Truncate(time.Microsecond)
+	const target = "01K0SRC0000000000000000000"
+	const otherTarget = "01K0SRC0000000000000000001"
+
+	rows := []usecase.AuditEntry{
+		{
+			ID: shared.ID(ulid("R01")), At: base, ActorID: customer.ID,
+			ActorEmail: customer.Email, Verb: usecase.ActSourceCreate,
+			TargetType: "source", TargetID: target,
+		},
+		{
+			ID: shared.ID(ulid("R02")), At: base.Add(time.Second), ActorID: operator.ID,
+			ActorEmail: operator.Email, Verb: usecase.ActSourceApprove,
+			TargetType: "source", TargetID: target,
+		},
+		{
+			ID: shared.ID(ulid("R03")), At: base.Add(2 * time.Second), ActorID: operator.ID,
+			ActorEmail: operator.Email, Verb: usecase.ActSourceSuspend,
+			TargetType: "source", TargetID: target,
+		},
+		{
+			// Same verb, DIFFERENT target -- must not leak in on the verb alone.
+			ID: shared.ID(ulid("R04")), At: base.Add(3 * time.Second), ActorID: operator.ID,
+			ActorEmail: operator.Email, Verb: usecase.ActSourceApprove,
+			TargetType: "source", TargetID: otherTarget,
+		},
+	}
+	for _, e := range rows {
+		if err := repo.Record(ctx, e); err != nil {
+			t.Fatalf("Record %s: %v", e.ID, err)
+		}
+	}
+
+	verbs := []string{
+		usecase.ActSourceApprove, usecase.ActSourceRefuse,
+		usecase.ActSourceSuspend, usecase.ActSourceRestore,
+	}
+	got, err := repo.ListByTarget(ctx, "source", target, verbs, 10)
+	if err != nil {
+		t.Fatalf("ListByTarget: %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("got %d rows, want 2 (approve and suspend, not create): %+v", len(got), got)
+	}
+	if got[0].Verb != usecase.ActSourceSuspend || got[1].Verb != usecase.ActSourceApprove {
+		t.Errorf("verbs = [%q, %q], want the two newest of THIS target, newest first",
+			got[0].Verb, got[1].Verb)
+	}
+	for _, e := range got {
+		if e.TargetID != target {
+			t.Errorf("row for target %q came back asking about %q", e.TargetID, target)
+		}
+		if e.ActorEmail == customer.Email {
+			t.Errorf("the customer's row reached a read meant only for operator verbs: %+v", e)
+		}
 	}
 }
 

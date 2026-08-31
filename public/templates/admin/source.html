@@ -100,6 +100,32 @@
 {{end}}
 </div>
 
+<h3 class="sub-head">Decisions</h3>
+<!-- This source's own history: who approved, refused, suspended or restored
+     it, when, and why. Safe on this page even though /audit itself is
+     super_admin-only -- these four verbs' actor is always an OPERATOR, never
+     the customer who owns the source. See usecase.sourceDecisionVerbs. -->
+{{if .HistoryTruncated}}{{template "truncated" .}}{{end}}
+{{if not .History}}
+  <p class="sub">No decisions have been recorded for this source yet.</p>
+{{else}}
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>When</th><th>Who</th><th>Did</th><th>Note</th></tr></thead>
+  <tbody>
+    {{range .History}}
+    <tr>
+      <td class="mono">{{.At.Format "2 Jan 2006 15:04"}}</td>
+      <td>{{.ActorEmail}}</td>
+      <td class="mono">{{.Verb}}</td>
+      <td>{{.Note}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+
 <nav class="fine">
   <a href="/sources/{{.Source.ID}}/log">Message log</a>
 </nav>

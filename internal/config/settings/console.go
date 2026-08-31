@@ -29,6 +29,17 @@ type Console struct {
 	// portal is public and readiness is not.
 	AdminAddr AdminAddr
 
+	// AdminListLimit bounds every list a panel page reads: the queue, all
+	// sources, a source's message log, a source's own decisions, the roster,
+	// and the global audit feed. One number for all five (six, counting a
+	// source's own decision history) rather than one per page: it is the
+	// same concept everywhere it appears -- how many rows one operator reads
+	// off one screen -- and separate knobs would be separate numbers that
+	// drift apart with nothing to notice. Raising it mid-incident, or
+	// lowering it because a query got slow, is an operational decision, so
+	// it is read here rather than compiled in.
+	AdminListLimit int32
+
 	// SMTP sends the sign-in code, and nothing else. Both surfaces use it:
 	// operators and customers sign in through the same flow.
 	SMTP SMTP
@@ -79,8 +90,9 @@ func (a AdminAddr) bindsLoopback() bool {
 
 func LoadConsole(r *env.Reader, production bool) Console {
 	c := Console{
-		PortalAddr: PortalAddr(r.Str("PORTAL_ADDR", ":8090")),
-		AdminAddr:  AdminAddr(r.Str("ADMIN_ADDR", "127.0.0.1:8092")),
+		PortalAddr:     PortalAddr(r.Str("PORTAL_ADDR", ":8090")),
+		AdminAddr:      AdminAddr(r.Str("ADMIN_ADDR", "127.0.0.1:8092")),
+		AdminListLimit: int32(r.Int("ADMIN_LIST_LIMIT", 200)), //nolint:gosec // checked below
 		SMTP: SMTP{
 			Host:     r.Str("CONSOLE_SMTP_HOST", ""),
 			Port:     r.Int("CONSOLE_SMTP_PORT", 587),
@@ -101,6 +113,10 @@ func LoadConsole(r *env.Reader, production bool) Console {
 		"NOTIF_ADMIN_ADDR must bind the loopback interface in production "+
 			"(127.0.0.1, ::1 or localhost): the admin panel is never published, "+
 			"and an address like \":8092\" puts it on every interface")
+	r.Check(c.AdminListLimit > 0,
+		"NOTIF_ADMIN_LIST_LIMIT must be above zero: a limit of zero would read "+
+			"as a page with nothing on it, indistinguishable from a page that "+
+			"genuinely has nothing to show")
 
 	return c
 }

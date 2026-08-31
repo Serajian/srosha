@@ -11,6 +11,7 @@
 </nav>
 
 {{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+{{if .Truncated}}{{template "truncated" .}}{{end}}
 
 {{if not .Sources}}
   <div class="empty"><h3>{{if .Selected}}No sources in that state{{else}}No sources yet{{end}}</h3></div>

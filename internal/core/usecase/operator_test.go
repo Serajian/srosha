@@ -20,6 +20,8 @@ type operatorRig struct {
 	ops         *usecase.Operators
 	log         *auditLog
 	repo        fakeSources
+	users       *fakeUsers
+	notifs      *fakeNotifications
 	customer    *user.User
 	admin       *user.User
 	superAdmin  *user.User
@@ -31,7 +33,14 @@ type operatorRig struct {
 	messageID string
 }
 
-func newOperatorRig(t *testing.T) *operatorRig {
+// testListLimit is generous enough that no ordinary fixture in this file
+// truncates by accident. operator_listlimit_test.go builds its own rig with a
+// limit small enough to trigger truncation on purpose.
+const testListLimit = 50
+
+func newOperatorRig(t *testing.T) *operatorRig { return newOperatorRigWithLimit(t, testListLimit) }
+
+func newOperatorRigWithLimit(t *testing.T, listLimit int32) *operatorRig {
 	t.Helper()
 
 	at := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
@@ -124,10 +133,12 @@ func newOperatorRig(t *testing.T) *operatorRig {
 	return &operatorRig{
 		ops: usecase.NewOperators(
 			repo, users, notifs, deliveries, creds, log,
-			usecase.NewGate(log, seqIDs(), fixedNow(at)), fixedNow(at),
+			usecase.NewGate(log, seqIDs(), fixedNow(at)), fixedNow(at), listLimit,
 		),
 		log:         log,
 		repo:        repo,
+		users:       users,
+		notifs:      notifs,
 		customer:    customer,
 		admin:       admin,
 		superAdmin:  superAdmin,
@@ -197,7 +208,7 @@ func TestADecisionEmptiesTheQueue(t *testing.T) {
 	rig := newOperatorRig(t)
 	ctx := context.Background()
 
-	queue, err := rig.ops.Queue(ctx, rig.admin)
+	queue, _, err := rig.ops.Queue(ctx, rig.admin)
 	if err != nil {
 		t.Fatalf("Queue: %v", err)
 	}
@@ -209,7 +220,7 @@ func TestADecisionEmptiesTheQueue(t *testing.T) {
 		t.Fatalf("Refuse: %v", err)
 	}
 
-	queue, err = rig.ops.Queue(ctx, rig.admin)
+	queue, _, err = rig.ops.Queue(ctx, rig.admin)
 	if err != nil {
 		t.Fatalf("Queue: %v", err)
 	}
@@ -415,10 +426,10 @@ func TestACustomerCannotReadTheQueueOrTheFullList(t *testing.T) {
 	rig := newOperatorRig(t)
 	ctx := context.Background()
 
-	if _, err := rig.ops.Queue(ctx, rig.customer); err == nil {
+	if _, _, err := rig.ops.Queue(ctx, rig.customer); err == nil {
 		t.Error("a customer read the queue")
 	}
-	if _, err := rig.ops.AllSources(ctx, rig.customer); err == nil {
+	if _, _, err := rig.ops.AllSources(ctx, rig.customer); err == nil {
 		t.Error("a customer read every source")
 	}
 	if _, err := rig.ops.Source(ctx, rig.customer, rig.sourceID); err == nil {

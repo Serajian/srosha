@@ -1,3 +1,19 @@
+{{/* truncated is one notice, shared by every list this surface caps --
+     Queue, AllSources, Messages, People, Audit and a source's own decision
+     history. It reads no field beyond the boolean each page guards it with,
+     so one definition here is what every content template calls rather than
+     six copies of the same sentence drifting apart. See docs/CONFIG.md,
+     NOTIF_ADMIN_LIST_LIMIT: a listing that hits the cap says so, in words
+     that say what to do about it, rather than quietly showing a partial
+     answer as if it were everything. */}}
+{{define "truncated"}}
+<p class="problem" role="status">
+  Not everything is shown here — there are more rows than fit on this page,
+  and it does not page through them yet. If you need the rest, it has to be
+  read from the database directly.
+</p>
+{{end}}
+
 {{define "layout"}}<!doctype html>
 <html lang="en">
 <head>

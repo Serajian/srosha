@@ -27,9 +27,10 @@ type Repository interface {
 	UpdateReview(ctx context.Context, s *Source) error
 
 	// ListForReview is the queue. ListAll is everything, for the page that
-	// filters.
-	ListForReview(ctx context.Context) ([]Source, error)
-	ListAll(ctx context.Context) ([]Source, error)
+	// filters. Both take limit: the caller decides how many rows one screen
+	// may hold, this only fetches that many.
+	ListForReview(ctx context.Context, limit int32) ([]Source, error)
+	ListAll(ctx context.Context, limit int32) ([]Source, error)
 }
 
 // KeyRepository is the authentication path, and only that. Issuing, listing and

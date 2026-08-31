@@ -3,6 +3,7 @@
 <p class="sub">The newest decisions, across the whole service.</p>
 
 {{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+{{if .Truncated}}{{template "truncated" .}}{{end}}
 
 {{if not .Entries}}
   <div class="empty"><h3>Nothing recorded yet</h3></div>

@@ -72,8 +72,12 @@ func (d AdminDeps) validate() error {
 // three ways would not narrow what AdminDeps has to hold, only add three names
 // for the same thing.
 type Operators interface {
-	Queue(ctx context.Context, actor *user.User) ([]source.Source, error)
-	AllSources(ctx context.Context, actor *user.User) ([]source.Source, error)
+	// Queue and AllSources return a second bool: whether the list was
+	// truncated to fit the configured cap. Every other list read below
+	// carries the same second return, for the same reason -- see
+	// usecase.Operators.truncate.
+	Queue(ctx context.Context, actor *user.User) ([]source.Source, bool, error)
+	AllSources(ctx context.Context, actor *user.User) ([]source.Source, bool, error)
 	Source(ctx context.Context, actor *user.User, id string) (*source.Source, error)
 	Approve(ctx context.Context, actor *user.User, id string) error
 	Refuse(ctx context.Context, actor *user.User, id, note string) error
@@ -82,7 +86,7 @@ type Operators interface {
 
 	Messages(
 		ctx context.Context, actor *user.User, sourceID string,
-	) ([]usecase.OperatorMessage, error)
+	) ([]usecase.OperatorMessage, bool, error)
 	Deliveries(
 		ctx context.Context, actor *user.User, sourceID, messageID string,
 	) ([]usecase.OperatorDelivery, error)
@@ -90,7 +94,13 @@ type Operators interface {
 		ctx context.Context, actor *user.User, sourceID string,
 	) ([]credential.Credential, error)
 
-	People(ctx context.Context, actor *user.User) ([]user.User, error)
+	// SourceHistory is one source's own decisions -- see admin_review.go's
+	// show, which renders it below the decisions the page already offers.
+	SourceHistory(
+		ctx context.Context, actor *user.User, sourceID string,
+	) ([]usecase.AuditEntry, bool, error)
+
+	People(ctx context.Context, actor *user.User) ([]user.User, bool, error)
 	Person(ctx context.Context, actor *user.User, id shared.ID) (*user.User, error)
 	SetRole(
 		ctx context.Context, actor *user.User, id shared.ID, role user.Role, note string,
@@ -99,7 +109,7 @@ type Operators interface {
 		ctx context.Context, actor *user.User, id shared.ID, on bool, note string,
 	) error
 
-	Audit(ctx context.Context, actor *user.User) ([]usecase.AuditEntry, error)
+	Audit(ctx context.Context, actor *user.User) ([]usecase.AuditEntry, bool, error)
 }
 
 // adminChrome is what this surface's layout needs from every page, whoever is

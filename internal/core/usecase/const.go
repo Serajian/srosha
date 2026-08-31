@@ -34,16 +34,6 @@ const MaxSourcesPerUser = 20
 // -- applied wherever a note has no domain method to pass through.
 const MaxOperatorNoteLen = 500
 
-// MaxOperatorMessages bounds one call to Messages. An operator's log is read a
-// screen at a time by a person, not paged through by a machine, so this is a
-// backstop against a source that has sent a great many messages -- not a page
-// size somebody tunes.
-const MaxOperatorMessages = 200
-
-// MaxOperatorAudit bounds one call to Audit, the same way and for the same
-// reason: a person reading a screen, not a machine paging through one.
-const MaxOperatorAudit = 200
-
 // Verbs, spelled once. They end up in audit_log and are read a year later.
 const (
 	ActSourceCreate  = "source.create"
@@ -59,3 +49,24 @@ const (
 	ActUserDeactivate = "user.deactivate"
 	ActUserActivate   = "user.activate"
 )
+
+// sourceDecisionVerbs is what Operators.SourceHistory reads a source's own
+// audit rows through, and it is a privacy boundary, not a convenience.
+//
+// /audit is super_admin-only because actor_email on a source.create or
+// source.update row is the CUSTOMER's address -- see Operators.Audit. These
+// four verbs are different: their actor is always an OPERATOR, a colleague
+// deciding a source, never the customer who owns it. That is the whole
+// reason SourceHistory is allowed to exist under mayOperate, on a page an
+// admin may reach.
+//
+// Widen this to "every row for this source" -- or build it by excluding
+// source.create and source.update instead of naming what is included -- and
+// the next verb ever added to this file (key.issue's actor is the customer
+// too) is admitted by default, and an admin gains the customer's address
+// through a page nobody re-examined. Naming the four operator verbs directly,
+// from the constants above rather than as new strings, is what keeps this
+// list from drifting out of step with them.
+var sourceDecisionVerbs = []string{
+	ActSourceApprove, ActSourceRefuse, ActSourceSuspend, ActSourceRestore,
+}

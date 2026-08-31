@@ -44,9 +44,11 @@ func (r oneSource) UpdateSettings(context.Context, *source.Source) error { retur
 
 func (r oneSource) UpdateReview(context.Context, *source.Source) error { return nil }
 
-func (r oneSource) ListForReview(context.Context) ([]source.Source, error) { return nil, nil }
+func (r oneSource) ListForReview(context.Context, int32) ([]source.Source, error) {
+	return nil, nil
+}
 
-func (r oneSource) ListAll(context.Context) ([]source.Source, error) { return nil, nil }
+func (r oneSource) ListAll(context.Context, int32) ([]source.Source, error) { return nil, nil }
 
 type allowAll struct{}
 

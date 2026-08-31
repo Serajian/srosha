@@ -22,8 +22,9 @@ type peopleHandler struct {
 type (
 	peoplePage struct {
 		adminChrome
-		People  []user.User
-		Problem string
+		People    []user.User
+		Truncated bool
+		Problem   string
 	}
 	// personPage carries IsSelf so the page can say why the two forms are
 	// missing rather than just omitting them -- the use case refuses SetRole
@@ -40,14 +41,16 @@ type (
 func (h *peopleHandler) list(c *gin.Context) {
 	actor := signedInUser(c)
 
-	people, err := h.ops.People(c.Request.Context(), actor)
+	people, truncated, err := h.ops.People(c.Request.Context(), actor)
 	if err != nil {
 		h.log.ErrorContext(c.Request.Context(), "could not list people", "error", err)
 		c.HTML(http.StatusOK, pagePeople,
 			peoplePage{adminChrome: chromeFor(actor), Problem: message(err)})
 		return
 	}
-	c.HTML(http.StatusOK, pagePeople, peoplePage{adminChrome: chromeFor(actor), People: people})
+	c.HTML(http.StatusOK, pagePeople, peoplePage{
+		adminChrome: chromeFor(actor), People: people, Truncated: truncated,
+	})
 }
 
 func (h *peopleHandler) show(c *gin.Context) {

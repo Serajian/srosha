@@ -34,12 +34,18 @@ func (o *Operators) mayGovernPeople(actor *user.User) error {
 	return nil
 }
 
-// People is every account, for the page that manages them.
-func (o *Operators) People(ctx context.Context, actor *user.User) ([]user.User, error) {
+// People is every account, for the page that manages them, capped at
+// listLimit. The bool says whether more existed than fit.
+func (o *Operators) People(ctx context.Context, actor *user.User) ([]user.User, bool, error) {
 	if err := o.mayGovernPeople(actor); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return o.users.List(ctx)
+	rows, err := o.users.List(ctx, o.listLimit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	rows, truncated := truncate(rows, o.listLimit)
+	return rows, truncated, nil
 }
 
 // Person is one account, by id.

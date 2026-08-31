@@ -61,11 +61,14 @@ func (m *memUsers) ReadByID(_ context.Context, id shared.ID) (*user.User, error)
 	return nil, errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
 }
 
-func (m *memUsers) List(_ context.Context) ([]user.User, error) {
+func (m *memUsers) List(_ context.Context, limit int32) ([]user.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]user.User, 0, len(m.rows))
 	for _, u := range m.rows {
+		if int32(len(out)) >= limit {
+			break
+		}
 		out = append(out, *u)
 	}
 	return out, nil
@@ -274,11 +277,14 @@ func (m *memSources) UpdateReview(_ context.Context, s *source.Source) error {
 	return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
 }
 
-func (m *memSources) ListForReview(_ context.Context) ([]source.Source, error) {
+func (m *memSources) ListForReview(_ context.Context, limit int32) ([]source.Source, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := []source.Source{}
 	for _, s := range m.rows {
+		if int32(len(out)) >= limit {
+			break
+		}
 		if !s.IsReviewed() {
 			out = append(out, *s)
 		}
@@ -286,11 +292,14 @@ func (m *memSources) ListForReview(_ context.Context) ([]source.Source, error) {
 	return out, nil
 }
 
-func (m *memSources) ListAll(_ context.Context) ([]source.Source, error) {
+func (m *memSources) ListAll(_ context.Context, limit int32) ([]source.Source, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := []source.Source{}
 	for _, s := range m.rows {
+		if int32(len(out)) >= limit {
+			break
+		}
 		out = append(out, *s)
 	}
 	return out, nil
@@ -325,8 +334,7 @@ func (m *memAudit) Record(_ context.Context, e usecase.AuditEntry) error {
 	return nil
 }
 
-// List satisfies usecase.AuditLog. Nothing in this package's tests reads the
-// admin surface yet, so it hands back copies and nothing exercises it.
+// List satisfies usecase.AuditLog, newest first and capped at limit.
 func (m *memAudit) List(_ context.Context, limit int32) ([]usecase.AuditEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -339,6 +347,35 @@ func (m *memAudit) List(_ context.Context, limit int32) ([]usecase.AuditEntry, e
 		out[i] = m.entries[len(m.entries)-1-i]
 	}
 	return out, nil
+}
+
+// ListByTarget mirrors postgres's own statement -- target_type, target_id and
+// the given verb set, newest first, capped at limit -- for the same reason
+// usecase_test's own auditLog fake does: a fake that ignored the verb list
+// would let the admin surface's guard on /sources/:id go untested by
+// TestASourcesOwnHistoryNeverShowsACustomerAddress in admin_test.go.
+func (m *memAudit) ListByTarget(
+	_ context.Context, targetType, targetID string, verbs []string, limit int32,
+) ([]usecase.AuditEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	allowed := make(map[string]bool, len(verbs))
+	for _, v := range verbs {
+		allowed[v] = true
+	}
+
+	var matched []usecase.AuditEntry
+	for i := len(m.entries) - 1; i >= 0; i-- {
+		e := m.entries[i]
+		if e.TargetType == targetType && e.TargetID == targetID && allowed[e.Verb] {
+			matched = append(matched, e)
+		}
+	}
+	if int32(len(matched)) > limit {
+		matched = matched[:limit]
+	}
+	return matched, nil
 }
 
 // memKeys is the key store these tests run over. It records the hashes so a

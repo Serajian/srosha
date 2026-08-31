@@ -120,16 +120,18 @@ func (r *SourceRepository) UpdateReview(ctx context.Context, s *source.Source) e
 	return nil
 }
 
-func (r *SourceRepository) ListForReview(ctx context.Context) ([]source.Source, error) {
-	rows, err := r.q(ctx).ListForReview(ctx)
+func (r *SourceRepository) ListForReview(
+	ctx context.Context, limit int32,
+) ([]source.Source, error) {
+	rows, err := r.q(ctx).ListForReview(ctx, limit)
 	if err != nil {
 		return nil, failed("list for review", err)
 	}
 	return toSources(rows)
 }
 
-func (r *SourceRepository) ListAll(ctx context.Context) ([]source.Source, error) {
-	rows, err := r.q(ctx).ListAllSources(ctx)
+func (r *SourceRepository) ListAll(ctx context.Context, limit int32) ([]source.Source, error) {
+	rows, err := r.q(ctx).ListAllSources(ctx, limit)
 	if err != nil {
 		return nil, failed("list all sources", err)
 	}
