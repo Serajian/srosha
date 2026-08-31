@@ -95,42 +95,18 @@ func TestProductionRefusesARelaxedCallbackCheck(t *testing.T) {
 	}
 }
 
-// The admin panel is never published. Its default binds loopback, and a
-// default is not a guard: somebody copying the portal's ":8090" gets ":8092",
-// which is every interface, and the service starts perfectly.
-func TestProductionRefusesAnAdminAddressOnEveryInterface(t *testing.T) {
-	for _, addr := range []string{":8092", "0.0.0.0:8092", "192.168.1.10:8092"} {
-		t.Run(addr, func(t *testing.T) {
-			setMinimum(t)
-			setConsoleMinimum(t)
-			t.Setenv("NOTIF_APP_ENV", "production")
-			t.Setenv("NOTIF_ADMIN_ADDR", addr)
+// In a container the admin surface listens like any other service and Traefik
+// routes to it by host. Loopback there is the container's own namespace, which
+// nothing reaches -- not a ports: mapping, not another container, not a
+// tunnel. See the deployment design.
+func TestProductionAcceptsAnAdminAddressAContainerCanUse(t *testing.T) {
+	setMinimum(t)
+	setConsoleMinimum(t)
+	t.Setenv("NOTIF_APP_ENV", "production")
+	t.Setenv("NOTIF_ADMIN_ADDR", ":8092")
 
-			_, err := config.LoadConsole()
-			if err == nil {
-				t.Fatalf("production accepted an admin listener on %q", addr)
-			}
-			if !strings.Contains(err.Error(), "NOTIF_ADMIN_ADDR") {
-				t.Errorf("error does not say which key: %v", err)
-			}
-		})
-	}
-}
-
-// The three spellings of "only this machine" are all accepted, so the check
-// does not force one of them on a deployment.
-func TestProductionAcceptsALoopbackAdminAddress(t *testing.T) {
-	for _, addr := range []string{"127.0.0.1:8092", "localhost:8092", "[::1]:8092"} {
-		t.Run(addr, func(t *testing.T) {
-			setMinimum(t)
-			setConsoleMinimum(t)
-			t.Setenv("NOTIF_APP_ENV", "production")
-			t.Setenv("NOTIF_ADMIN_ADDR", addr)
-
-			if _, err := config.LoadConsole(); err != nil {
-				t.Fatalf("production refused %q: %v", addr, err)
-			}
-		})
+	if _, err := config.LoadConsole(); err != nil {
+		t.Fatalf("production refused the admin address a container needs: %v", err)
 	}
 }
 
