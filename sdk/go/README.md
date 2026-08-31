@@ -28,57 +28,53 @@ configured it to, and you can add your own later. The first two are not.
 
 ## 2. Getting an API key
 
-**You cannot mint one yourself, and there is no sign-up.** srosha has no admin
-API and no console: whoever runs it creates your source and hands you a key out
-of band. Ask them.
+**You issue it yourself, from the portal.** Ask whoever runs srosha for its
+address; the rest is four steps in a browser.
+
+1. **Sign in.** Give your email address and a six-digit code arrives. There is
+   no password and no sign-up form — the first time you ask for a code, the
+   account is created for you.
+
+2. **Create a source.** A source is the thing that sends, and the key belongs
+   to it rather than to you. Give it a default address on at least one channel:
+   a source with no default address anywhere and no permission to use custom
+   ones has nowhere to send, and cannot be turned on at all.
+
+3. **Wait for it to be approved.** A new source starts switched off, and an
+   operator reviews it. While it waits, a key you have already issued
+   authenticates correctly and every call still comes back
+   `srosha.ErrForbidden` — deliberately not `srosha.ErrUnauthorized`. "Your
+   source is off" has to be tellable from "your key is wrong", or you spend the
+   wait rotating a key that was never the problem.
+
+4. **Issue the key** on the source's Keys page. It is `srosha_` followed by 43
+   characters of base64url, and only its SHA-256 is stored — so **it is shown
+   once, on the page that issues it, and never again.** Copy it before you
+   navigate away.
+
+A source can hold more than one key at a time, which is what makes rotation
+possible without an outage: issue the second, move over, revoke the first. A
+revoked key is marked rather than deleted, so after an incident there is still
+an answer to when it was revoked and when it was last used.
 
 <details>
-<summary>If you are that operator, this is what you run today</summary>
+<summary>Two limits the panel shows but does not set</summary>
 
-> **This is a stopgap.** An admin panel is the next thing being built: an admin
-> takes a source's details, creates the record, and the key is issued and sent
-> to them. What is collected and how the key travels are decided when the panel
-> is. Until then, it is two SQL statements.
+What a source may do is bounded by two fields that today are only changed in
+the database. Every source starts at the cautious end of both.
 
-A key is `srosha_` followed by 43 characters of base64url, and only its SHA-256
-is stored, so **the key is shown once and never again.**
+- `max_priority` is the source's ceiling, and it starts at `NORMAL`. Asking
+  above it is **not** an error — the message is accepted at the ceiling and the
+  answer says it was lowered.
+- `allow_custom_address` starts false, which means the source may only send to
+  the addresses configured for it. That is what bounds where a leaked key can
+  reach.
 
-```bash
-# 1. mint a key. Give it to the customer now -- it cannot be recovered.
-KEY="srosha_$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')"
-HASH=$(printf '%s' "$KEY" | shasum -a 256 | cut -d' ' -f1)
-echo "$KEY"
-
-# 2. two ids. Every id in srosha is a ULID: 26 characters of Crockford
-#    base32, which EXCLUDES I, L, O and U. Typing one by hand and reaching
-#    for a letter that looks right is how you meet the ulid_check constraint.
-mkid() { python3 -c "
-import time, secrets
-A = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
-n = (int(time.time() * 1000) << 80) | secrets.randbits(80)
-print(''.join(A[(n >> (5 * (25 - i))) & 31] for i in range(26)))"; }
-SOURCE_ID=$(mkid); KEY_ID=$(mkid)
-
-# 3. create the source and the key
-psql "$NOTIF_DB_DSN" <<SQL
-INSERT INTO sources (id, name, max_priority, is_active, allow_custom_address,
-                     created_at, updated_at)
-VALUES ('$SOURCE_ID', 'acme', 'HIGH', true, true, now(), now());
-
-INSERT INTO api_keys (id, source_id, key_hash, label, created_at)
-VALUES ('$KEY_ID', '$SOURCE_ID', '$HASH', 'acme prod', now());
-SQL
+```sql
+UPDATE sources
+SET max_priority = 'HIGH', allow_custom_address = true, updated_at = now()
+WHERE id = '<the source id, from its page in the panel>';
 ```
-
-Two fields decide what the source may do:
-
-- `max_priority` is their ceiling. Asking above it is **not** an error — the
-  message is accepted at the ceiling and the answer says it was lowered.
-- `allow_custom_address` false means they may only send to addresses configured
-  for them, which bounds what a leaked key can reach.
-
-A source may hold **two keys at once**, which is what makes rotation possible
-without an outage: issue the second, let them move, revoke the first.
 
 </details>
 
@@ -91,7 +87,7 @@ holding it can send as you.
 go get github.com/Serajian/srosha/sdk/go
 ```
 
-Go 1.23 or newer — deliberately below the service's own, so an SDK never makes
+Go 1.25 or newer — deliberately below the service's own, so an SDK never makes
 you upgrade your toolchain.
 
 ## 4. Send your first message
