@@ -11,12 +11,6 @@ const (
 	binaryMigrate    = "migrate"
 )
 
-// lockProbeSeconds is how often the migration lock is retried while another
-// migration holds it. goose takes a period and a count rather than a duration,
-// and their product is the wait -- so this is the divisor that turns
-// NOTIF_MIGRATION_LOCK_TIMEOUT into a count.
-const lockProbeSeconds = 5
-
 // consoleRateLimit is required by source.Service and never consulted: the
 // limiter is spent by Admit, which is the sending path, and the console does
 // not send. It is a number so the type is satisfied, not a policy.

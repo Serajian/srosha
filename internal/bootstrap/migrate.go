@@ -7,7 +7,6 @@ import (
 	"github.com/Serajian/srosha/internal/config"
 	"github.com/Serajian/srosha/internal/infra/migrations"
 	"github.com/Serajian/srosha/internal/registry"
-
 	sqlfiles "github.com/Serajian/srosha/migrations"
 )
 

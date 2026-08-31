@@ -33,14 +33,14 @@ func run() error {
 	}
 
 	// Signals are the one thing that is genuinely the process's own. Here they
-	// matter more than usual: cancelling releases the lock, so a migration
+	// matter more than usual: canceling releases the lock, so a migration
 	// interrupted by a deploy timeout does not leave the next one waiting.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	// One argument, and only one: `status` changes nothing and reports what
 	// the database has. Anything else would be a flag package for a tool with
-	// two behaviours.
+	// two behaviors.
 	report := len(os.Args) > 1 && os.Args[1] == "status"
 
 	return bootstrap.Migrate(ctx, cfg, report)
