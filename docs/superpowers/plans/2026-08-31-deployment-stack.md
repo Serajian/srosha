@@ -318,7 +318,8 @@ written for an image with no shell on purpose.
 
 - [ ] **Step 1: Write the `.dockerignore`**
 
-`deployment/app/.dockerignore` — the build context is the repository root:
+`.dockerignore`, **at the repository root** — docker reads it from the build
+context's root, not from beside the Dockerfile, and the context here is `../..`:
 
 ```
 .git
@@ -329,12 +330,13 @@ build/
 !.env.example
 !.env.*.example
 docs/
-sdk/
 *.md
 ```
 
-`sdk/` is excluded deliberately: a separate Go module with its own tag, and
-nothing in the three binaries imports it.
+**`sdk/` must NOT be excluded.** It looks like a separate module with its own
+tag, but `go.mod` carries `replace github.com/Serajian/srosha/sdk/go =>
+./sdk/go`, and the generated protobuf `internal/adapter/api/grpcsrv` imports
+lives inside it. Excluding it fails `go mod download` before anything compiles.
 
 - [ ] **Step 2: Write the Dockerfile**
 
@@ -355,13 +357,19 @@ WORKDIR /src
 
 # Dependencies in their own layer, so a code change does not re-download the
 # module graph.
+#
+# The sdk's go.mod comes too, and has to: the root go.mod carries
+# `replace github.com/Serajian/srosha/sdk/go => ./sdk/go`, so `go mod download`
+# reads it. Only the two files, so the layer still caches on dependency changes
+# rather than on every edit to the sdk.
 COPY go.mod go.sum ./
+COPY sdk/go/go.mod sdk/go/go.sum ./sdk/go/
 RUN go mod download
 
 # Pinned, deliberately. `make setup-dev` installs goose @latest, which is right
 # for a laptop and wrong for an image that has to be rebuildable: the tool that
 # migrates a production database must not change because a day passed.
-RUN go install github.com/pressly/goose/v3/cmd/goose@v3.27.3
+RUN go install -ldflags="-s -w" github.com/pressly/goose/v3/cmd/goose@v3.27.3
 
 COPY . .
 
@@ -426,7 +434,9 @@ nothing is listening.
 docker image inspect srosha:latest --format '{{.Config.User}} {{.Size}}'
 ```
 
-Expected: `nonroot` and a size in the tens of megabytes, not hundreds.
+Expected: `nonroot`, and roughly 120MB. That is three Go binaries at 24-28MB
+each plus goose; it is not bloat, and it is not "tens of megabytes" either --
+distroless removes the base image, not the binaries.
 
 - [ ] **Step 5: Check and report**
 
