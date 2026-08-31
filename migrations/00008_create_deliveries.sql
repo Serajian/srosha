@@ -11,7 +11,7 @@ CREATE TABLE deliveries (
                                     REFERENCES notifications (id) ON DELETE CASCADE,
 
     channel             TEXT        NOT NULL
-                                    CHECK (channel IN ('email', 'telegram', 'bale', 'whatsapp', 'matrix', 'fcm', 'apns')),
+                                    CHECK (channel IN ('email', 'telegram', 'bale', 'whatsapp', 'matrix', 'fcm', 'apns', 'gotify')),
     address             TEXT        NOT NULL,
 
     -- Which credential to send with, resolved when the message was accepted so

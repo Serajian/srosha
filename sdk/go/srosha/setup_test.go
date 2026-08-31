@@ -242,6 +242,12 @@ func TestEachCredentialSendsItsOwnShape(t *testing.T) {
 			fields: map[string]any{"homeserver": "https://m.test"},
 		},
 		{
+			name:    "gotify brings its own server url",
+			cred:    srosha.GotifyCredential{ServerURL: "https://g.test", Token: "syt"},
+			channel: pb.Channel_CHANNEL_GOTIFY, secret: "syt",
+			fields: map[string]any{"server_url": "https://g.test"},
+		},
+		{
 			name:    "whatsapp needs two values",
 			cred:    srosha.WhatsAppCredential{PhoneNumberID: "123", Token: "EAAG"},
 			channel: pb.Channel_CHANNEL_WHATSAPP, secret: "EAAG",
@@ -375,6 +381,7 @@ func TestNoCredentialPrintsItsSecret(t *testing.T) {
 		srosha.FCMCredential{ServiceAccount: "SECRETVALUE"},
 		srosha.SMTPCredential{Host: "h", From: "f", Password: "SECRETVALUE"},
 		srosha.MatrixCredential{Homeserver: "https://m", Token: "SECRETVALUE"},
+		srosha.GotifyCredential{ServerURL: "https://g", Token: "SECRETVALUE"},
 		srosha.WhatsAppCredential{PhoneNumberID: "1", Token: "SECRETVALUE"},
 		srosha.APNsCredential{KeyID: "a", TeamID: "b", Topic: "c", Key: "SECRETVALUE"},
 		srosha.RawCredential{Channel: "sms", Secret: "SECRETVALUE"},

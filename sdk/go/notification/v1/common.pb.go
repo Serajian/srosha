@@ -103,6 +103,7 @@ const (
 	Channel_CHANNEL_MATRIX      Channel = 5
 	Channel_CHANNEL_FCM         Channel = 6
 	Channel_CHANNEL_APNS        Channel = 7
+	Channel_CHANNEL_GOTIFY      Channel = 8
 )
 
 // Enum value maps for Channel.
@@ -116,6 +117,7 @@ var (
 		5: "CHANNEL_MATRIX",
 		6: "CHANNEL_FCM",
 		7: "CHANNEL_APNS",
+		8: "CHANNEL_GOTIFY",
 	}
 	Channel_value = map[string]int32{
 		"CHANNEL_UNSPECIFIED": 0,
@@ -126,6 +128,7 @@ var (
 		"CHANNEL_MATRIX":      5,
 		"CHANNEL_FCM":         6,
 		"CHANNEL_APNS":        7,
+		"CHANNEL_GOTIFY":      8,
 	}
 )
 
@@ -430,7 +433,7 @@ const file_notification_v1_common_proto_rawDesc = "" +
 	"\x14PRIORITY_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fPRIORITY_NORMAL\x10\x01\x12\x11\n" +
 	"\rPRIORITY_HIGH\x10\x02\x12\x15\n" +
-	"\x11PRIORITY_CRITICAL\x10\x03*\xaa\x01\n" +
+	"\x11PRIORITY_CRITICAL\x10\x03*\xbe\x01\n" +
 	"\aChannel\x12\x17\n" +
 	"\x13CHANNEL_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rCHANNEL_EMAIL\x10\x01\x12\x14\n" +
@@ -439,7 +442,8 @@ const file_notification_v1_common_proto_rawDesc = "" +
 	"\x10CHANNEL_WHATSAPP\x10\x04\x12\x12\n" +
 	"\x0eCHANNEL_MATRIX\x10\x05\x12\x0f\n" +
 	"\vCHANNEL_FCM\x10\x06\x12\x10\n" +
-	"\fCHANNEL_APNS\x10\a*x\n" +
+	"\fCHANNEL_APNS\x10\a\x12\x12\n" +
+	"\x0eCHANNEL_GOTIFY\x10\b*x\n" +
 	"\x06Window\x12\x16\n" +
 	"\x12WINDOW_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10WINDOW_LAST_HOUR\x10\x01\x12\x13\n" +

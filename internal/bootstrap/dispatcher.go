@@ -232,6 +232,10 @@ func buildDispatcherCore(
 				Token:      cfg.Sender.Matrix.Token.Reveal(),
 				Homeserver: cfg.Sender.Matrix.Homeserver,
 			},
+			Gotify: sender.Gotify{
+				Token:     cfg.Sender.Gotify.Token.Reveal(),
+				ServerURL: cfg.Sender.Gotify.ServerURL,
+			},
 			FCMServiceAccount: cfg.Sender.FCM.Reveal(),
 			APNs: sender.APNs{
 				Key:         cfg.Sender.APNs.Key.Reveal(),

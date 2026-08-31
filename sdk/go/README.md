@@ -4,7 +4,7 @@
 
 The client for [srosha](../../README.md), an asynchronous notification service.
 You submit a message once; srosha delivers it out of band across email,
-Telegram, Bale, WhatsApp, Matrix, FCM and APNs, retrying per channel.
+Telegram, Bale, WhatsApp, Matrix, Gotify, FCM and APNs, retrying per channel.
 
 ---
 
@@ -240,7 +240,7 @@ Only `Body` and `Routes` are required.
 
 ### Title and body, per channel
 
-There is one pair of fields and seven channels, and they do not all have two
+There is one pair of fields and eight channels, and they do not all have two
 places to put them.
 
 | | |
@@ -395,6 +395,7 @@ stored — so a mistake costs you an error, not a failed delivery hours later.
 | `Telegram`, `Bale` | a numeric chat id, or `@name` **for a public channel only** — never a person, whatever their username | `123456789`, `-100123`, `@acmenews` |
 | `WhatsApp` | E.164, `+` and 8–15 digits | `+989121234567` |
 | `Matrix` | a **room**, never a user. Matrix has no "send to this person" | `!abc:matrix.org` |
+| `Gotify` | an application id, a positive integer | `1`, `42` |
 | `FCM` | an Android device token, 32–4096 characters | `cXy…` |
 | `APNs` | an Apple device token, hexadecimal, 32–200 characters | `a1b2c3…` |
 
@@ -480,6 +481,7 @@ secret changes, say so: that is what `Rotate` is.
 | `FCMCredential` | `ServiceAccount` — the whole service account json file, not base64 of it |
 | `SMTPCredential` | `Host`, `Port`, `Username`, `From`, `Password`. Port 465 is TLS from the first byte; anything else is STARTTLS. Zero means 587 |
 | `MatrixCredential` | `Homeserver` (https, no path) and `Token` |
+| `GotifyCredential` | `ServerURL` (https, no path) and `Token` — the application token, which alone decides which application a stock Gotify server delivers to |
 | `WhatsAppCredential` | `PhoneNumberID` — Meta's id for the number, not the number — and `Token` |
 | `APNsCredential` | `Key` (the `.p8` file's contents), `KeyID`, `TeamID`, `Topic` (your bundle id), and `Environment`. Leave `Environment` unset for production, which is what a shipped app uses — a token from a development build is unknown to production and comes back as `FailureNotReachable` |
 | `RawCredential` | a channel this build has no type for yet: `Channel`, `Config` json, `Secret` |

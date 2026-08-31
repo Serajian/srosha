@@ -14,6 +14,7 @@ import (
 	"github.com/Serajian/srosha/internal/adapter/sender/bale"
 	"github.com/Serajian/srosha/internal/adapter/sender/email"
 	"github.com/Serajian/srosha/internal/adapter/sender/fcm"
+	"github.com/Serajian/srosha/internal/adapter/sender/gotify"
 	"github.com/Serajian/srosha/internal/adapter/sender/matrix"
 	"github.com/Serajian/srosha/internal/adapter/sender/telegram"
 	"github.com/Serajian/srosha/internal/adapter/sender/whatsapp"
@@ -80,6 +81,12 @@ type Fallback struct {
 	// is federated, so there is no host that is right for everybody.
 	Matrix Matrix
 
+	// Gotify is an application token and the self-hosted server it belongs to.
+	// The server is the one address in this service that is not a constant
+	// somewhere: Gotify is self-hosted, so there is no host that is right for
+	// everybody.
+	Gotify Gotify
+
 	// FCMServiceAccount is a private key rather than a token, because Google
 	// does not hand out tokens: a service account is exchanged for one, and it
 	// carries the project it belongs to inside it.
@@ -113,6 +120,14 @@ type Matrix struct {
 }
 
 func (m Matrix) configured() bool { return m.Token != "" && m.Homeserver != "" }
+
+// Gotify is srosha's own application on a self-hosted server.
+type Gotify struct {
+	Token     string
+	ServerURL string
+}
+
+func (g Gotify) configured() bool { return g.Token != "" && g.ServerURL != "" }
 
 // APNs is srosha's own Apple push identity.
 type APNs struct {
@@ -264,6 +279,13 @@ func (r *Registry) ours(c shared.Channel) (delivery.Sender, error) {
 		return matrix.New(r.client, r.own.Matrix.Token,
 			matrix.Config{Homeserver: r.own.Matrix.Homeserver})
 
+	case shared.ChannelGotify:
+		if !r.own.Gotify.configured() {
+			return nil, noSender(c)
+		}
+		return gotify.New(r.client, r.own.Gotify.Token,
+			gotify.Config{ServerURL: r.own.Gotify.ServerURL})
+
 	case shared.ChannelWhatsApp:
 		if !r.own.WhatsApp.configured() {
 			return nil, noSender(c)
@@ -332,6 +354,15 @@ func (r *Registry) build(c shared.Channel, config []byte, secret string) (delive
 			return nil, err
 		}
 		return matrix.New(r.client, secret, cfg)
+
+	case shared.ChannelGotify:
+		// Parsed into a type of its own, as mail and whatsapp are: the server
+		// url is required, and it is an address somebody else chose.
+		cfg, err := gotify.ParseConfig(config)
+		if err != nil {
+			return nil, err
+		}
+		return gotify.New(r.client, secret, cfg)
 
 	case shared.ChannelWhatsApp:
 		// Parsed into a type of its own, as mail is: these settings are required

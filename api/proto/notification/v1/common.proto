@@ -38,6 +38,7 @@ enum Channel {
   CHANNEL_MATRIX = 5;
   CHANNEL_FCM = 6;
   CHANNEL_APNS = 7;
+  CHANNEL_GOTIFY = 8;
 }
 
 // Window is how far back a listing reaches.

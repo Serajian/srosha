@@ -5,6 +5,7 @@ import (
 
 	"github.com/Serajian/srosha/internal/adapter/sender/apns"
 	"github.com/Serajian/srosha/internal/adapter/sender/email"
+	"github.com/Serajian/srosha/internal/adapter/sender/gotify"
 	"github.com/Serajian/srosha/internal/adapter/sender/matrix"
 	"github.com/Serajian/srosha/internal/adapter/sender/whatsapp"
 	"github.com/Serajian/srosha/internal/core/shared"
@@ -62,6 +63,21 @@ func TestEverySDKCredentialParsesOnThisSide(t *testing.T) {
 				}
 				if cfg.Homeserver != "https://matrix.acme.test" {
 					t.Errorf("homeserver = %q, want the sdk's", cfg.Homeserver)
+				}
+			},
+		},
+		{
+			name: "gotify",
+			cred: srosha.GotifyCredential{
+				ServerURL: "https://gotify.acme.test", Token: "AbCdEf.token",
+			},
+			parse: func(t *testing.T, raw []byte) {
+				cfg, err := gotify.ParseConfig(raw)
+				if err != nil {
+					t.Fatalf("gotify.ParseConfig: %v", err)
+				}
+				if cfg.ServerURL != "https://gotify.acme.test" {
+					t.Errorf("server url = %q, want the sdk's", cfg.ServerURL)
 				}
 			},
 		},
@@ -139,6 +155,7 @@ func TestTheChannelNamesMatch(t *testing.T) {
 		srosha.ChannelBale:     shared.ChannelBale,
 		srosha.ChannelWhatsApp: shared.ChannelWhatsApp,
 		srosha.ChannelMatrix:   shared.ChannelMatrix,
+		srosha.ChannelGotify:   shared.ChannelGotify,
 		srosha.ChannelFCM:      shared.ChannelFCM,
 		srosha.ChannelAPNs:     shared.ChannelAPNs,
 	}

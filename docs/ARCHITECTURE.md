@@ -164,8 +164,8 @@ names and a status.
 
 ## What a channel is, and what adding one costs
 
-Seven exist: `email`, `telegram`, `bale`, `whatsapp`, `matrix`, `fcm`, `apns`. Every one of
-them has a sender behind it.
+Eight exist: `email`, `telegram`, `bale`, `whatsapp`, `matrix`, `gotify`, `fcm`, `apns`. Every
+one of them has a sender behind it.
 
 A channel is added **with** its sender, never before it. Six places have to agree — the
 constant and its address rule, the proto enum, the mapper, the registry, and two CHECK

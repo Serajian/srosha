@@ -4,7 +4,7 @@
 
 کلاینتِ [srosha](../../README.md)، یک سرویسِ **ناهمگام** (asynchronous) برای
 اطلاع‌رسانی. شما یک بار پیام را تحویل می‌دهید؛ srosha بعداً و بیرون از مسیرِ
-درخواستِ شما آن را روی email، Telegram، Bale، WhatsApp، Matrix، FCM و APNs
+درخواستِ شما آن را روی email، Telegram، Bale، WhatsApp، Matrix، Gotify، FCM و APNs
 می‌فرستد و در هر کانال جداگانه تلاشِ دوباره می‌کند.
 
 ---
@@ -238,7 +238,7 @@ c.Submit(ctx, srosha.Message{
 
 ### عنوان و متن، به‌ازای هر کانال
 
-یک جفت فیلد هست و هفت کانال، و همه‌شان دو جا برای گذاشتنشان ندارند.
+یک جفت فیلد هست و هشت کانال، و همه‌شان دو جا برای گذاشتنشان ندارند.
 
 | | |
 | --- | --- |
@@ -393,6 +393,7 @@ for n, err := range c.List(ctx, srosha.LastDay) {
 | `Telegram`, `Bale` | شناسهٔ عددیِ چت، یا `@name` **فقط برای کانالِ عمومی** — هرگز برای یک شخص، هر username ای که داشته باشد | `123456789`، `-100123`، `@acmenews` |
 | `WhatsApp` | E.164، یعنی `+` و ۸ تا ۱۵ رقم | `+989121234567` |
 | `Matrix` | یک **اتاق**، نه یک کاربر. Matrix اصلاً «به این شخص بفرست» ندارد | `!abc:matrix.org` |
+| `Gotify` | شناسهٔ application، یک عددِ صحیحِ مثبت | `1`، `42` |
 | `FCM` | توکنِ دستگاهِ اندروید، ۳۲ تا ۴۰۹۶ کاراکتر | `cXy…` |
 | `APNs` | توکنِ دستگاهِ اپل، هگزادسیمال، ۳۲ تا ۲۰۰ کاراکتر | `a1b2c3…` |
 
@@ -477,6 +478,7 @@ if err := register(); err != nil && !errors.Is(err, srosha.ErrDuplicate) {
 | `FCMCredential` | `ServiceAccount` — کلِ فایلِ json ــِ service account، نه base64 آن |
 | `SMTPCredential` | `Host`، `Port`، `Username`، `From`، `Password`. پورتِ ۴۶۵ یعنی TLS از اولین بایت؛ هر چیزِ دیگر STARTTLS. صفر یعنی ۵۸۷ |
 | `MatrixCredential` | `Homeserver` (https، بدون path) و `Token` |
+| `GotifyCredential` | `ServerURL` (https، بدون path) و `Token` — همان application token که به‌تنهایی روی یک سرورِ استاندارد Gotify تعیین می‌کند پیام به کدام application برسد |
 | `WhatsAppCredential` | `PhoneNumberID` — شناسهٔ Meta برای آن شماره، نه خودِ شماره — و `Token` |
 | `APNsCredential` | `Key` (محتوای فایلِ `.p8`)، `KeyID`، `TeamID`، `Topic` (bundle id ــِ اپتان) و `Environment`. `Environment` را خالی بگذارید تا production شود، که همان چیزی است که اپِ منتشرشده استفاده می‌کند — توکنی که از بیلدِ development آمده برای production ناشناس است و به‌شکلِ `FailureNotReachable` برمی‌گردد |
 | `RawCredential` | کانالی که این نسخه تایپی برایش ندارد: `Channel`، `Config` ــِ json، و `Secret` |
