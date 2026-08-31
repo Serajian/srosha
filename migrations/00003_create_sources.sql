@@ -38,6 +38,20 @@ CREATE TABLE sources (
     -- month.
     approved_at          TIMESTAMPTZ,
 
+    -- When an operator last decided about this source, whichever way. NULL
+    -- means nobody has looked at it yet, and that is exactly the review queue.
+    --
+    -- Distinct from approved_at, which records only the first yes. A refused
+    -- source has this set and that null, which is what stops it coming back to
+    -- the queue for ever and being decided again by somebody who cannot tell it
+    -- from a stranger.
+    reviewed_at          TIMESTAMPTZ,
+
+    -- Why, in the operator's words, and the customer reads it. Overwritten by
+    -- the next decision: this is the current decision, not a history. The
+    -- history is audit_log.
+    review_note          TEXT        NOT NULL DEFAULT '',
+
     -- False bounds the damage of a leaked key: the source can then only reach
     -- the addresses below, never a stranger.
     allow_custom_address BOOLEAN     NOT NULL DEFAULT FALSE,
@@ -52,7 +66,10 @@ CREATE TABLE sources (
 
 -- What a customer's own page reads, and what an operator's queue reads.
 CREATE INDEX sources_owner_idx ON sources (owner_user_id, created_at DESC);
-CREATE INDEX sources_unapproved_idx ON sources (created_at) WHERE approved_at IS NULL;
+-- The review queue: what nobody has decided about, oldest first. Deliberately
+-- NOT "where approved_at is null", which would also list everything ever
+-- refused and hand an operator the same decision again every day.
+CREATE INDEX sources_unreviewed_idx ON sources (created_at) WHERE reviewed_at IS NULL;
 
 -- +goose StatementEnd
 

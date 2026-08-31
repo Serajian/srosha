@@ -14,6 +14,7 @@ import (
 
 type sourceRig struct {
 	sources  *usecase.Sources
+	repo     fakeSources
 	log      *auditLog
 	actor    *user.User
 	stranger *user.User
@@ -60,6 +61,7 @@ func newSourceRig(t *testing.T) *sourceRig {
 		sources: usecase.NewSources(
 			repo, usecase.NewGate(log, seqIDs(), fixedNow(at)), seqIDs(), fixedNow(at),
 		),
+		repo:     repo,
 		log:      log,
 		actor:    actor,
 		stranger: stranger,
@@ -230,6 +232,33 @@ func TestAChangeLeavesAnAuditRow(t *testing.T) {
 	}
 }
 
+// Update's return value is what Reconfigure produced in memory, which proves
+// nothing about the repository -- only a separate read, through a fresh call
+// to One, shows whether UpdateSettings actually reached storage.
+func TestAChangeReachesStorage(t *testing.T) {
+	rig := newSourceRig(t)
+	id := rig.registered(t)
+	ctx := context.Background()
+
+	if _, err := rig.sources.Update(
+		ctx, rig.actor, id,
+		usecase.SourceSettings{Name: "acme-alerts", Description: "pages the on-call"},
+	); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	reread, err := rig.sources.One(ctx, rig.actor, id)
+	if err != nil {
+		t.Fatalf("One: %v", err)
+	}
+	if reread.Name != "acme-alerts" {
+		t.Errorf("name = %q, the change never reached storage", reread.Name)
+	}
+	if reread.Description != "pages the on-call" {
+		t.Errorf("description = %q, the change never reached storage", reread.Description)
+	}
+}
+
 // The customer's form cannot carry the ceiling, and this is the assertion that
 // stays true if somebody later widens SourceSettings without thinking.
 func TestAChangeCannotTouchWhatIsOurs(t *testing.T) {
@@ -237,12 +266,13 @@ func TestAChangeCannotTouchWhatIsOurs(t *testing.T) {
 	id := rig.registered(t)
 	ctx := context.Background()
 
-	before, err := rig.sources.One(ctx, rig.actor, id)
-	if err != nil {
-		t.Fatalf("One: %v", err)
-	}
-	before.MaxPriority = shared.PriorityCritical
-	before.AllowCustomAddress = true
+	// Written straight into storage, standing in for values an operator
+	// already gave this source -- not read back and mutated locally, which
+	// would prove nothing: ReadByID hands back a copy, so a local mutation
+	// never reaches the row Update reads.
+	stored := rig.repo.byID[id]
+	stored.MaxPriority = shared.PriorityCritical
+	stored.AllowCustomAddress = true
 
 	got, err := rig.sources.Update(
 		ctx, rig.actor, id, usecase.SourceSettings{Name: "renamed"},

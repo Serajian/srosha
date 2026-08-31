@@ -61,6 +61,43 @@ func (m *memUsers) ReadByID(_ context.Context, id shared.ID) (*user.User, error)
 	return nil, errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
 }
 
+func (m *memUsers) List(_ context.Context, limit int32) ([]user.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]user.User, 0, len(m.rows))
+	for _, u := range m.rows {
+		if int32(len(out)) >= limit {
+			break
+		}
+		out = append(out, *u)
+	}
+	return out, nil
+}
+
+func (m *memUsers) UpdateRole(_ context.Context, u *user.User) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	row, ok := m.rows[u.Email]
+	if !ok {
+		return errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
+	}
+	row.Role = u.Role
+	row.UpdatedAt = u.UpdatedAt
+	return nil
+}
+
+func (m *memUsers) SetActive(_ context.Context, u *user.User) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	row, ok := m.rows[u.Email]
+	if !ok {
+		return errs.NotFoundErr("user not found").WithErr(user.ErrNotFound)
+	}
+	row.IsActive = u.IsActive
+	row.UpdatedAt = u.UpdatedAt
+	return nil
+}
+
 type memCodes struct {
 	mu   sync.Mutex
 	rows []*logincode.LoginCode
@@ -160,6 +197,19 @@ func (m *memMailer) lastCode(t *testing.T) string {
 type memSources struct {
 	mu   sync.Mutex
 	rows []*source.Source
+
+	// readFails, when set, is what ReadByID answers instead of looking. It
+	// stands in for a database that will not answer, which is a different
+	// thing from an id nothing matches and must not be reported as one.
+	readFails error
+}
+
+// breakReads makes every ReadByID fail with something that is not a
+// not-found.
+func (m *memSources) breakReads(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.readFails = err
 }
 
 func (m *memSources) Create(_ context.Context, s *source.Source) error {
@@ -187,15 +237,72 @@ func (m *memSources) UpdateSettings(_ context.Context, s *source.Source) error {
 	return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
 }
 
+// ReadByID hands back a COPY, never the stored pointer.
+//
+// A real repository builds a struct from a row, so a caller that mutates what
+// it read changes nothing until it writes. Handing out the pointer made the
+// fake the opposite: Approve mutating the source it read would have "landed"
+// with no UpdateReview at all, and TestApprovingLetsASourceLeaveTheQueue would
+// have passed on a use case that never wrote anything. fakeSources in the use
+// case package was fixed for this; this one, which the branch's only
+// end-to-end suite runs on, was missed.
 func (m *memSources) ReadByID(_ context.Context, id string) (*source.Source, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.readFails != nil {
+		return nil, m.readFails
+	}
 	for _, s := range m.rows {
 		if s.ID == id {
-			return s, nil
+			got := *s
+			return &got, nil
 		}
 	}
 	return nil, errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
+}
+
+func (m *memSources) UpdateReview(_ context.Context, s *source.Source) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, row := range m.rows {
+		if row.ID == s.ID {
+			row.IsActive = s.IsActive
+			row.ApprovedAt = s.ApprovedAt
+			row.ReviewedAt = s.ReviewedAt
+			row.ReviewNote = s.ReviewNote
+			row.UpdatedAt = s.UpdatedAt
+			return nil
+		}
+	}
+	return errs.NotFoundErr("source not found").WithErr(source.ErrNotFound)
+}
+
+func (m *memSources) ListForReview(_ context.Context, limit int32) ([]source.Source, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []source.Source{}
+	for _, s := range m.rows {
+		if int32(len(out)) >= limit {
+			break
+		}
+		if !s.IsReviewed() {
+			out = append(out, *s)
+		}
+	}
+	return out, nil
+}
+
+func (m *memSources) ListAll(_ context.Context, limit int32) ([]source.Source, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []source.Source{}
+	for _, s := range m.rows {
+		if int32(len(out)) >= limit {
+			break
+		}
+		out = append(out, *s)
+	}
+	return out, nil
 }
 
 func (m *memSources) ListByOwner(
@@ -225,6 +332,50 @@ func (m *memAudit) Record(_ context.Context, e usecase.AuditEntry) error {
 	defer m.mu.Unlock()
 	m.entries = append(m.entries, e)
 	return nil
+}
+
+// List satisfies usecase.AuditLog, newest first and capped at limit.
+func (m *memAudit) List(_ context.Context, limit int32) ([]usecase.AuditEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := len(m.entries)
+	if int32(n) > limit {
+		n = int(limit)
+	}
+	out := make([]usecase.AuditEntry, n)
+	for i := 0; i < n; i++ {
+		out[i] = m.entries[len(m.entries)-1-i]
+	}
+	return out, nil
+}
+
+// ListByTarget mirrors postgres's own statement -- target_type, target_id and
+// the given verb set, newest first, capped at limit -- for the same reason
+// usecase_test's own auditLog fake does: a fake that ignored the verb list
+// would let the admin surface's guard on /sources/:id go untested by
+// TestASourcesOwnHistoryNeverShowsACustomerAddress in admin_test.go.
+func (m *memAudit) ListByTarget(
+	_ context.Context, targetType, targetID string, verbs []string, limit int32,
+) ([]usecase.AuditEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	allowed := make(map[string]bool, len(verbs))
+	for _, v := range verbs {
+		allowed[v] = true
+	}
+
+	var matched []usecase.AuditEntry
+	for i := len(m.entries) - 1; i >= 0; i-- {
+		e := m.entries[i]
+		if e.TargetType == targetType && e.TargetID == targetID && allowed[e.Verb] {
+			matched = append(matched, e)
+		}
+	}
+	if int32(len(matched)) > limit {
+		matched = matched[:limit]
+	}
+	return matched, nil
 }
 
 // memKeys is the key store these tests run over. It records the hashes so a
@@ -692,6 +843,56 @@ func TestANewSourceSaysItIsWaitingForApproval(t *testing.T) {
 	}
 }
 
+// A source with no default address and no permission for a custom one cannot
+// possibly be approved -- not by waiting, and not by an operator, who cannot
+// add an address on the customer's behalf either. Telling this customer to
+// simply wait would be the same silent failure review_note exists to end,
+// just reached a different way: nothing here will ever move.
+func TestAWaitingSourceWithNoAddressIsToldToAddOne(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "me@acme.test")
+
+	post(t, p, "/sources", url.Values{"name": {"acme-billing"}}, cookie)
+	id := onlySourceID(t, p)
+
+	got := get(t, p, "/sources/"+id, cookie)
+	whole(t, "/sources/"+id, got)
+
+	if !strings.Contains(got.body, "nobody can approve it yet") {
+		t.Errorf("a source with nowhere to send does not tell the customer to add one:\n%s",
+			got.body)
+	}
+	if !strings.Contains(got.body, `href="/sources/`+id+`/edit"`) {
+		t.Errorf("the message does not point at the edit page:\n%s", got.body)
+	}
+	if strings.Contains(got.body, "it starts working the moment") {
+		t.Error("a source with nowhere to send still says it only needs to wait")
+	}
+}
+
+// A source that already has somewhere to send gets the ordinary message: it
+// really is only waiting.
+func TestAWaitingSourceWithAnAddressGetsTheOrdinaryMessage(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "me@acme.test")
+
+	post(t, p, "/sources", url.Values{
+		"name": {"acme-billing"}, "channel": {"email"}, "address": {"ops@acme.test"},
+	}, cookie)
+	id := onlySourceID(t, p)
+
+	got := get(t, p, "/sources/"+id, cookie)
+	whole(t, "/sources/"+id, got)
+
+	if !strings.Contains(got.body, "it starts working the moment") {
+		t.Errorf("a source with an address does not get the ordinary waiting message:\n%s",
+			got.body)
+	}
+	if strings.Contains(got.body, "nobody can approve it yet") {
+		t.Error("a source that already has an address is still told to add one")
+	}
+}
+
 // Ownership, from the outside. Somebody else's source is not found, and the
 // answer does not differ from an id that never existed.
 func TestACustomerCannotOpenSomebodyElsesSource(t *testing.T) {
@@ -711,6 +912,70 @@ func TestACustomerCannotOpenSomebodyElsesSource(t *testing.T) {
 	}
 	if strings.Contains(got.body, "mine") {
 		t.Error("somebody else's source name was rendered")
+	}
+}
+
+// A refusal a customer cannot read is a source that silently never works --
+// the failure the "waiting for approval" message exists to avoid.
+func TestARefusedSourceShowsItsReason(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "me@acme.test")
+
+	post(t, p, "/sources", url.Values{"name": {"acme-billing"}}, cookie)
+	id := onlySourceID(t, p)
+
+	at := time.Now().UTC()
+	if err := p.sources.rows[0].Refuse("no working address", at); err != nil {
+		t.Fatalf("Refuse: %v", err)
+	}
+
+	got := get(t, p, "/sources/"+id, cookie)
+	whole(t, "/sources/"+id, got)
+
+	if !strings.Contains(got.body, "no working address") {
+		t.Error("the customer is not told why")
+	}
+	if strings.Contains(strings.ToLower(got.body), "waiting for approval") {
+		t.Error("a refused source still says it is waiting")
+	}
+}
+
+// The list is the first thing a customer sees. If it still says "waiting"
+// for a source that was refused or suspended weeks ago, the fix on the
+// detail page never mattered -- nobody opens a source that claims to be
+// fine already.
+func TestARefusedOrSuspendedSourceDoesNotReadAsWaitingOnTheList(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "me@acme.test")
+
+	post(t, p, "/sources", url.Values{"name": {"refused-one"}}, cookie)
+	post(t, p, "/sources", url.Values{"name": {"suspended-one"}}, cookie)
+
+	p.sources.mu.Lock()
+	if len(p.sources.rows) != 2 {
+		p.sources.mu.Unlock()
+		t.Fatalf("there are %d sources, want exactly two", len(p.sources.rows))
+	}
+	refused, suspended := p.sources.rows[0], p.sources.rows[1]
+	p.sources.mu.Unlock()
+
+	now := time.Now().UTC()
+	if err := refused.Refuse("no working address", now); err != nil {
+		t.Fatalf("Refuse: %v", err)
+	}
+	suspended.AllowCustomAddress = true // otherwise Approve refuses: nowhere to send
+	if err := suspended.Approve(now); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
+	if err := suspended.Suspend(now); err != nil {
+		t.Fatalf("Suspend: %v", err)
+	}
+
+	got := get(t, p, "/sources", cookie)
+	whole(t, "/sources", got)
+
+	if strings.Contains(strings.ToLower(got.body), "waiting for approval") {
+		t.Error("a refused or suspended source still reads as waiting for approval")
 	}
 }
 

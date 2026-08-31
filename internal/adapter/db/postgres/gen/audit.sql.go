@@ -10,9 +10,101 @@ import (
 	"time"
 )
 
+const listAudit = `-- name: ListAudit :many
+SELECT id, at, actor_id, actor_email, verb, target_type, target_id, note FROM audit_log ORDER BY at DESC LIMIT $1
+`
+
+// ListAudit is the newest rows first, with no filter. See
+// usecase.Operators.Audit for why there is no filter yet.
+func (q *Queries) ListAudit(ctx context.Context, rowLimit int32) ([]AuditLog, error) {
+	rows, err := q.db.Query(ctx, listAudit, rowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditLog{}
+	for rows.Next() {
+		var i AuditLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.At,
+			&i.ActorID,
+			&i.ActorEmail,
+			&i.Verb,
+			&i.TargetType,
+			&i.TargetID,
+			&i.Note,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAuditByTarget = `-- name: ListAuditByTarget :many
+SELECT id, at, actor_id, actor_email, verb, target_type, target_id, note FROM audit_log
+WHERE target_type = $1
+  AND target_id = $2
+  AND verb = ANY($3::text[])
+ORDER BY at DESC
+LIMIT $4
+`
+
+type ListAuditByTargetParams struct {
+	TargetType string
+	TargetID   string
+	Verbs      []string
+	RowLimit   int32
+}
+
+// ListAuditByTarget is one thing's own history, narrowed to a caller-chosen
+// verb set, newest first, capped at row_limit. Filters on target_type and
+// target_id, which audit_log_target_idx already covers, plus the verb list --
+// see usecase.sourceDecisionVerbs for why that verb list is a privacy
+// boundary and not a convenience: this statement enforces whatever verbs it
+// is asked for, and it is the CALLER's job to never ask for more than it may
+// show.
+func (q *Queries) ListAuditByTarget(ctx context.Context, arg ListAuditByTargetParams) ([]AuditLog, error) {
+	rows, err := q.db.Query(ctx, listAuditByTarget,
+		arg.TargetType,
+		arg.TargetID,
+		arg.Verbs,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AuditLog{}
+	for rows.Next() {
+		var i AuditLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.At,
+			&i.ActorID,
+			&i.ActorEmail,
+			&i.Verb,
+			&i.TargetType,
+			&i.TargetID,
+			&i.Note,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recordAudit = `-- name: RecordAudit :exec
-INSERT INTO audit_log (id, at, actor_id, actor_email, verb, target_type, target_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO audit_log (id, at, actor_id, actor_email, verb, target_type, target_id, note)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 
 type RecordAuditParams struct {
@@ -23,6 +115,7 @@ type RecordAuditParams struct {
 	Verb       string
 	TargetType string
 	TargetID   string
+	Note       string
 }
 
 // There is no update and no delete, and there will not be. See the migration.
@@ -35,6 +128,7 @@ func (q *Queries) RecordAudit(ctx context.Context, arg RecordAuditParams) error 
 		arg.Verb,
 		arg.TargetType,
 		arg.TargetID,
+		arg.Note,
 	)
 	return err
 }

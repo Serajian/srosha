@@ -51,6 +51,18 @@ func New(id shared.ID, email string, role Role, now time.Time) (*User, error) {
 	}, nil
 }
 
+// ChangeRole is the one field a person cannot set for themselves.
+func (u *User) ChangeRole(r Role, now time.Time) error {
+	if !r.Valid() {
+		return errs.InvalidInputErr("unknown role").
+			WithErr(ErrUnknownRole).
+			WithStr(fmt.Sprintf("got %q", r))
+	}
+	u.Role = r
+	u.UpdatedAt = now
+	return nil
+}
+
 // EnsureActive refuses somebody who may not sign in.
 func (u *User) EnsureActive() error {
 	if u.IsActive {

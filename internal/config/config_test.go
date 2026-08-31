@@ -95,6 +95,90 @@ func TestProductionRefusesARelaxedCallbackCheck(t *testing.T) {
 	}
 }
 
+// The admin panel is never published. Its default binds loopback, and a
+// default is not a guard: somebody copying the portal's ":8090" gets ":8092",
+// which is every interface, and the service starts perfectly.
+func TestProductionRefusesAnAdminAddressOnEveryInterface(t *testing.T) {
+	for _, addr := range []string{":8092", "0.0.0.0:8092", "192.168.1.10:8092"} {
+		t.Run(addr, func(t *testing.T) {
+			setMinimum(t)
+			setConsoleMinimum(t)
+			t.Setenv("NOTIF_APP_ENV", "production")
+			t.Setenv("NOTIF_ADMIN_ADDR", addr)
+
+			_, err := config.LoadConsole()
+			if err == nil {
+				t.Fatalf("production accepted an admin listener on %q", addr)
+			}
+			if !strings.Contains(err.Error(), "NOTIF_ADMIN_ADDR") {
+				t.Errorf("error does not say which key: %v", err)
+			}
+		})
+	}
+}
+
+// The three spellings of "only this machine" are all accepted, so the check
+// does not force one of them on a deployment.
+func TestProductionAcceptsALoopbackAdminAddress(t *testing.T) {
+	for _, addr := range []string{"127.0.0.1:8092", "localhost:8092", "[::1]:8092"} {
+		t.Run(addr, func(t *testing.T) {
+			setMinimum(t)
+			setConsoleMinimum(t)
+			t.Setenv("NOTIF_APP_ENV", "production")
+			t.Setenv("NOTIF_ADMIN_ADDR", addr)
+
+			if _, err := config.LoadConsole(); err != nil {
+				t.Fatalf("production refused %q: %v", addr, err)
+			}
+		})
+	}
+}
+
+// A limit of zero would read as a page with nothing on it -- indistinguishable
+// from a page that genuinely has nothing to show, and the quiet kind of
+// failure this whole change exists to refuse. Loading must fail instead of
+// silently handing every panel listing a limit of zero rows.
+func TestAdminListLimitMustBeAboveZero(t *testing.T) {
+	for _, limit := range []string{"0", "-1", "-200"} {
+		t.Run(limit, func(t *testing.T) {
+			setMinimum(t)
+			setConsoleMinimum(t)
+			t.Setenv("NOTIF_ADMIN_LIST_LIMIT", limit)
+
+			_, err := config.LoadConsole()
+			if err == nil {
+				t.Fatalf("console loaded with NOTIF_ADMIN_LIST_LIMIT=%s", limit)
+			}
+			if !strings.Contains(err.Error(), "NOTIF_ADMIN_LIST_LIMIT") {
+				t.Errorf("error does not say which key: %v", err)
+			}
+		})
+	}
+}
+
+// The default is what every panel listing is bounded by when nobody has set
+// an opinion of their own.
+func TestAdminListLimitDefaultsTo200(t *testing.T) {
+	setMinimum(t)
+	setConsoleMinimum(t)
+
+	c, err := config.LoadConsole()
+	if err != nil {
+		t.Fatalf("LoadConsole() error = %v", err)
+	}
+	if c.Console.AdminListLimit != 200 {
+		t.Errorf("AdminListLimit = %d, want the default of 200", c.Console.AdminListLimit)
+	}
+}
+
+// setConsoleMinimum sets what only the console binary requires.
+func setConsoleMinimum(t *testing.T) {
+	t.Helper()
+	t.Setenv("NOTIF_CONSOLE_SMTP_HOST", "smtp.example.test")
+	t.Setenv("NOTIF_CONSOLE_SMTP_FROM", "srosha@example.test")
+	t.Setenv("NOTIF_CONSOLE_SECURE_COOKIE", "true")
+}
+
 func TestDevelopmentAllowsARelaxedCallbackCheck(t *testing.T) {
 	setMinimum(t)
 	t.Setenv("NOTIF_WEBHOOK_ALLOW_PRIVATE_URL", "true")

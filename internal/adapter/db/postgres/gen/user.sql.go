@@ -36,6 +36,46 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	return err
 }
 
+const listUsers = `-- name: ListUsers :many
+SELECT id, email, role, is_active, created_at, updated_at
+FROM users
+ORDER BY created_at DESC
+LIMIT $1
+`
+
+// ListUsers is every account, newest first, for the page that manages them.
+// No filter anywhere, unlike ListAllSources: /sources has four states an
+// operator flips between and /people has none to flip between -- a role and
+// an is_active flag are shown on the row, and the page is short enough to
+// read. When it stops being short the answer is a page cursor, not a filter.
+// Capped at row_limit -- see usecase.Operators.People.
+func (q *Queries) ListUsers(ctx context.Context, rowLimit int32) ([]User, error) {
+	rows, err := q.db.Query(ctx, listUsers, rowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Role,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readUserByEmail = `-- name: ReadUserByEmail :one
 SELECT id, email, role, is_active, created_at, updated_at
 FROM users
@@ -76,4 +116,53 @@ func (q *Queries) ReadUserByID(ctx context.Context, id string) (User, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const setUserActive = `-- name: SetUserActive :execrows
+UPDATE users
+SET is_active = $1, updated_at = $2::timestamptz
+WHERE id = $3
+`
+
+type SetUserActiveParams struct {
+	IsActive  bool
+	UpdatedAt time.Time
+	ID        string
+}
+
+// SetUserActive writes whether somebody may sign in, and nothing a role change
+// touches.
+//
+// execrows so the caller can tell "updated" from "no such user".
+func (q *Queries) SetUserActive(ctx context.Context, arg SetUserActiveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setUserActive, arg.IsActive, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateUserRole = `-- name: UpdateUserRole :execrows
+UPDATE users
+SET role = $1, updated_at = $2::timestamptz
+WHERE id = $3
+`
+
+type UpdateUserRoleParams struct {
+	Role      string
+	UpdatedAt time.Time
+	ID        string
+}
+
+// UpdateUserRole writes the one field a person cannot set for themselves, and
+// nothing else -- a role change must not be able to carry a reactivation along
+// with it.
+//
+// execrows so the caller can tell "updated" from "no such user".
+func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateUserRole, arg.Role, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

@@ -4,16 +4,13 @@ import (
 	"context"
 
 	"github.com/Serajian/srosha/internal/adapter/db/postgres/gen"
+	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // AuditRepository implements usecase.AuditLog.
-//
-// It has one method and will keep one. There is no read here yet because
-// nothing reads it yet -- an investigation runs a SELECT until the admin panel
-// gives it a page.
 type AuditRepository struct{ base }
 
 func NewAuditRepository(pool *pgxpool.Pool) *AuditRepository {
@@ -29,9 +26,67 @@ func (r *AuditRepository) Record(ctx context.Context, e usecase.AuditEntry) erro
 		Verb:       e.Verb,
 		TargetType: e.TargetType,
 		TargetID:   e.TargetID,
+		Note:       e.Note,
 	})
 	if err != nil {
 		return failed("record audit", err)
 	}
 	return nil
+}
+
+// List is the newest rows first, capped at limit. No filter -- see
+// usecase.Operators.Audit for why.
+func (r *AuditRepository) List(ctx context.Context, limit int32) ([]usecase.AuditEntry, error) {
+	rows, err := r.q(ctx).ListAudit(ctx, limit)
+	if err != nil {
+		return nil, failed("list audit", err)
+	}
+
+	out := make([]usecase.AuditEntry, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, usecase.AuditEntry{
+			ID:         shared.ID(row.ID),
+			At:         row.At,
+			ActorID:    shared.ID(row.ActorID),
+			ActorEmail: row.ActorEmail,
+			Verb:       row.Verb,
+			TargetType: row.TargetType,
+			TargetID:   row.TargetID,
+			Note:       row.Note,
+		})
+	}
+	return out, nil
+}
+
+// ListByTarget is one thing's own history, narrowed to the given verbs. The
+// statement enforces whatever verb set it is handed -- see the query's own
+// comment and usecase.sourceDecisionVerbs for why the caller may never widen
+// that set to "everything for this target".
+func (r *AuditRepository) ListByTarget(
+	ctx context.Context, targetType, targetID string, verbs []string, limit int32,
+) ([]usecase.AuditEntry, error) {
+	rows, err := r.q(ctx).ListAuditByTarget(ctx, gen.ListAuditByTargetParams{
+		TargetType: targetType,
+		TargetID:   targetID,
+		Verbs:      verbs,
+		RowLimit:   limit,
+	})
+	if err != nil {
+		return nil, failed("list audit by target", err)
+	}
+
+	out := make([]usecase.AuditEntry, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, usecase.AuditEntry{
+			ID:         shared.ID(row.ID),
+			At:         row.At,
+			ActorID:    shared.ID(row.ActorID),
+			ActorEmail: row.ActorEmail,
+			Verb:       row.Verb,
+			TargetType: row.TargetType,
+			TargetID:   row.TargetID,
+			Note:       row.Note,
+		})
+	}
+	return out, nil
 }

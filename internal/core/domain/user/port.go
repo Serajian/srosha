@@ -15,4 +15,9 @@ type Repository interface {
 	Create(ctx context.Context, u *User) error
 	ReadByEmail(ctx context.Context, email string) (*User, error)
 	ReadByID(ctx context.Context, id shared.ID) (*User, error)
+	// List is every account, capped at limit -- the caller decides how many
+	// rows one screen may hold.
+	List(ctx context.Context, limit int32) ([]User, error)
+	UpdateRole(ctx context.Context, u *User) error
+	SetActive(ctx context.Context, u *User) error
 }

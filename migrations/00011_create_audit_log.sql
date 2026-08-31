@@ -24,7 +24,13 @@ CREATE TABLE audit_log (
     verb        TEXT        NOT NULL,
 
     target_type TEXT        NOT NULL,
-    target_id   TEXT        NOT NULL
+    target_id   TEXT        NOT NULL,
+
+    -- Why, when the verb does not say it on its own. A copy rather than a
+    -- join, for the same reason actor_email is one: sources.review_note is
+    -- overwritten by the next decision, so a year later the reason for the
+    -- first refusal would be gone.
+    note        TEXT        NOT NULL DEFAULT ''
 );
 
 -- What an investigation reads: everything one person did, newest first.
@@ -32,6 +38,12 @@ CREATE INDEX audit_log_actor_at_idx ON audit_log (actor_id, at DESC);
 
 -- And everything that happened to one thing.
 CREATE INDEX audit_log_target_idx ON audit_log (target_type, target_id, at DESC);
+
+-- And the only read the panel actually makes: the newest N rows, whoever did
+-- them. Neither index above answers it -- both lead with a column this query
+-- does not filter on, so it is a full scan and a sort of a table that is
+-- append-only, never swept, and grows by a row per customer action.
+CREATE INDEX audit_log_at_idx ON audit_log (at DESC);
 
 -- +goose StatementEnd
 

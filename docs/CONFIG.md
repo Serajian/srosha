@@ -168,6 +168,7 @@ Every key, with its defaults and which binary needs it, is documented in
 | telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ | ✅ |
 | console | `NOTIF_CONSOLE_SMTP_HOST`, `NOTIF_CONSOLE_SMTP_PORT`, `NOTIF_CONSOLE_SMTP_USER`, `NOTIF_CONSOLE_SMTP_PASSWORD`, `NOTIF_CONSOLE_SMTP_FROM`, `NOTIF_CONSOLE_SMTP_TIMEOUT`, `NOTIF_CONSOLE_SECURE_COOKIE` | — | — | ✅ |
 | portal | `NOTIF_PORTAL_ADDR` | — | — | ✅ |
+| admin | `NOTIF_ADMIN_ADDR`, `NOTIF_ADMIN_LIST_LIMIT` | — | — | ✅ |
 
 `NOTIF_MQ_URL` carries a **different** NATS user per binary. Do not collapse them.
 
@@ -218,12 +219,21 @@ The console also reads the **webhook policy**, and only the policy: it validates
 a callback address when a customer registers one, and never makes the callback.
 The signing secrets are the dispatcher's and are not loaded there.
 
-`NOTIF_CONSOLE_*` and `NOTIF_PORTAL_ADDR` are deliberately two groups, because
-one names the **binary** and the other names a **surface**. The console carries
-the customer portal today and the admin surface beside it later; they share this
-process, one mail account and one cookie rule, and each brings its own address —
-because which of them is exposed is the whole security argument. `NOTIF_ADMIN_ADDR`
-joins the second group in phase 2.
+`NOTIF_CONSOLE_*`, `NOTIF_PORTAL_ADDR` and `NOTIF_ADMIN_ADDR` are deliberately
+separate groups, because one names the **binary** and the other two name a
+**surface** each. The console carries the customer portal and the admin surface
+in one process, sharing one mail account and one cookie rule, and each surface
+brings its own address — because which of them is exposed is the whole security
+argument. `NOTIF_ADMIN_ADDR` defaults to `127.0.0.1:8092`, the loopback interface
+rather than every interface, so the admin port staying unreachable from outside
+is a property of the process and not only a fact about how it is deployed.
+
+**In production the console refuses to start unless `NOTIF_ADMIN_ADDR` binds
+loopback** — `127.0.0.1`, `::1` or `localhost`. A safe default is not a guard:
+copying the portal's `:8090` into it gives `:8092`, which is every interface,
+and the panel that switches off customers' sources would be on the network with
+no error and no log line. The check sits beside the one on
+`NOTIF_CONSOLE_SECURE_COOKIE` and has the same shape.
 
 Its SMTP account is its own and not the sender's. Signing in must not depend on
 how a customer's messages happen to be configured, and the mail does **not** go
@@ -232,6 +242,17 @@ to fix is a trap.
 
 `NOTIF_CONSOLE_SECURE_COOKIE` is off only for local development over plain http,
 and the console refuses to start in production with it off.
+
+`NOTIF_ADMIN_LIST_LIMIT` bounds every list the admin panel reads: the queue,
+all sources, a source's message log, a source's own decision history, the
+roster, and the global audit feed. One key for all of them, because it is one
+concept -- how many rows one panel listing shows -- and separate keys per page
+would be separate numbers that drift apart with nothing to notice. Default
+`200`. Loading refuses a value at or below zero: a limit of zero would read as
+a page with nothing on it, which is indistinguishable from a page that
+genuinely has nothing to show. A listing that hits the cap says so on the
+page, because a page that silently shows the newest N of a larger set is
+telling an operator they are looking at everything when they are not.
 
 ### Password rule
 
@@ -381,6 +402,7 @@ Local host-port mappings only. Production publishes nothing.
 | nats | `127.0.0.1:7002` |
 | gateway gRPC | `50051`, read from `NOTIF_GRPC_ADDR` in `.env` |
 | console portal | `8090`, read from `NOTIF_PORTAL_ADDR`; `make run-console` |
+| console admin | `127.0.0.1:8092`, read from `NOTIF_ADMIN_ADDR`; never `0.0.0.0` |
 | env file | `.env`, git-ignored; template in `.env.example` |
 
 The console needs an SMTP host to start, and a local catcher will not do as it

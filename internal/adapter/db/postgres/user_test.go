@@ -83,6 +83,88 @@ func TestTheSameAddressTwice(t *testing.T) {
 	}
 }
 
+// A role written comes back, and nothing else on the row moves along with it.
+func TestARoleWrittenComesBack(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+	ctx := context.Background()
+
+	repo := postgres.NewUserRepository(pool)
+	u := aStoredUser(t, pool, "USR", "ops@acme.test")
+
+	u.Role = user.RoleAdmin
+	u.UpdatedAt = time.Now().UTC().Truncate(time.Microsecond)
+	if err := repo.UpdateRole(ctx, u); err != nil {
+		t.Fatalf("UpdateRole: %v", err)
+	}
+
+	got, err := repo.ReadByID(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("ReadByID: %v", err)
+	}
+	if got.Role != user.RoleAdmin {
+		t.Errorf("role = %q, want admin", got.Role)
+	}
+	if !got.IsActive {
+		t.Error("a role change switched the account off")
+	}
+}
+
+// SetActive(false) does not remove the row -- an account switched off must
+// still come back, with is_active false, so it can be switched back on.
+func TestSetActiveFalseDoesNotRemoveTheRow(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+	ctx := context.Background()
+
+	repo := postgres.NewUserRepository(pool)
+	u := aStoredUser(t, pool, "USR", "ops@acme.test")
+
+	u.IsActive = false
+	u.UpdatedAt = time.Now().UTC().Truncate(time.Microsecond)
+	if err := repo.SetActive(ctx, u); err != nil {
+		t.Fatalf("SetActive: %v", err)
+	}
+
+	got, err := repo.ReadByID(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("the row was removed rather than switched off: %v", err)
+	}
+	if got.IsActive {
+		t.Error("is_active did not persist as false")
+	}
+	if got.Role != user.RoleCustomer {
+		t.Errorf("role = %q, a deactivation changed it", got.Role)
+	}
+}
+
+// List answers every account, for the page that manages them. truncate seeds
+// one user of its own (the owner every source test needs), so this counts
+// against that baseline rather than assuming an empty table.
+func TestListAnswersEveryAccount(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+	ctx := context.Background()
+
+	repo := postgres.NewUserRepository(pool)
+
+	before, err := repo.List(ctx, 100)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	aStoredUser(t, pool, "US1", "a@acme.test")
+	aStoredUser(t, pool, "US2", "b@acme.test")
+
+	got, err := repo.List(ctx, 100)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != len(before)+2 {
+		t.Fatalf("List returned %d users, want %d", len(got), len(before)+2)
+	}
+}
+
 // aStoredUser is the row every sign-in test needs first: login codes, sessions
 // and audit rows all point at a user, and none of them can be written without
 // one.

@@ -67,12 +67,32 @@ func (s *sessions) ID(c *gin.Context) (shared.ID, bool) {
 	return shared.ID(v), true
 }
 
-// may reports whether a person is allowed on a surface at all. The portal
-// accepts anybody who can sign in; the admin surface will demand an operator.
-type may func(*user.User) bool
+// may is who a surface lets in, and what being refused costs.
+//
+// Two fields rather than a bare predicate, because the two questions have
+// different answers on the two rules below and folding them together signed a
+// working operator out mid-task.
+type may struct {
+	allows func(*user.User) bool
+
+	// endsSession says whether a refusal also clears the cookie.
+	//
+	// True only where the caller might be a STRANGER to this surface. Clearing
+	// is what makes every refusal look identical, so nobody can tell a stale
+	// cookie from a wrong role -- and a customer arriving at the admin
+	// listener with a perfectly good portal session must not be able to tell
+	// that these pages exist. That reasoning is entirely about `operator`.
+	//
+	// It does not carry to `superAdmin`, where whoever is asking has already
+	// proven they are an operator: they know the surface exists, they are
+	// looking at its nav, and there is nothing left to hide from them. Signing
+	// them out there costs a working operator their session in the middle of a
+	// job and an emailed code to get it back, and buys nothing.
+	endsSession bool
+}
 
 // anybody is the portal's rule: signing in is the whole of it.
-func anybody(*user.User) bool { return true }
+var anybody = may{allows: func(*user.User) bool { return true }}
 
 // operator is the admin surface's rule, and it is the entire boundary between a
 // customer and the admin pages.
@@ -81,7 +101,24 @@ func anybody(*user.User) bool { return true }
 // perfectly valid session reaches the admin listener already carrying it. The
 // role is read from the live row on every request, so taking it away takes
 // effect at once -- for the same reason is_active does.
-func operator(u *user.User) bool { return u.Role.IsOperator() }
+//
+// endsSession, because the caller may be a customer who should not learn that
+// this listener answers at all.
+var operator = may{
+	allows:      func(u *user.User) bool { return u.Role.IsOperator() },
+	endsSession: true,
+}
+
+// superAdmin is the rule for the pages that change who somebody is, and for
+// the audit log, whose rows carry customers' addresses.
+//
+// Read from the live row like operator, and for the same reason: taking the
+// role away has to take effect on the next request rather than the next
+// sign-in.
+//
+// No endsSession: an admin who opens /people is an operator in the middle of
+// their work, not a stranger. They are sent back to the queue still signed in.
+var superAdmin = may{allows: func(u *user.User) bool { return u.Role == user.RoleSuperAdmin }}
 
 // guard is what makes a route need a session, and the right kind of person.
 //
@@ -89,24 +126,35 @@ func operator(u *user.User) bool { return u.Role.IsOperator() }
 // whether a page is behind sign-in is visible where the routes are listed -- and
 // a page added to the guarded group cannot forget it.
 //
-// It asks the core on every request rather than trusting the cookie, and every
-// refusal ends the same way: the cookie is cleared and the browser is sent to
-// sign in. Telling them apart would only tell whoever holds a stale cookie
-// which half of it was still good, or tell a customer that the admin pages are
-// there at all.
-func (s *sessions) guard(may may, signInPath string) gin.HandlerFunc {
+// It asks the core on every request rather than trusting the cookie. A session
+// the core will not answer for is always cleared -- there is nothing left to
+// keep. A session it answers for and a rule that refuses the answer is the
+// other case, and what happens then is the rule's own decision: see
+// may.endsSession.
+//
+// Under `operator` the two are therefore still indistinguishable, which is the
+// property TestEveryRefusalLooksTheSame holds.
+func (s *sessions) guard(rule may, refusedPath string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := s.ID(c)
 		if !ok {
-			c.Redirect(http.StatusSeeOther, signInPath)
+			c.Redirect(http.StatusSeeOther, refusedPath)
 			c.Abort()
 			return
 		}
 
 		u, err := s.signIn.Whoami(c.Request.Context(), id)
-		if err != nil || !may(u) {
+		if err != nil {
 			s.clear(c)
-			c.Redirect(http.StatusSeeOther, signInPath)
+			c.Redirect(http.StatusSeeOther, refusedPath)
+			c.Abort()
+			return
+		}
+		if !rule.allows(u) {
+			if rule.endsSession {
+				s.clear(c)
+			}
+			c.Redirect(http.StatusSeeOther, refusedPath)
 			c.Abort()
 			return
 		}

@@ -24,6 +24,55 @@ func (a *auditLog) Record(_ context.Context, e usecase.AuditEntry) error {
 	return nil
 }
 
+// List hands back copies, newest first, capped at limit -- as postgres would.
+// Returning the stored slice's own entries would let a caller's mutation reach
+// storage before any Record call, the aliasing bug this package has already
+// hit three times.
+func (a *auditLog) List(_ context.Context, limit int32) ([]usecase.AuditEntry, error) {
+	if a.err != nil {
+		return nil, a.err
+	}
+	n := len(a.entries)
+	if int32(n) > limit {
+		n = int(limit)
+	}
+	out := make([]usecase.AuditEntry, n)
+	for i := 0; i < n; i++ {
+		out[i] = a.entries[len(a.entries)-1-i]
+	}
+	return out, nil
+}
+
+// ListByTarget mirrors postgres's own statement: target_type, target_id and
+// the given verb set, newest first, capped at limit. A fake that ignored the
+// verb list would let usecase.sourceDecisionVerbs drift without any unit test
+// noticing -- this is what makes TestSourceHistory... in
+// operator_listlimit_test.go a real test of that list, not a test of a fake
+// that always agrees.
+func (a *auditLog) ListByTarget(
+	_ context.Context, targetType, targetID string, verbs []string, limit int32,
+) ([]usecase.AuditEntry, error) {
+	if a.err != nil {
+		return nil, a.err
+	}
+	allowed := make(map[string]bool, len(verbs))
+	for _, v := range verbs {
+		allowed[v] = true
+	}
+
+	var matched []usecase.AuditEntry
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := a.entries[i]
+		if e.TargetType == targetType && e.TargetID == targetID && allowed[e.Verb] {
+			matched = append(matched, e)
+		}
+	}
+	if int32(len(matched)) > limit {
+		matched = matched[:limit]
+	}
+	return matched, nil
+}
+
 var gateNow = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 
 func anActor(t *testing.T) *user.User {
@@ -31,6 +80,18 @@ func anActor(t *testing.T) *user.User {
 
 	u, err := user.New(
 		shared.ID("01K0ACCT0000000000000000AB"), "ops@acme.test", user.RoleAdmin, gateNow,
+	)
+	if err != nil {
+		t.Fatalf("user.New: %v", err)
+	}
+	return u
+}
+
+func anOperator(t *testing.T) *user.User {
+	t.Helper()
+
+	u, err := user.New(
+		shared.ID("01K0OPER0000000000000000AB"), "operator@acme.test", user.RoleAdmin, gateNow,
 	)
 	if err != nil {
 		t.Fatalf("user.New: %v", err)
@@ -125,5 +186,31 @@ func TestAnActorIsRequired(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("Do with no actor succeeded")
+	}
+}
+
+// A verb and a target do not say why. The reason has to be on the row, because
+// where it lives on the source is overwritten by the next decision.
+func TestTheReasonReachesTheAuditRow(t *testing.T) {
+	log := &auditLog{}
+	gate := usecase.NewGate(log, seqIDs(), fixedNow(time.Now().UTC()))
+	actor := anOperator(t)
+
+	act := usecase.Act{
+		Verb: usecase.ActSourceRefuse, TargetType: "source",
+		TargetID: "01K0SRC0000000000000000000", Note: "no working address",
+	}
+	err := gate.Do(context.Background(), actor, act, func(context.Context) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+
+	if len(log.entries) != 1 {
+		t.Fatalf("wrote %d rows", len(log.entries))
+	}
+	if log.entries[0].Note != "no working address" {
+		t.Errorf("note = %q", log.entries[0].Note)
 	}
 }

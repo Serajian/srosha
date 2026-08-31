@@ -103,3 +103,15 @@ func (w Window) Length(keeps time.Duration) time.Duration {
 func (w Window) Since(now time.Time, keeps time.Duration) time.Time {
 	return now.Add(-w.Length(keeps))
 }
+
+// OperatorRow is one message the way ListForOperator's statement sees it: an
+// aggregate over its own deliveries, with no Title and no Body -- the
+// statement behind this never selects them, so there is nothing here to carry
+// either by mistake.
+type OperatorRow struct {
+	ID        shared.ID
+	Channels  []string
+	Failed    int
+	Total     int
+	CreatedAt time.Time
+}

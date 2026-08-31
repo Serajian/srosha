@@ -82,3 +82,24 @@ WHERE id IN (
     ORDER BY id
     LIMIT @row_limit
 );
+
+-- ListMessagesForOperator is the same two levels a customer's own query has,
+-- with the content left out. title and body are not selected: a column that is
+-- never read cannot be rendered by mistake.
+--
+-- LEFT JOIN, and count(d.id) rather than count(*): a message whose deliveries
+-- were never written is exactly the one an operator is looking for, and an
+-- inner join would hide it. array_remove strips the NULL that a message with no
+-- deliveries would otherwise contribute to the channel list.
+--
+-- name: ListMessagesForOperator :many
+SELECT n.id, n.created_at,
+       array_remove(array_agg(DISTINCT d.channel), NULL)::text[] AS channels,
+       count(d.id) FILTER (WHERE d.status = 'FAILED') AS failed,
+       count(d.id) AS total
+FROM notifications n
+LEFT JOIN deliveries d ON d.notification_id = n.id
+WHERE n.source_id = @source_id
+GROUP BY n.id, n.created_at
+ORDER BY n.created_at DESC
+LIMIT @row_limit;

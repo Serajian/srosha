@@ -1,0 +1,46 @@
+{{define "content"}}
+<h2 class="head">{{.Person.Email}}</h2>
+<p class="sub"><span class="mono">{{.Person.ID}}</span></p>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+
+<dl class="facts">
+  <dt>Role</dt><dd class="mono">{{.Person.Role}}</dd>
+  <dt>May sign in</dt><dd class="mono">{{if .Person.IsActive}}yes{{else}}no{{end}}</dd>
+  <dt>Member since</dt><dd class="mono">{{.Person.CreatedAt.Format "2 Jan 2006"}}</dd>
+</dl>
+
+{{if .IsSelf}}
+  <p class="fine">This is your own account. Neither of these can be turned on yourself.</p>
+{{else}}
+<div class="decisions">
+  <form method="post" action="/people/{{.Person.ID}}/role">
+    <label for="role">Role</label>
+    <select id="role" name="role" required>
+      <option value="customer" {{if eq .Person.Role "customer"}}selected{{end}}>customer</option>
+      <option value="admin" {{if eq .Person.Role "admin"}}selected{{end}}>admin</option>
+      <option value="super_admin" {{if eq .Person.Role "super_admin"}}selected{{end}}>super_admin</option>
+    </select>
+    <label for="role-note">Note <span class="optional">— optional</span></label>
+    <input id="role-note" name="note" type="text" placeholder="why this changed">
+    <button type="submit">Change role</button>
+  </form>
+
+  {{if .Person.IsActive}}
+  <form method="post" action="/people/{{.Person.ID}}/active">
+    <input type="hidden" name="active" value="false">
+    <label for="deactivate-note">Note <span class="optional">— optional</span></label>
+    <input id="deactivate-note" name="note" type="text" placeholder="why this account is switched off">
+    <button type="submit" class="danger">Switch off sign-in</button>
+  </form>
+  {{else}}
+  <form method="post" action="/people/{{.Person.ID}}/active">
+    <input type="hidden" name="active" value="true">
+    <button type="submit">Allow sign-in again</button>
+  </form>
+  {{end}}
+</div>
+{{end}}
+
+<p class="fine"><a href="/people">Back to people</a></p>
+{{end}}

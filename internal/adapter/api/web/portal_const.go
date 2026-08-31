@@ -1,9 +1,5 @@
 package web
 
-// surface names this one's own directories under public/ -- its templates and
-// its assets. The admin surface has its own and cannot reach these.
-const surface = "portal"
-
 // Where things live. One list, so a route is never spelled two ways.
 const (
 	pathHome    = "/"

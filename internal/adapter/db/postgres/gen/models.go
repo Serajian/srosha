@@ -27,6 +27,7 @@ type AuditLog struct {
 	Verb       string
 	TargetType string
 	TargetID   string
+	Note       string
 }
 
 type Credential struct {
@@ -99,6 +100,8 @@ type Source struct {
 	OwnerUserID        string
 	IsActive           bool
 	ApprovedAt         *time.Time
+	ReviewedAt         *time.Time
+	ReviewNote         string
 	AllowCustomAddress bool
 	DefaultAddresses   []byte
 	CreatedAt          time.Time

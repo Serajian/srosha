@@ -29,54 +29,18 @@ SELECT * FROM sources WHERE owner_user_id = @owner_user_id ORDER BY created_at D
 -- name: ReadSource :one
 SELECT * FROM sources WHERE id = @id;
 
--- UpdateSource writes what changes over a customer's life. is_active is not
--- among them: switching a source off is its own act, and folding it in here
--- would mean every rename had to carry the current state or flip it by accident.
---
--- default_addresses is written whole, because it is one jsonb value. Two
--- requests changing two different channels at the same time will therefore have
--- one overwrite the other. That is tolerable while it is a map of one value per
--- channel and edited by hand; the day an entry needs a second field it becomes
--- its own table, and this stops being true. See the migration change report.
---
--- execrows so the caller can tell "updated" from "no such source".
---
--- name: UpdateSource :execrows
-UPDATE sources
-SET name                 = @name,
-    max_priority         = @max_priority,
-    allow_custom_address = @allow_custom_address,
-    default_addresses    = @default_addresses,
-    updated_at           = @updated_at::timestamptz
-WHERE id = @id;
-
--- Suspending a source stops it sending without deleting anything: its messages,
--- keys and credentials all stay, and turning it back on is one statement rather
--- than a re-registration.
---
--- Guarded, so suspending an already suspended source reports zero rows instead
--- of moving updated_at and looking like something happened.
---
--- name: DeactivateSource :execrows
-UPDATE sources
-SET is_active = FALSE, updated_at = @updated_at::timestamptz
-WHERE id = @id AND is_active;
-
--- name: ActivateSource :execrows
-UPDATE sources
-SET is_active = TRUE, updated_at = @updated_at::timestamptz
-WHERE id = @id AND NOT is_active;
-
 -- UpdateSourceSettings writes the three columns a customer owns, and cannot
 -- name the others.
 --
--- UpdateSource above it writes max_priority and allow_custom_address as well,
--- which is right for an operator and wrong here: a rename must not be able to
--- carry a ceiling. Keeping those columns out of this statement is a cheaper
+-- There is no statement that writes them all. There was one -- UpdateSource,
+-- which carried max_priority and allow_custom_address too -- deleted with
+-- DeactivateSource and ActivateSource once nothing in production called any of
+-- the three. Keeping those columns out of this statement is a cheaper
 -- guarantee than a use case that remembers to re-read and re-send them, because
--- the statement cannot be broken by an edit somewhere else.
+-- the statement cannot be broken by an edit somewhere else. A source moves in
+-- exactly two ways now: this, and UpdateReview.
 --
--- default_addresses is written whole, with the same caveat UpdateSource
+-- default_addresses is written whole, with the same caveat ListSourcesByOwner
 -- carries: two edits to two different channels at once will have one overwrite
 -- the other.
 --
@@ -89,3 +53,35 @@ SET name              = @name,
     default_addresses = @default_addresses,
     updated_at        = @updated_at::timestamptz
 WHERE id = @id;
+
+-- UpdateReview writes an operator's decision and nothing a customer owns. The
+-- mirror of UpdateSourceSettings: that one cannot touch the switch, this one
+-- cannot touch the name.
+--
+-- name: UpdateReview :execrows
+UPDATE sources
+SET is_active   = @is_active,
+    approved_at = @approved_at,
+    reviewed_at = @reviewed_at,
+    review_note = @review_note,
+    updated_at  = @updated_at::timestamptz
+WHERE id = @id;
+
+-- ListForReview is the queue: what nobody has decided about, oldest first,
+-- because the person who has waited longest is the one to answer next.
+-- Capped at row_limit -- see usecase.Operators.Queue, which asks for one more
+-- than it means to show so it can tell "that is everything" from "that is
+-- all that fit".
+--
+-- name: ListForReview :many
+SELECT * FROM sources WHERE reviewed_at IS NULL ORDER BY created_at LIMIT @row_limit;
+
+-- ListAllSources is every source, newest first. No filter: the operator's page
+-- filters in the handler, because the states are four and the counts are small.
+-- The handler is web.reviewHandler.list, and the four states are inState
+-- beside it -- an operator flips between them on one screen, and a round trip
+-- per flip buys nothing on a set one person reads by eye. Capped at row_limit,
+-- the same way and for the same reason as ListForReview above.
+--
+-- name: ListAllSources :many
+SELECT * FROM sources ORDER BY created_at DESC LIMIT @row_limit;

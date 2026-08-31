@@ -1,0 +1,58 @@
+{{define "content"}}
+<h2 class="head">Message log</h2>
+<p class="sub">
+  Source <span class="mono">{{.SourceID}}</span> — metadata only, never what it said.
+</p>
+
+{{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+{{if .Truncated}}{{template "truncated" .}}{{end}}
+
+{{if not .Messages}}
+  <div class="empty"><h3>Nothing sent yet</h3></div>
+{{else}}
+<div class="table-wrap">
+<table class="table">
+  <thead><tr><th>When</th><th>Channels</th><th>Failed / total</th><th></th></tr></thead>
+  <tbody>
+    {{range .Messages}}
+    <tr>
+      <td class="mono">{{.CreatedAt.Format "2 Jan 2006 15:04"}}</td>
+      <td>{{range .Channels}}{{.}} {{end}}</td>
+      <td class="mono">{{.Failed}} / {{.Total}}</td>
+      <td><a href="/sources/{{$.SourceID}}/log?message={{.ID}}">Deliveries</a></td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+
+{{if .Selected}}
+<h3 class="head sub-head">Deliveries of <span class="mono">{{.Selected}}</span></h3>
+{{if not .Deliveries}}
+  <p class="sub">No deliveries were found for that message.</p>
+{{else}}
+<div class="table-wrap">
+<table class="table">
+  <thead>
+    <tr><th>Channel</th><th>Address</th><th>Sender</th><th>Status</th><th>Attempts</th><th>Last error</th></tr>
+  </thead>
+  <tbody>
+    {{range .Deliveries}}
+    <tr>
+      <td>{{.Channel}}</td>
+      <td class="mono">{{.MaskedAddress}}</td>
+      <td>{{.SenderName}}</td>
+      <td>{{.Status}}{{if .FailureReason}} ({{.FailureReason}}){{end}}</td>
+      <td class="mono">{{.Attempts}}</td>
+      <td>{{.LastError}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+{{end}}
+
+<p class="fine"><a href="/sources/{{.SourceID}}">Back to the source</a></p>
+{{end}}

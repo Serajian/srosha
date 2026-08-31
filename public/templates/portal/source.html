@@ -3,15 +3,35 @@
 <p class="sub"><span class="mono">{{.Source.ID}}</span></p>
 {{if .Source.Description}}<p class="sub">{{.Source.Description}}</p>{{end}}
 
+{{/* Refused is checked before waiting: a refused source is also not
+     approved. Suspend never writes ReviewNote (only Refuse does), so the
+     suspended branch has nothing of the operator's to show -- it says what
+     happened and leaves it there. */}}
 {{if not .Source.IsActive}}
-  <p class="problem" role="status">
-    {{if .Source.IsApproved}}
+  {{if and .Source.IsReviewed (not .Source.IsApproved)}}
+    <p class="problem" role="status">
+      This source was not approved. {{.Source.ReviewNote}}
+    </p>
+  {{else if .Source.IsApproved}}
+    <p class="problem" role="status">
       An operator switched this source off. Nothing it sends will go out.
-    {{else}}
+    </p>
+  {{else if .Source.IsReachable}}
+    <p class="problem" role="status">
       Waiting for approval. Set it up now — it starts working the moment
       somebody here approves it.
-    {{end}}
-  </p>
+    </p>
+  {{else}}
+    {{/* IsReachable is the same question Approve itself asks -- see
+         internal/core/domain/source/entity.go -- asked here rather than
+         re-derived, so the two cannot drift apart. */}}
+    <p class="problem" role="status">
+      Waiting for approval, but nobody can approve it yet: no default address
+      is set for any channel, and custom addresses are not allowed. Add an
+      address on the <a href="/sources/{{.Source.ID}}/edit">edit page</a> —
+      that part is yours to finish, not an operator's.
+    </p>
+  {{end}}
 {{end}}
 
 <dl class="facts">

@@ -2,6 +2,7 @@ package source_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -40,6 +41,14 @@ func (r oneSource) ListByOwner(context.Context, shared.ID) ([]source.Source, err
 }
 
 func (r oneSource) UpdateSettings(context.Context, *source.Source) error { return nil }
+
+func (r oneSource) UpdateReview(context.Context, *source.Source) error { return nil }
+
+func (r oneSource) ListForReview(context.Context, int32) ([]source.Source, error) {
+	return nil, nil
+}
+
+func (r oneSource) ListAll(context.Context, int32) ([]source.Source, error) { return nil, nil }
 
 type allowAll struct{}
 
@@ -149,5 +158,243 @@ func TestABadAddressLeavesTheWholeEditUndone(t *testing.T) {
 	}
 	if src.Name != "acme-billing" {
 		t.Errorf("the name changed anyway: %q", src.Name)
+	}
+}
+
+// A refused source is not a new one. Without a third fact they are the same
+// row, and an operator is handed the same decision every day.
+func TestARefusedSourceIsNotWaiting(t *testing.T) {
+	src := waiting()
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	if err := src.Refuse("no working address", at); err != nil {
+		t.Fatalf("Refuse: %v", err)
+	}
+
+	if !src.IsReviewed() {
+		t.Error("a refused source is still in the queue")
+	}
+	if src.IsApproved() {
+		t.Error("refusing approved it")
+	}
+	if src.IsActive {
+		t.Error("refusing left it able to send")
+	}
+	if src.ReviewNote != "no working address" {
+		t.Errorf("note = %q", src.ReviewNote)
+	}
+}
+
+// A refusal with no reason is the silent failure the column exists to prevent.
+func TestARefusalNeedsAReason(t *testing.T) {
+	src := waiting()
+
+	if err := src.Refuse("   ", time.Now().UTC()); err == nil {
+		t.Fatal("a source was refused with no reason")
+	}
+	if src.IsReviewed() {
+		t.Error("the refusal was refused and applied anyway")
+	}
+}
+
+// Approving after a refusal clears the note: the state is the current
+// decision. What was said before lives in the audit log.
+func TestApprovingClearsAnEarlierRefusal(t *testing.T) {
+	src := waiting()
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	if err := src.Refuse("no working address", at); err != nil {
+		t.Fatalf("Refuse: %v", err)
+	}
+	src.AllowCustomAddress = true // otherwise Approve refuses: nowhere to send
+	if err := src.Approve(at.Add(time.Hour)); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
+
+	if src.ReviewNote != "" {
+		t.Errorf("the old refusal is still on it: %q", src.ReviewNote)
+	}
+	if !src.IsActive || !src.IsApproved() {
+		t.Error("approving did not let it send")
+	}
+}
+
+// Suspending a source that was approved keeps approved_at, so the queue can
+// still tell "turned away" from "worked once and was switched off".
+func TestSuspendingKeepsTheApproval(t *testing.T) {
+	src := waiting()
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	src.AllowCustomAddress = true // otherwise Approve refuses: nowhere to send
+	if err := src.Approve(at); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
+	if err := src.Suspend(at.Add(time.Hour)); err != nil {
+		t.Fatalf("Suspend: %v", err)
+	}
+
+	if src.IsActive {
+		t.Error("it can still send")
+	}
+	if !src.IsApproved() {
+		t.Error("suspending forgot that it was ever approved")
+	}
+}
+
+// Restoring a refused source is letting it out for the first time, and
+// approved_at is what records that -- a source restored straight from a
+// refusal must not read as active and never approved, which is a fifth state
+// the spec's table does not have.
+func TestRestoringARefusedSourceRecordsTheApproval(t *testing.T) {
+	src := waiting()
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	if err := src.Refuse("no working address", at); err != nil {
+		t.Fatalf("Refuse: %v", err)
+	}
+	src.AllowCustomAddress = true // otherwise Restore refuses: nowhere to send
+	if err := src.Restore(at.Add(time.Hour)); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+
+	if !src.IsApproved() {
+		t.Error("restoring a refused source did not record an approval")
+	}
+	if !src.IsActive {
+		t.Error("restoring did not let it send")
+	}
+}
+
+// A source nobody has approved cannot be suspended, which is Refuse's guard
+// read the other way round.
+//
+// Without it, suspending something still in the queue leaves is_active=f,
+// approved_at=null, reviewed_at=set and review_note="" -- byte for byte a
+// refusal with no reason, which is the exact state review_note exists to make
+// impossible. The customer then reads "This source was not approved." and an
+// empty sentence after it.
+func TestAnUnapprovedSourceCannotBeSuspended(t *testing.T) {
+	src := waiting()
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	err := src.Suspend(at)
+	if err == nil {
+		t.Fatal("a source that was never approved was suspended")
+	}
+	if !errors.Is(err, source.ErrNotApproved) {
+		t.Errorf("err = %v, want it to wrap source.ErrNotApproved", err)
+	}
+
+	if src.IsReviewed() {
+		t.Error("the refused suspension still marked the source reviewed")
+	}
+	if src.ReviewedAt != nil || src.ApprovedAt != nil {
+		t.Error("the refused suspension moved the source's timestamps")
+	}
+}
+
+// Restore is the way BACK, so there has to be somewhere to come back from.
+// Restoring a source nobody has decided about would approve it while the
+// audit row said source.restore -- a first decision recorded under a verb
+// that says it was the second.
+func TestASourceNobodyHasDecidedAboutCannotBeRestored(t *testing.T) {
+	src := waiting()
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	err := src.Restore(at)
+	if err == nil {
+		t.Fatal("a source still in the queue was restored")
+	}
+	if !errors.Is(err, source.ErrNotReviewed) {
+		t.Errorf("err = %v, want it to wrap source.ErrNotReviewed", err)
+	}
+	if src.IsActive || src.IsApproved() {
+		t.Error("the refused restore let the source send anyway")
+	}
+}
+
+// Refusing an already-approved source would leave approved_at set, which is
+// indistinguishable from suspended. Refusing is a decision at the door; a
+// source that is already through it is suspended instead.
+func TestRefusingAnApprovedSourceIsRefused(t *testing.T) {
+	src := waiting()
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	src.AllowCustomAddress = true // otherwise Approve refuses: nowhere to send
+	if err := src.Approve(at); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
+
+	err := src.Refuse("changed my mind", at.Add(time.Hour))
+	if err == nil {
+		t.Fatal("an approved source was refused")
+	}
+	if !errors.Is(err, source.ErrAlreadyApproved) {
+		t.Errorf("error = %v, want ErrAlreadyApproved", err)
+	}
+	if !src.IsActive {
+		t.Error("the failed refusal switched the source off anyway")
+	}
+}
+
+// A source with nowhere to send cannot be approved: activating it would make
+// it look like it works when every message it sends is going to fail.
+func TestApprovingWithNowhereToSendIsRefused(t *testing.T) {
+	src := waiting() // no default addresses, custom addresses not allowed
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	err := src.Approve(at)
+	if !errors.Is(err, source.ErrNoReachableAddress) {
+		t.Errorf("err = %v, want it to wrap source.ErrNoReachableAddress", err)
+	}
+	if src.IsActive || src.IsApproved() || src.IsReviewed() {
+		t.Error("the refused approval changed the source anyway")
+	}
+}
+
+// A default address on any one channel is enough: the source can send to it.
+func TestApprovingWithADefaultAddressSucceeds(t *testing.T) {
+	src := waiting()
+	src.DefaultAddresses = map[shared.Channel]string{shared.ChannelEmail: "ops@acme.test"}
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	if err := src.Approve(at); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
+	if !src.IsActive {
+		t.Error("a source with a default address was not let out")
+	}
+}
+
+// No default is fine too, as long as a message may name where to go.
+func TestApprovingWithCustomAddressAllowedSucceedsWithNoDefaults(t *testing.T) {
+	src := waiting()
+	src.AllowCustomAddress = true
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	if err := src.Approve(at); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
+	if !src.IsActive {
+		t.Error("a source allowed a custom address was not let out")
+	}
+}
+
+// Restore is guarded the same way as Approve: a source switched off has
+// exactly as little to send to as one still in the queue.
+func TestRestoringWithNowhereToSendIsRefused(t *testing.T) {
+	src := waiting()
+	at := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+
+	if err := src.Refuse("no working address", at); err != nil {
+		t.Fatalf("Refuse: %v", err)
+	}
+
+	err := src.Restore(at.Add(time.Hour))
+	if !errors.Is(err, source.ErrNoReachableAddress) {
+		t.Errorf("err = %v, want it to wrap source.ErrNoReachableAddress", err)
+	}
+	if src.IsActive {
+		t.Error("the refused restore let the source send anyway")
 	}
 }

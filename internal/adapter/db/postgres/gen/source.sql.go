@@ -10,25 +10,6 @@ import (
 	"time"
 )
 
-const activateSource = `-- name: ActivateSource :execrows
-UPDATE sources
-SET is_active = TRUE, updated_at = $1::timestamptz
-WHERE id = $2 AND NOT is_active
-`
-
-type ActivateSourceParams struct {
-	UpdatedAt time.Time
-	ID        string
-}
-
-func (q *Queries) ActivateSource(ctx context.Context, arg ActivateSourceParams) (int64, error) {
-	result, err := q.db.Exec(ctx, activateSource, arg.UpdatedAt, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const createSource = `-- name: CreateSource :exec
 INSERT INTO sources (
     id, owner_user_id, name, max_priority, allow_custom_address,
@@ -70,33 +51,95 @@ func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) erro
 	return err
 }
 
-const deactivateSource = `-- name: DeactivateSource :execrows
-UPDATE sources
-SET is_active = FALSE, updated_at = $1::timestamptz
-WHERE id = $2 AND is_active
+const listAllSources = `-- name: ListAllSources :many
+SELECT id, name, description, max_priority, owner_user_id, is_active, approved_at, reviewed_at, review_note, allow_custom_address, default_addresses, created_at, updated_at FROM sources ORDER BY created_at DESC LIMIT $1
 `
 
-type DeactivateSourceParams struct {
-	UpdatedAt time.Time
-	ID        string
+// ListAllSources is every source, newest first. No filter: the operator's page
+// filters in the handler, because the states are four and the counts are small.
+// The handler is web.reviewHandler.list, and the four states are inState
+// beside it -- an operator flips between them on one screen, and a round trip
+// per flip buys nothing on a set one person reads by eye. Capped at row_limit,
+// the same way and for the same reason as ListForReview above.
+func (q *Queries) ListAllSources(ctx context.Context, rowLimit int32) ([]Source, error) {
+	rows, err := q.db.Query(ctx, listAllSources, rowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Source{}
+	for rows.Next() {
+		var i Source
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Description,
+			&i.MaxPriority,
+			&i.OwnerUserID,
+			&i.IsActive,
+			&i.ApprovedAt,
+			&i.ReviewedAt,
+			&i.ReviewNote,
+			&i.AllowCustomAddress,
+			&i.DefaultAddresses,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-// Suspending a source stops it sending without deleting anything: its messages,
-// keys and credentials all stay, and turning it back on is one statement rather
-// than a re-registration.
-//
-// Guarded, so suspending an already suspended source reports zero rows instead
-// of moving updated_at and looking like something happened.
-func (q *Queries) DeactivateSource(ctx context.Context, arg DeactivateSourceParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deactivateSource, arg.UpdatedAt, arg.ID)
+const listForReview = `-- name: ListForReview :many
+SELECT id, name, description, max_priority, owner_user_id, is_active, approved_at, reviewed_at, review_note, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE reviewed_at IS NULL ORDER BY created_at LIMIT $1
+`
+
+// ListForReview is the queue: what nobody has decided about, oldest first,
+// because the person who has waited longest is the one to answer next.
+// Capped at row_limit -- see usecase.Operators.Queue, which asks for one more
+// than it means to show so it can tell "that is everything" from "that is
+// all that fit".
+func (q *Queries) ListForReview(ctx context.Context, rowLimit int32) ([]Source, error) {
+	rows, err := q.db.Query(ctx, listForReview, rowLimit)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected(), nil
+	defer rows.Close()
+	items := []Source{}
+	for rows.Next() {
+		var i Source
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Description,
+			&i.MaxPriority,
+			&i.OwnerUserID,
+			&i.IsActive,
+			&i.ApprovedAt,
+			&i.ReviewedAt,
+			&i.ReviewNote,
+			&i.AllowCustomAddress,
+			&i.DefaultAddresses,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listSourcesByOwner = `-- name: ListSourcesByOwner :many
-SELECT id, name, description, max_priority, owner_user_id, is_active, approved_at, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE owner_user_id = $1 ORDER BY created_at DESC
+SELECT id, name, description, max_priority, owner_user_id, is_active, approved_at, reviewed_at, review_note, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE owner_user_id = $1 ORDER BY created_at DESC
 `
 
 // ListSourcesByOwner is a customer's own page. Newest first, because the one
@@ -118,6 +161,8 @@ func (q *Queries) ListSourcesByOwner(ctx context.Context, ownerUserID string) ([
 			&i.OwnerUserID,
 			&i.IsActive,
 			&i.ApprovedAt,
+			&i.ReviewedAt,
+			&i.ReviewNote,
 			&i.AllowCustomAddress,
 			&i.DefaultAddresses,
 			&i.CreatedAt,
@@ -134,7 +179,7 @@ func (q *Queries) ListSourcesByOwner(ctx context.Context, ownerUserID string) ([
 }
 
 const readSource = `-- name: ReadSource :one
-SELECT id, name, description, max_priority, owner_user_id, is_active, approved_at, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE id = $1
+SELECT id, name, description, max_priority, owner_user_id, is_active, approved_at, reviewed_at, review_note, allow_custom_address, default_addresses, created_at, updated_at FROM sources WHERE id = $1
 `
 
 // ReadSource deliberately does not filter on is_active. A suspended source must
@@ -152,6 +197,8 @@ func (q *Queries) ReadSource(ctx context.Context, id string) (Source, error) {
 		&i.OwnerUserID,
 		&i.IsActive,
 		&i.ApprovedAt,
+		&i.ReviewedAt,
+		&i.ReviewNote,
 		&i.AllowCustomAddress,
 		&i.DefaultAddresses,
 		&i.CreatedAt,
@@ -160,42 +207,34 @@ func (q *Queries) ReadSource(ctx context.Context, id string) (Source, error) {
 	return i, err
 }
 
-const updateSource = `-- name: UpdateSource :execrows
+const updateReview = `-- name: UpdateReview :execrows
 UPDATE sources
-SET name                 = $1,
-    max_priority         = $2,
-    allow_custom_address = $3,
-    default_addresses    = $4,
-    updated_at           = $5::timestamptz
+SET is_active   = $1,
+    approved_at = $2,
+    reviewed_at = $3,
+    review_note = $4,
+    updated_at  = $5::timestamptz
 WHERE id = $6
 `
 
-type UpdateSourceParams struct {
-	Name               string
-	MaxPriority        string
-	AllowCustomAddress bool
-	DefaultAddresses   []byte
-	UpdatedAt          time.Time
-	ID                 string
+type UpdateReviewParams struct {
+	IsActive   bool
+	ApprovedAt *time.Time
+	ReviewedAt *time.Time
+	ReviewNote string
+	UpdatedAt  time.Time
+	ID         string
 }
 
-// UpdateSource writes what changes over a customer's life. is_active is not
-// among them: switching a source off is its own act, and folding it in here
-// would mean every rename had to carry the current state or flip it by accident.
-//
-// default_addresses is written whole, because it is one jsonb value. Two
-// requests changing two different channels at the same time will therefore have
-// one overwrite the other. That is tolerable while it is a map of one value per
-// channel and edited by hand; the day an entry needs a second field it becomes
-// its own table, and this stops being true. See the migration change report.
-//
-// execrows so the caller can tell "updated" from "no such source".
-func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateSource,
-		arg.Name,
-		arg.MaxPriority,
-		arg.AllowCustomAddress,
-		arg.DefaultAddresses,
+// UpdateReview writes an operator's decision and nothing a customer owns. The
+// mirror of UpdateSourceSettings: that one cannot touch the switch, this one
+// cannot touch the name.
+func (q *Queries) UpdateReview(ctx context.Context, arg UpdateReviewParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateReview,
+		arg.IsActive,
+		arg.ApprovedAt,
+		arg.ReviewedAt,
+		arg.ReviewNote,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -225,13 +264,15 @@ type UpdateSourceSettingsParams struct {
 // UpdateSourceSettings writes the three columns a customer owns, and cannot
 // name the others.
 //
-// UpdateSource above it writes max_priority and allow_custom_address as well,
-// which is right for an operator and wrong here: a rename must not be able to
-// carry a ceiling. Keeping those columns out of this statement is a cheaper
+// There is no statement that writes them all. There was one -- UpdateSource,
+// which carried max_priority and allow_custom_address too -- deleted with
+// DeactivateSource and ActivateSource once nothing in production called any of
+// the three. Keeping those columns out of this statement is a cheaper
 // guarantee than a use case that remembers to re-read and re-send them, because
-// the statement cannot be broken by an edit somewhere else.
+// the statement cannot be broken by an edit somewhere else. A source moves in
+// exactly two ways now: this, and UpdateReview.
 //
-// default_addresses is written whole, with the same caveat UpdateSource
+// default_addresses is written whole, with the same caveat ListSourcesByOwner
 // carries: two edits to two different channels at once will have one overwrite
 // the other.
 //

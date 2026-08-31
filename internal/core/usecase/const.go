@@ -23,10 +23,50 @@ const (
 // notices. Reaching it is worth a conversation, not an upgrade.
 const MaxSourcesPerUser = 20
 
+// MaxOperatorNoteLen bounds an operator's free-text note -- a suspension's
+// reason, a role change's, a deactivation's -- matching source.maxReviewNoteLen,
+// the length the domain itself bounds a refusal's reason to. None of these
+// three notes reach an entity the domain validates (they land only on the
+// audit row), so nothing in the domain enforces this on its own; declared
+// here, unexported on the other side, so this layer isn't the one reaching
+// across the boundary for it. One constant for all three rather than one
+// per call site: the value is the same rule -- an operator's sentence or two
+// -- applied wherever a note has no domain method to pass through.
+const MaxOperatorNoteLen = 500
+
 // Verbs, spelled once. They end up in audit_log and are read a year later.
 const (
-	ActSourceCreate = "source.create"
-	ActSourceUpdate = "source.update"
-	ActKeyIssue     = "key.issue"
-	ActKeyRevoke    = "key.revoke"
+	ActSourceCreate  = "source.create"
+	ActSourceUpdate  = "source.update"
+	ActSourceApprove = "source.approve"
+	ActSourceRefuse  = "source.refuse"
+	ActSourceSuspend = "source.suspend"
+	ActSourceRestore = "source.restore"
+	ActKeyIssue      = "key.issue"
+	ActKeyRevoke     = "key.revoke"
+
+	ActUserRole       = "user.role"
+	ActUserDeactivate = "user.deactivate"
+	ActUserActivate   = "user.activate"
 )
+
+// sourceDecisionVerbs is what Operators.SourceHistory reads a source's own
+// audit rows through, and it is a privacy boundary, not a convenience.
+//
+// /audit is super_admin-only because actor_email on a source.create or
+// source.update row is the CUSTOMER's address -- see Operators.Audit. These
+// four verbs are different: their actor is always an OPERATOR, a colleague
+// deciding a source, never the customer who owns it. That is the whole
+// reason SourceHistory is allowed to exist under mayOperate, on a page an
+// admin may reach.
+//
+// Widen this to "every row for this source" -- or build it by excluding
+// source.create and source.update instead of naming what is included -- and
+// the next verb ever added to this file (key.issue's actor is the customer
+// too) is admitted by default, and an admin gains the customer's address
+// through a page nobody re-examined. Naming the four operator verbs directly,
+// from the constants above rather than as new strings, is what keeps this
+// list from drifting out of step with them.
+var sourceDecisionVerbs = []string{
+	ActSourceApprove, ActSourceRefuse, ActSourceSuspend, ActSourceRestore,
+}
