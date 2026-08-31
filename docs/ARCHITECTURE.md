@@ -316,18 +316,25 @@ the message is going out, so a failed rewrite is logged and the next read tries 
 ## Two surfaces in one binary, and what keeps them apart
 
 `console` is the third binary: the pages people sign in to, as opposed to the
-gRPC surface other services call. It carries the customer portal today and will
-carry the admin surface beside it, and those two audiences could not be further
-apart — one is anybody on the internet, the other can switch off a customer's
-sources and change who is an operator.
+gRPC surface other services call. It carries the customer portal and the admin
+surface side by side, and those two audiences could not be further apart — one
+is anybody on the internet, the other can switch off a customer's sources and
+change who is an operator.
 
-They live in **one process, on two listeners**:
+They live in **one process, on three listeners, behind two hostnames**:
 
 ```
-:8090   portal   public, reached through Traefik
-:8091   healthz  private
-:8092   admin    private, never published
+:8090   portal   panel.srosha.ir   public
+:8091   healthz  —                 private
+:8092   admin    admin.srosha.ir   public, deliberately
 ```
+
+**The admin surface is on the internet on purpose**, and that is a change from
+how this was first built. It used to be a port nothing could route to. In a
+container that is not private, it is unreachable — loopback there is the
+container's own namespace — and an admin panel nobody can open means no source
+is ever approved, so nothing is ever sent. The separation moved from the port
+to the hostname, and what makes that safe is the next two subsections.
 
 ### The alternative, and why not
 
@@ -360,9 +367,18 @@ So a customer holding a perfectly valid session arrives at the admin listener
 already carrying it.
 
 A separate binary would not have fixed that either; it would only have made the
-admin surface easier to keep off the network a customer can reach. Here, that
-network separation is a deployment fact rather than a structural one, which is
-exactly why the check below is not optional.
+admin surface easier to keep off the network a customer can reach.
+
+**So the surfaces are separated by host instead, because a cookie is scoped by
+host.** That is the same specification, read the other way round:
+
+```
+a customer signs in at panel.srosha.ir  ->  cookie srosha_portal
+the same browser reaches admin.srosha.ir ->  nothing is sent
+```
+
+Not sent and refused. Not sent. The role check below is still there and still
+reads the live row, but it is no longer the only thing standing there.
 
 ### What holds it
 
@@ -396,12 +412,22 @@ their next request, for the same reason `is_active` does. This one line is the
 entire boundary between a customer and the admin surface, and it must be treated
 that way.
 
-**The admin port is never published.** Not in `ports:`, and not on
-`dokploy-network`. See `docs/CONFIG.md`.
+**A cookie per surface, and neither carries a `Domain`.** `srosha_portal` and
+`srosha_admin` are written by two `sessions` values, one per surface. Without a
+`Domain` attribute a cookie is host-only, which is what makes the paragraph
+above true; setting `Domain=srosha.ir` would send a customer's session to the
+admin host and nothing would fail. That absence is asserted by a test.
+
+So the boundary is four things and not one: three handlers with no shared mux,
+the live role read, a cookie per host, and the tests below.
+
+**What is still true about the network:** the admin surface is published to
+`admin.srosha.ir` through Traefik and nothing else. It is not in `ports:`, and
+neither is anything else in the deployed compose. See `docs/CONFIG.md`.
 
 ### What must be tested, because discipline is not a mechanism
 
-Two tests, and they are not optional — without them the decision above is a
+Four tests, and they are not optional — without them the decision above is a
 comment rather than a property:
 
 ```
@@ -410,7 +436,21 @@ a customer's session is refused by the admin guard      DONE
 
 every admin route answers 404 on the portal's handler    DONE
    -> TestNoAdminRouteAnswersOnThePortal
+
+neither surface reads the other's cookie                DONE
+   -> TestOneSurfaceDoesNotReadTheOthersCookie
+
+each surface writes its own, and no cookie has a Domain  DONE
+   -> TestTheAdminSurfaceWritesItsOwnCookie, TestThePortalWritesItsOwnCookie,
+      TestTheSessionCookieIsHostOnly
 ```
+
+The last two are one lesson learned twice. The first version of the cookie test
+built `sessions` directly with an explicit name, so it proved the mechanism and
+said nothing about whether `NewAdmin` passes the right constant. Passing the
+wrong one failed a dozen unrelated tests with "could not sign in", which is a
+failure that does not say what broke. The wiring gets its own test for the same
+reason the route table does.
 
 `web/admin` will never exist — see four lines above — so both surfaces are
 structs in one package, with every handler of each in scope from the other.

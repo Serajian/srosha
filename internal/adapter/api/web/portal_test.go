@@ -606,10 +606,14 @@ type answer struct {
 // location is where the browser was sent, if anywhere.
 func (a answer) location() string { return a.headers.Get("Location") }
 
-// session is the cookie that signs somebody in, or nil.
-func (a answer) session() *http.Cookie {
+// sessionNamed is the cookie that signs somebody in on one surface, or nil.
+//
+// The name is asked for rather than assumed: each surface writes its own, and
+// a helper that accepted either would let one surface set the other's cookie
+// without a single test noticing.
+func (a answer) sessionNamed(name string) *http.Cookie {
 	for _, c := range a.cookies {
-		if c.Name == "srosha_portal" && c.Value != "" {
+		if c.Name == name && c.Value != "" {
 			return c
 		}
 	}
@@ -730,7 +734,7 @@ func TestSigningInAndOut(t *testing.T) {
 	code := p.mail.lastCode(t)
 
 	in := post(t, p, "/signin/code", url.Values{"email": {"a@acme.test"}, "code": {code}})
-	cookie := in.session()
+	cookie := in.sessionNamed(web.PortalCookieName)
 	if cookie == nil {
 		t.Fatal("no session cookie was set")
 	}
@@ -774,7 +778,7 @@ func TestAWrongCodeSaysNothingUseful(t *testing.T) {
 	post(t, p, "/signin", url.Values{"email": {"a@acme.test"}})
 
 	got := post(t, p, "/signin/code", url.Values{"email": {"a@acme.test"}, "code": {"000000"}})
-	if got.session() != nil {
+	if got.sessionNamed(web.PortalCookieName) != nil {
 		t.Fatal("a wrong code set a session cookie")
 	}
 
@@ -805,7 +809,7 @@ func signedIn(t *testing.T, p *testPortal, email string) *http.Cookie {
 	in := post(t, p, "/signin/code",
 		url.Values{"email": {email}, "code": {p.mail.lastCode(t)}})
 
-	cookie := in.session()
+	cookie := in.sessionNamed(web.PortalCookieName)
 	if cookie == nil {
 		t.Fatalf("could not sign %s in", email)
 	}
@@ -1442,5 +1446,22 @@ func TestTheEditFormArrivesFilledIn(t *testing.T) {
 		if !strings.Contains(got.body, want) {
 			t.Errorf("the form does not carry %q", want)
 		}
+	}
+}
+
+// The other half of TestTheAdminSurfaceWritesItsOwnCookie: the portal keeps
+// its own name too, so the two can never collapse into one cookie again.
+func TestThePortalWritesItsOwnCookie(t *testing.T) {
+	p := newTestPortal(t)
+
+	post(t, p, "/signin", url.Values{"email": {"a@acme.test"}})
+	in := post(t, p, "/signin/code",
+		url.Values{"email": {"a@acme.test"}, "code": {p.mail.lastCode(t)}})
+
+	if in.sessionNamed(web.AdminCookieName) != nil {
+		t.Error("the portal set the admin surface's cookie")
+	}
+	if in.sessionNamed(web.PortalCookieName) == nil {
+		t.Fatal("the portal set no session cookie of its own")
 	}
 }

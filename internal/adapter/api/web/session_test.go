@@ -61,7 +61,7 @@ func guarded(t *testing.T, rule may, u *user.User) (*httptest.ResponseRecorder, 
 	var ran bool
 
 	gin.SetMode(gin.TestMode)
-	sessions := newSessions(whoever{u: u}, false)
+	sessions := newSessions(whoever{u: u}, portalCookieName, false)
 
 	engine := gin.New()
 	engine.GET("/x", sessions.guard(rule, "/signin"), func(c *gin.Context) {
@@ -70,7 +70,7 @@ func guarded(t *testing.T, rule may, u *user.User) (*httptest.ResponseRecorder, 
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "01K0SESS0000000000000000AB"})
+	req.AddCookie(&http.Cookie{Name: portalCookieName, Value: "01K0SESS0000000000000000AB"})
 
 	rec := httptest.NewRecorder()
 	engine.ServeHTTP(rec, req)
@@ -81,7 +81,7 @@ func guarded(t *testing.T, rule may, u *user.User) (*httptest.ResponseRecorder, 
 // cookie.
 func cleared(rec *httptest.ResponseRecorder) bool {
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == sessionCookieName && c.Value == "" {
+		if c.Name == portalCookieName && c.Value == "" {
 			return true
 		}
 	}
@@ -187,5 +187,76 @@ func TestEveryRefusalLooksTheSame(t *testing.T) {
 	if noSession != wrongRole {
 		t.Errorf("no session = %d, wrong role = %d -- they must not differ",
 			noSession, wrongRole)
+	}
+}
+
+// A session cookie belongs to one surface. The admin surface reads its own
+// name and nothing else, so a customer's portal session is not refused there:
+// it is never presented.
+//
+// This is what replaced the loopback guard. If it goes green while the code is
+// wrong, the panel is on the internet with one boolean in front of it.
+func TestOneSurfaceDoesNotReadTheOthersCookie(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		reads   string
+		carries string
+	}{
+		{"admin ignores a portal cookie", adminCookieName, portalCookieName},
+		{"portal ignores an admin cookie", portalCookieName, adminCookieName},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			s := newSessions(whoever{u: person(t, user.RoleAdmin)}, tc.reads, false)
+
+			var got shared.ID
+			var ok bool
+			engine := gin.New()
+			engine.GET("/x", func(c *gin.Context) { got, ok = s.ID(c) })
+
+			req := httptest.NewRequest(http.MethodGet, "/x", nil)
+			req.AddCookie(&http.Cookie{
+				Name: tc.carries, Value: "01K0SESS0000000000000000AB",
+			})
+			engine.ServeHTTP(httptest.NewRecorder(), req)
+
+			if ok {
+				t.Errorf("a %s cookie was read as a session by the %s surface: %q",
+					tc.carries, tc.reads, got)
+			}
+		})
+	}
+}
+
+// The cookie must stay host-only, and host-only means no Domain attribute.
+//
+// Setting Domain=srosha.ir would send a customer's session to the admin host
+// and undo the whole separation, with nothing failing. So the absence is
+// asserted rather than assumed.
+func TestTheSessionCookieIsHostOnly(t *testing.T) {
+	for _, name := range []string{portalCookieName, adminCookieName} {
+		t.Run(name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			s := newSessions(whoever{}, name, false)
+
+			engine := gin.New()
+			engine.GET("/x", func(c *gin.Context) {
+				s.begin(c, &session.Session{
+					ID:        shared.ID("01K0SESS0000000000000000AB"),
+					ExpiresAt: time.Now().Add(time.Hour),
+				})
+			})
+
+			rec := httptest.NewRecorder()
+			engine.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+
+			for _, c := range rec.Result().Cookies() {
+				if c.Name == name && c.Domain != "" {
+					t.Fatalf("cookie %q carries Domain=%q, so it is sent to every "+
+						"subdomain -- the two surfaces are no longer separated",
+						name, c.Domain)
+				}
+			}
+		})
 	}
 }

@@ -8,14 +8,19 @@ const (
 	surfaceAdmin  = "admin"
 )
 
-// sessionCookieName is deliberately not "session": a name that says which
-// service it belongs to is one less thing to guess at in a browser's cookie
-// list.
+// Each surface has its own cookie, and the name is what separates them.
 //
-// Both surfaces use it, and they have to -- a cookie is not scoped by port, so
-// a second name would not separate them anyway. What separates them is the
-// admin surface's own role check. See docs/ARCHITECTURE.md.
-const sessionCookieName = "srosha_portal"
+// It used to be one name for both, and it had to be: the surfaces differed by
+// port, and a cookie is not scoped by port. They differ by host now --
+// panel.srosha.ir and admin.srosha.ir -- and a cookie is scoped by host, so a
+// customer's session is not refused at the admin surface. It is never sent.
+//
+// Neither is "session": a name that says which service it belongs to is one
+// less thing to guess at in a browser's cookie list.
+const (
+	portalCookieName = "srosha_portal"
+	adminCookieName  = "srosha_admin"
+)
 
 // contextUser is where the guard leaves the person it let through. A key of our
 // own, so nothing else in a gin context can collide with it.

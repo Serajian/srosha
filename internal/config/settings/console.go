@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"net"
 	"time"
 
 	"github.com/Serajian/srosha/pkg/env"
@@ -22,11 +21,12 @@ type Console struct {
 	// PortalAddr is where the customer pages are served. Public.
 	PortalAddr PortalAddr
 
-	// AdminAddr is where the operator pages are served. Never published --
-	// it defaults to the loopback interface rather than every interface, so
-	// staying off the network is a property of the process and not only a
-	// deployment fact. Health is a third listener on HTTP.Addr, because the
-	// portal is public and readiness is not.
+	// AdminAddr is where the operator pages are served. Public too, on their
+	// own host: what keeps a customer out is a cookie scoped to that host and
+	// the live role check, not the network -- see docs/ARCHITECTURE.md. The
+	// default is loopback because that is right for a laptop, and it is only
+	// a default. Health is a third listener on HTTP.Addr, because the pages
+	// are public and readiness is not.
 	AdminAddr AdminAddr
 
 	// AdminListLimit bounds every list a panel page reads: the queue, all
@@ -55,42 +55,22 @@ type Console struct {
 // PortalAddr and AdminAddr are the two surfaces' listen addresses, each with
 // a type of its own.
 //
-// Not two strings: the two are handed to two listeners, one published to the
-// internet and one bound to loopback, and while both were `string` swapping
-// them in bootstrap.Console compiled and served the admin panel on the public
-// port. web.PortalHandler and web.AdminHandler are the other half of the same
-// guard -- swapping either alone is now a compile error.
+// Not two strings: while both were `string`, swapping them in bootstrap.Console
+// compiled and served the admin panel where the portal was meant to be.
+// web.PortalHandler and web.AdminHandler are the other half of the same guard
+// -- swapping either alone is now a compile error.
 type (
 	PortalAddr string
 	AdminAddr  string
 )
 
-// bindsLoopback reports whether this address reaches only the machine it runs
-// on.
-//
-// Checked in production for the same reason SecureCookie is, right beside it:
-// the default is safe, and a default is not a guard. Somebody copying the
-// portal's ":8090" into NOTIF_ADMIN_ADDR gets ":8092", which is every
-// interface, and the panel that switches off customers' sources is then on the
-// network -- with no error, no log line, and a service that starts perfectly.
-//
-// An unparseable address is not loopback. Refusing at boot is right either
-// way: the listener would fail on the same string seconds later.
-func (a AdminAddr) bindsLoopback() bool {
-	host, _, err := net.SplitHostPort(string(a))
-	if err != nil {
-		return false
-	}
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
-}
-
 func LoadConsole(r *env.Reader, production bool) Console {
 	c := Console{
-		PortalAddr:     PortalAddr(r.Str("PORTAL_ADDR", ":8090")),
+		PortalAddr: PortalAddr(r.Str("PORTAL_ADDR", ":8090")),
+		// Loopback by default, which is right for a laptop and is only a
+		// default. Deployed, the admin surface listens like any other service
+		// and Traefik routes to it by host -- loopback inside a container
+		// reaches nothing at all. See docs/ARCHITECTURE.md.
 		AdminAddr:      AdminAddr(r.Str("ADMIN_ADDR", "127.0.0.1:8092")),
 		AdminListLimit: int32(r.Int("ADMIN_LIST_LIMIT", 200)), //nolint:gosec // checked below
 		SMTP: SMTP{
@@ -109,10 +89,6 @@ func LoadConsole(r *env.Reader, production bool) Console {
 	r.Check(c.SMTP.From != "", "NOTIF_CONSOLE_SMTP_FROM is required")
 	r.Check(!production || c.SecureCookie,
 		"NOTIF_CONSOLE_SECURE_COOKIE must be on in production")
-	r.Check(!production || c.AdminAddr.bindsLoopback(),
-		"NOTIF_ADMIN_ADDR must bind the loopback interface in production "+
-			"(127.0.0.1, ::1 or localhost): the admin panel is never published, "+
-			"and an address like \":8092\" puts it on every interface")
 	r.Check(c.AdminListLimit > 0,
 		"NOTIF_ADMIN_LIST_LIMIT must be above zero: a limit of zero would read "+
 			"as a page with nothing on it, indistinguishable from a page that "+

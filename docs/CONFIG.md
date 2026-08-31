@@ -63,12 +63,12 @@ network; `ports:` is never used.
 
 | Service | Port | Purpose |
 | --- | --- | --- |
-| gateway | 50051 | gRPC |
+| gateway | 50051 | gRPC — `api.srosha.ir`, h2c behind the terminator |
 | gateway | 8080 | `/healthz` |
 | dispatcher | 8081 | `/healthz` |
-| console | 8090 | the customer portal's pages — **the only surface a browser reaches** |
+| console | 8090 | the customer portal's pages — `panel.srosha.ir` |
 | console | 8091 | `/healthz` |
-| console | 8092 | the admin surface — never published, see ARCHITECTURE.md |
+| console | 8092 | the admin surface — `admin.srosha.ir`, see ARCHITECTURE.md |
 | nats | 4222 | clients |
 | nats | 8222 | monitoring JSON — unauthenticated, never published |
 | postgres | 5432 | clients |
@@ -82,9 +82,11 @@ send anything. The console serves HTML to people, which is not a second API: it
 has no contract, no versioning and no client — nothing outside a browser is meant
 to parse it, and nothing does.
 
-The console's portal port is the one thing in this table that is reachable from
-outside, and it goes out through Traefik on `dokploy-network` like the gateway's,
-never through `ports:`. Its admin port stays on the private network only.
+Three ports in this table are reachable from outside — the gateway's gRPC, the
+console's portal and the console's admin surface — and all three go out through
+Traefik on `dokploy-network`, never through `ports:`. The admin surface is public
+deliberately; what keeps a customer out of it is a cookie per host rather than a
+network, and `docs/ARCHITECTURE.md` is where that is argued.
 
 The health ports carry no API at all. `/healthz` is there for the platform to
 decide whether a container is alive; nothing a customer writes should ever call
