@@ -131,17 +131,19 @@ there, so say so out loud:
 srosha.New(ctx, "gateway:50051", key, srosha.WithInsecure())
 ```
 
-Both halves of that are unlike the outside case, and for the same reason:
+All three parts of that are unlike the outside case, and for the same reason:
 
 - **`gateway`** is srosha's compose service name, resolved by Docker's own DNS —
   the same way srosha reaches `postgres` and `nats`. It is not a domain and
-  there is no Traefik in front of it.
-- **`:50051`** is required because the gRPC port is never published. It is
-  `expose:` on the private network, so it exists for neighbours and for nobody
-  else.
-- **`WithInsecure()`** because TLS is terminated at Traefik, and the listener
-  behind it speaks plaintext. Without it the client would begin a handshake that
-  nothing answers.
+  there is no proxy of any kind in front of it.
+- **`:50051`** is required because nothing routes to that port for you. On the
+  deployment this was written against it is published on the host's loopback so
+  that one reverse proxy can reach it, and on the private network it is a plain
+  `expose:` — either way it exists for neighbours and for nobody else, and
+  neither of them is behind a name you can leave off.
+- **`WithInsecure()`** because TLS ends at the terminator in front, and the
+  listener behind it speaks plaintext. Without it the client would begin a
+  handshake that nothing answers.
 
 TLS is the default on purpose, and the SDK deliberately does **not** guess from
 the port. Forgetting `WithInsecure()` in here fails immediately and loudly;
@@ -149,8 +151,9 @@ guessing would one day send in the clear to something that was not what you
 thought it was.
 
 You *can* reach srosha by its public domain from inside the network — but that
-leaves the private network, goes out to Traefik and comes back, for TLS you do
-not need. It also breaks when the domain does, while your neighbour is fine.
+leaves the private network, goes out to the terminator and comes back, for TLS
+you do not need. It also breaks when the domain does, while your neighbour is
+fine.
 
 ### Know your limits before you hit them
 
@@ -423,6 +426,123 @@ All three arrived in the same place.
 `srosha.To(channel, address)` covers a channel this build has no constructor
 for yet.
 
+### One of each
+
+Every send is the same call — `Submit` with a `Message` and at least one
+`Route`. What changes per channel is the address and, for three of them, one
+other thing. These assume a registered identity or srosha's own; §7 covers
+that.
+
+**Telegram and Bale** — a chat id. `Title` and `Body` arrive as one text,
+separated by a blank line.
+
+```go
+c.Submit(ctx, srosha.Message{
+	Title:  "Deploy finished",
+	Body:   "srosha 1.4.0 is live.",
+	Routes: []srosha.Route{srosha.TelegramTo("123456789")},
+})
+c.Submit(ctx, srosha.Message{
+	Body:   "سرویس بالا آمد.",
+	Routes: []srosha.Route{srosha.BaleTo("-100123456789")},
+})
+```
+
+**Email** — `Title` is the subject line, so leaving it empty sends one with no
+subject.
+
+```go
+c.Submit(ctx, srosha.Message{
+	Title:  "Your order shipped",
+	Body:   "Tracking: 1Z999.",
+	Routes: []srosha.Route{srosha.EmailTo("someone@acme.test")},
+})
+```
+
+**Gotify** — the address is a positive integer and Gotify itself ignores it;
+srosha does not. Two Gotify routes in one message need different ones.
+
+```go
+c.Submit(ctx, srosha.Message{
+	Title: "Disk is running out",
+	Body:  "4.0 GB free of 96.0 GB at /",
+	Routes: []srosha.Route{
+		srosha.GotifyTo("1").From("ops"),
+		srosha.GotifyTo("2").From("oncall"),   // a different id, or it folds into the first
+	},
+})
+```
+
+**Matrix** — a room id, never a user id. Matrix has no "send to this person".
+
+```go
+c.Submit(ctx, srosha.Message{
+	Body:   "Build 412 failed.",
+	Routes: []srosha.Route{srosha.MatrixTo("!abcdef:matrix.acme.test")},
+})
+```
+
+**WhatsApp** — E.164, and outside a window the recipient opened it takes an
+approved template rather than your text. The keys are in "Metadata two channels
+actually read".
+
+```go
+c.Submit(ctx, srosha.Message{
+	Body: "Your order shipped.",   // used only inside the window
+	Metadata: map[string]string{
+		"template":        "order_shipped",
+		"template_params": `["Ali","123"]`,
+	},
+	Routes: []srosha.Route{srosha.WhatsAppTo("+989121234567")},
+})
+```
+
+**FCM** — a device token, and the whole `Metadata` map becomes the push's `data`
+payload, which is what your app reads when somebody opens the notification.
+
+```go
+c.Submit(ctx, srosha.Message{
+	Title:    "New message",
+	Body:     "Ali sent you a photo.",
+	Metadata: map[string]string{"thread_id": "42"},
+	Routes:   []srosha.Route{srosha.FCMTo(deviceToken)},
+})
+```
+
+**APNs** — a hexadecimal device token, and the map sits beside Apple's own `aps`
+key. A token from a development build is unknown to production; that is the
+`Environment` on the credential, not on the message.
+
+```go
+c.Submit(ctx, srosha.Message{
+	Title:    "New message",
+	Body:     "Ali sent you a photo.",
+	Metadata: map[string]string{"thread_id": "42"},
+	Routes:   []srosha.Route{srosha.APNsTo("a1b2c3d4…")},
+})
+```
+
+**All of them at once**, which is the point of routes being a list: one message,
+one idempotency key, one place to ask what happened to each.
+
+```go
+r, err := c.Submit(ctx, srosha.Message{
+	IdempotencyKey: "incident-4711",
+	Title:          "Database unreachable",
+	Body:           "Retrying since 03:12.",
+	Priority:       srosha.PriorityHigh,
+	Routes: []srosha.Route{
+		srosha.EmailTo("oncall@acme.test"),
+		srosha.TelegramTo("-100123456789"),
+		srosha.GotifyTo("1"),
+		srosha.Matrix(),                       // the source's default room
+	},
+})
+```
+
+Each route is a delivery with its own outcome. One failing does not stop the
+others, and §5 is how you find out which did what.
+
 ## 7. Sending as yourself
 
 By default a message goes out as srosha's own identity, if the operator
@@ -496,16 +616,99 @@ secret changes, say so: that is what `Rotate` is.
 
 ### What each channel needs
 
-| | |
-| --- | --- |
-| `TelegramCredential`, `BaleCredential` | `Token` — from BotFather |
-| `FCMCredential` | `ServiceAccount` — the whole service account json file, not base64 of it |
-| `SMTPCredential` | `Host`, `Port`, `Username`, `From`, `Password`. Port 465 is TLS from the first byte; anything else is STARTTLS. Zero means 587 |
-| `MatrixCredential` | `Homeserver` (https, no path) and `Token` |
-| `GotifyCredential` | `ServerURL` (https, no path) and `Token` — the application token, which alone decides which application a stock Gotify server delivers to |
-| `WhatsAppCredential` | `PhoneNumberID` — Meta's id for the number, not the number — and `Token` |
-| `APNsCredential` | `Key` (the `.p8` file's contents), `KeyID`, `TeamID`, `Topic` (your bundle id), and `Environment`. Leave `Environment` unset for production, which is what a shipped app uses — a token from a development build is unknown to production and comes back as `FailureNotReachable` |
-| `RawCredential` | a channel this build has no type for yet: `Channel`, `Config` json, `Secret` |
+One of these goes in the `Credential` field above. Every `Name` here is an
+example — it is yours, and only you ever see it.
+
+**Telegram and Bale** — one token, from BotFather.
+
+```go
+srosha.TelegramCredential{Token: "123456:AAH…"}
+srosha.BaleCredential{Token: "123456:AAH…"}
+```
+
+**Email** — not one value, which is what makes it the awkward one. A server, an
+account and an address, and any of them wrong is a message that never arrives,
+so all of them are checked when you register rather than when you send.
+
+```go
+srosha.SMTPCredential{
+	Host:     "smtp.acme.test",
+	Port:     587,                     // 465 is TLS from the first byte;
+	Username: "noreply@acme.test",     // anything else is STARTTLS. 0 means 587
+	From:     "noreply@acme.test",     // what the recipient sees
+	Password: mailPassword,
+}
+```
+
+**Matrix** — a homeserver and a token. https, and a bare address: no path, no
+credentials in the url.
+
+```go
+srosha.MatrixCredential{
+	Homeserver: "https://matrix.acme.test",
+	Token:      accessToken,
+}
+```
+
+**Gotify** — the same shape, and the token is doing more work than it looks.
+It alone decides which application a message lands in; a stock server ignores
+the application id entirely.
+
+```go
+srosha.GotifyCredential{
+	ServerURL: "https://gotify.acme.test",
+	Token:     appToken,               // an application token, not a client one
+}
+```
+
+**WhatsApp** — Meta's id for the number, which is not the number.
+
+```go
+srosha.WhatsAppCredential{
+	PhoneNumberID: "109876543210987",
+	Token:         accessToken,
+}
+```
+
+**FCM** — the whole service account json file, as it came. Not base64 of it, not
+a path to it.
+
+```go
+key, err := os.ReadFile("service-account.json")
+if err != nil {
+	return err
+}
+srosha.FCMCredential{ServiceAccount: string(key)}
+```
+
+**APNs** — four values and a file.
+
+```go
+p8, err := os.ReadFile("AuthKey_ABC123DEFG.p8")
+if err != nil {
+	return err
+}
+srosha.APNsCredential{
+	Key:    string(p8),
+	KeyID:  "ABC123DEFG",
+	TeamID: "DEF456GHIJ",
+	Topic:  "test.acme.app",           // your bundle id
+	// Environment unset means production, which is what a shipped app uses.
+	// A token from a development build is unknown there and comes back as
+	// FailureNotReachable -- see srosha.APNsSandbox if that is what you have.
+}
+```
+
+**Raw** — a channel this build of the SDK has no type for yet. The config is
+whatever that channel's settings are, as json.
+
+```go
+srosha.RawCredential{
+	Channel: srosha.Channel("something-new"),
+	Config:  `{"endpoint":"https://acme.test"}`,
+	Secret:  token,
+}
+```
 
 None of them print their secret, through `%v` or `json.Marshal`.
 
