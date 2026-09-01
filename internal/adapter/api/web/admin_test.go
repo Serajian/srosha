@@ -345,7 +345,7 @@ func newTestAdminWithLimit(t *testing.T, listLimit int32) *testAdmin {
 	notifications := &memNotifications{
 		rows: map[string]*notification.Notification{}, deliveries: deliveries,
 	}
-	gate := usecase.NewGate(audit, ids, now)
+	gate := usecase.NewGate(audit, nil, ids, now)
 
 	ops := usecase.NewOperators(
 		sources, users, notifications, deliveries, credentials, audit, gate, now, listLimit,

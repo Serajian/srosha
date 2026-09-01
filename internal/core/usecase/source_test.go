@@ -59,7 +59,7 @@ func newSourceRig(t *testing.T) *sourceRig {
 	repo := fakeSources{byID: map[string]*source.Source{}}
 	return &sourceRig{
 		sources: usecase.NewSources(
-			repo, usecase.NewGate(log, seqIDs(), fixedNow(at)), seqIDs(), fixedNow(at),
+			repo, usecase.NewGate(log, nil, seqIDs(), fixedNow(at)), seqIDs(), fixedNow(at),
 		),
 		repo:     repo,
 		log:      log,

@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/Serajian/srosha/internal/core/domain/user"
@@ -61,18 +62,33 @@ type AuditLog interface {
 	) ([]AuditEntry, error)
 }
 
-// Gate is the one place every change goes through.
+// Alerter carries something an operator should know to a channel that is not
+// this service's own.
 //
-// Today it records. It exists so that what comes later -- roles, two-person
-// approval, per-user limits -- is one file rather than fifty call sites.
-type Gate struct {
-	log   AuditLog
-	newID shared.IDFunc
-	now   shared.NowFunc
+// One method, and it returns nothing: an alert that failed changes nothing the
+// caller could do about it, and returning an error only invites somebody to
+// check one.
+type Alerter interface {
+	Notify(ctx context.Context, subject, detail string)
 }
 
-func NewGate(log AuditLog, newID shared.IDFunc, now shared.NowFunc) *Gate {
-	return &Gate{log: log, newID: newID, now: now}
+// Gate is the one place every change goes through.
+//
+// Today it records and tells. It exists so that what comes later -- roles,
+// two-person approval, per-user limits -- is one file rather than fifty call
+// sites.
+type Gate struct {
+	log    AuditLog
+	alerts Alerter
+	newID  shared.IDFunc
+	now    shared.NowFunc
+}
+
+// NewGate takes a nil Alerter to mean silence, so a caller that has no channel
+// -- a test, a binary built before this existed -- needs to know nothing about
+// alerting.
+func NewGate(log AuditLog, alerts Alerter, newID shared.IDFunc, now shared.NowFunc) *Gate {
+	return &Gate{log: log, alerts: alerts, newID: newID, now: now}
 }
 
 // Do records the act, then runs it.
@@ -101,5 +117,32 @@ func (g *Gate) Do(
 	if err := g.log.Record(ctx, entry); err != nil {
 		return err
 	}
-	return fn(ctx)
+
+	if err := fn(ctx); err != nil {
+		return err
+	}
+
+	// After it happened, and not before. The audit deliberately records
+	// attempts -- a change nobody can account for is worse than a change
+	// refused -- but an alert saying a source registered is simply wrong if it
+	// did not.
+	g.tell(ctx, entry)
+	return nil
+}
+
+// tell hands one audit row to whoever is listening.
+//
+// The actor's email is in it. That was a decision, not an oversight: whoever
+// holds the alert channel's token sees customer addresses, which is the same
+// visibility /audit has and the reason /audit is super_admin only.
+func (g *Gate) tell(ctx context.Context, e AuditEntry) {
+	if g.alerts == nil {
+		return
+	}
+
+	detail := fmt.Sprintf("%s by %s", e.TargetID, e.ActorEmail)
+	if e.Note != "" {
+		detail += " -- " + e.Note
+	}
+	g.alerts.Notify(ctx, e.Verb, detail)
 }

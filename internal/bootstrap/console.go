@@ -66,7 +66,7 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 		return abandon(ctx, res, notify, err)
 	}
 
-	core, err := buildConsoleCore(cfg, db.Pool(), dialer, log)
+	core, err := buildConsoleCore(cfg, db.Pool(), dialer, notify, log)
 	if err != nil {
 		return abandon(ctx, res, notify, err)
 	}
@@ -176,7 +176,8 @@ type consoleCore struct {
 }
 
 func buildConsoleCore(
-	cfg config.Console, pool *pgxpool.Pool, dialer *smtp.Dialer, log *slog.Logger,
+	cfg config.Console, pool *pgxpool.Pool, dialer *smtp.Dialer,
+	notify usecase.Alerter, log *slog.Logger,
 ) (consoleCore, error) {
 	var core consoleCore
 
@@ -201,7 +202,7 @@ func buildConsoleCore(
 	// writes the audit row before the change runs. Operators reads the same
 	// log below, so the repository is kept rather than built twice.
 	auditRows := postgres.NewAuditRepository(pool)
-	gate := usecase.NewGate(auditRows, ids.Generate, now)
+	gate := usecase.NewGate(auditRows, notify, ids.Generate, now)
 
 	core.signIn = usecase.NewSignIn(
 		postgres.NewUserRepository(pool),

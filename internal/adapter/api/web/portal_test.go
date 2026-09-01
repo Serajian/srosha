@@ -566,7 +566,7 @@ func newTestPortal(t *testing.T) *testPortal {
 
 	sources := &memSources{}
 	audit := &memAudit{}
-	gate := usecase.NewGate(audit, ids, now)
+	gate := usecase.NewGate(audit, nil, ids, now)
 
 	useSources := usecase.NewSources(sources, gate, ids, now)
 	keys := &memKeys{}

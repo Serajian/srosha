@@ -95,7 +95,7 @@ func newKeyRig(t *testing.T) *keyRig {
 	}
 
 	log := &auditLog{}
-	gate := usecase.NewGate(log, seqIDs(), fixedNow(at))
+	gate := usecase.NewGate(log, nil, seqIDs(), fixedNow(at))
 	repo := fakeSources{byID: map[string]*source.Source{}}
 	sources := usecase.NewSources(repo, gate, seqIDs(), fixedNow(at))
 
