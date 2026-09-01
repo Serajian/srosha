@@ -333,16 +333,21 @@ separate groups, because one names the **binary** and the other two name a
 **surface** each. The console carries the customer portal and the admin surface
 in one process, sharing one mail account and one cookie rule, and each surface
 brings its own address — because which of them is exposed is the whole security
-argument. `NOTIF_ADMIN_ADDR` defaults to `127.0.0.1:8092`, the loopback interface
-rather than every interface, so the admin port staying unreachable from outside
-is a property of the process and not only a fact about how it is deployed.
+argument.
 
-**In production the console refuses to start unless `NOTIF_ADMIN_ADDR` binds
-loopback** — `127.0.0.1`, `::1` or `localhost`. A safe default is not a guard:
-copying the portal's `:8090` into it gives `:8092`, which is every interface,
-and the panel that switches off customers' sources would be on the network with
-no error and no log line. The check sits beside the one on
-`NOTIF_CONSOLE_SECURE_COOKIE` and has the same shape.
+`NOTIF_ADMIN_ADDR` defaults to `127.0.0.1:8092`. That is **a default and nothing
+more** — it is right for a laptop, where the panel should not be on the network,
+and it is wrong in a container, where loopback is the container's own namespace
+and reaches nothing at all. Deployed, the admin surface listens like any other
+service and Traefik routes to it by host.
+
+**Nothing checks this value, and that is deliberate.** There used to be a
+production guard demanding loopback, and it made the panel unopenable in the
+container it was meant to protect — no source could be approved, so nothing
+could ever be sent. What keeps a customer out of the admin surface is not the
+network: it is a cookie scoped to `admin.srosha.ir`, a role read from the live
+row on every request, and three handlers with no shared mux. See
+`docs/ARCHITECTURE.md`, "Two surfaces in one binary, and what keeps them apart".
 
 Its SMTP account is its own and not the sender's. Signing in must not depend on
 how a customer's messages happen to be configured, and the mail does **not** go
