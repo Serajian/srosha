@@ -319,12 +319,18 @@ the container as `D`. Special characters break in at least three places:
 Generate with `openssl rand -hex 24`, or use a long hyphenated word phrase.
 Length provides the security; special characters only provide bugs.
 
-**`$` is the same trap, and it arrives with bcrypt.** The three
-`NATS_*_PASSWORD` variables hold bcrypt hashes, which are full of `$`. Compose
-expands `${...}` in the environment file, so a hash pasted as generated arrives
-truncated at the third `$` — measured, the container received `$2a$11` and
-nothing more. Double every `$` when pasting into Dokploy. `env_file:` is not an
-escape hatch; it is interpolated too.
+**`$` looks like the same trap and is not.** The three `NATS_*_PASSWORD`
+variables hold bcrypt hashes, which are full of `$`, so escaping them seems
+prudent. It is not: doubling the `$` makes the value reach nats as
+`$2a$$11$$…`, and nats — seeing a value that starts with `$` — tries to resolve
+it as another variable and refuses to start. That took the broker down on
+2026-09-01, twice, from advice written in this document.
+
+**Paste a bcrypt hash exactly as generated.** Plain `docker compose` with a
+`.env` really does expand `${...}` and really does eat an unescaped `$`; Dokploy
+does not hand these values to compose that way, and the raw hash arrives
+intact. The lesson is narrower than "escape your dollars": a mechanism measured
+in a lookalike environment is not a measurement of the real one.
 
 **Nothing here enforces any of this, and it showed.** On 2026-09-01 the `gateway`
 and `dispatcher` NATS passwords turned out to be **eight characters** — against
