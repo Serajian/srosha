@@ -136,12 +136,19 @@ func (c Channel) ValidateAddress(address string) error {
 		}
 
 	case ChannelGotify:
-		// The application id Gotify assigns when an application is created:
-		// its own primary key, a positive integer starting at 1 -- based on
-		// Gotify's documented data model, not verified against a live server.
-		// There is no other documented shape for it, so only that much is
-		// checked; a rule invented past this would one day refuse an id that
-		// works.
+		// A positive integer, and it decides nothing.
+		//
+		// Gotify picks the application from the token alone. Tested against a
+		// real server on 2026-09-01: a message sent with appid=999, which did
+		// not exist, landed in the token's own application exactly like one
+		// sent with the right id and one sent with none at all.
+		//
+		// It is not decoration for that. The duplicate guard is
+		// UNIQUE (notification_id, channel, address), so this value is how two
+		// Gotify deliveries in one message stay two -- a source with an "ops"
+		// and an "oncall" application needs different ids here or the second
+		// is folded into the first. It disambiguates for us; it does not
+		// address for Gotify.
 		if !isGotifyAppID(t) {
 			return invalidAddress(c, t, "not a gotify application id")
 		}

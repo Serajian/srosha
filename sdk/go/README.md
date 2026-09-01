@@ -392,7 +392,7 @@ name one. The `To` form — `srosha.EmailTo(address)`,
 Routes: []srosha.Route{
 	srosha.EmailTo("someone@acme.test"),      // an address the message names
 	srosha.Telegram(),                        // the source's default
-	srosha.GotifyTo("42").From("ops"),        // an app id, sent from "ops"
+	srosha.GotifyTo("42").From("ops"),        // see the note under the table
 }
 ```
 
@@ -405,9 +405,20 @@ stored — so a mistake costs you an error, not a failed delivery hours later.
 | `Telegram`, `Bale` | a numeric chat id, or `@name` **for a public channel only** — never a person, whatever their username | `123456789`, `-100123`, `@acmenews` |
 | `WhatsApp` | E.164, `+` and 8–15 digits | `+989121234567` |
 | `Matrix` | a **room**, never a user. Matrix has no "send to this person" | `!abc:matrix.org` |
-| `Gotify` | an application id, a positive integer | `1`, `42` |
+| `Gotify` | a positive integer — but see below | `1`, `42` |
 | `FCM` | an Android device token, 32–4096 characters | `cXy…` |
 | `APNs` | an Apple device token, hexadecimal, 32–200 characters | `a1b2c3…` |
+
+**Gotify does not route on this address, but srosha does.** Its token is minted
+per application and the token alone decides which application's subscribers see
+the message -- so the value chooses nothing at Gotify's end. It is still not
+decoration: srosha tells two deliveries apart by channel and address, so two
+Gotify routes in one message need different ones or the second is folded into
+the first as a duplicate. Give the application id and both facts line up.
+
+That is not a reading of the documentation. A stock Gotify 2.6.3 was asked
+three times: with the right id, with none, and with `999`, which did not exist.
+All three arrived in the same place.
 
 `srosha.To(channel, address)` covers a channel this build has no constructor
 for yet.
