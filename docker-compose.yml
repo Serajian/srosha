@@ -1,3 +1,15 @@
+# The DEPLOYED stack. Local development is deployment/app/docker-compose.dev.yml,
+# which is a different file for a different job.
+#
+# It sits at the repository root and not beside the Dockerfile, which looks odd
+# until you see what breaks otherwise. Dokploy invokes compose with
+# `--project-directory <repo root>`, and compose resolves two things against
+# that directory: relative build contexts, and the `.env` it reads `${...}`
+# from. Dokploy writes that .env beside the compose file. With this file one
+# level down those are two different directories and neither works -- the build
+# context resolves outside the checkout, and every ${...} becomes an empty
+# string.
+#
 # The application only. postgres, nats and the srosha-net network are already
 # deployed as their own Dokploy compose services -- see
 # docs/reference/srosha-infra-deploy.md section 2. Defining them here would
@@ -15,7 +27,9 @@ x-logging: &logging
     max-file: "3"
 
 x-build: &build
-  context: ../..
+  # The repository root, which is this directory and also the project
+  # directory. See the note at the top about why those have to be the same.
+  context: .
   dockerfile: deployment/app/Dockerfile
 
 services:
