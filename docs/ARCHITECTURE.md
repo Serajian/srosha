@@ -464,6 +464,50 @@ surface, while missing all seven routes that genuinely share the portal's
 The second is what a fourth binary would have given for free. This is the price
 of not building one, and it is paid once.
 
+### The console can send, and only as the customer
+
+It used to serve pages and read rows, and nothing else. It now sends one kind of
+message besides the sign-in code: a **trial**, so a customer who registers a bot
+token or an SMTP password finds out whether it works then, rather than when a
+notification quietly does not arrive.
+
+That is a real widening, so what bounds it is written here rather than left to
+whoever reads `bootstrap`.
+
+**It holds no identity of its own.** The registry it builds carries an empty
+`Fallback`:
+
+```
+sender.NewRegistry(creds, secrets, client, dialer, tokens, apple, sender.Fallback{})
+```
+
+`Registry.For` reaches `ours` only when the source registered nothing at all,
+and every branch of `ours` begins by asking `configured()`. An empty fallback
+therefore refuses all eight channels. The console can open a source's own
+credential; it cannot send as srosha.
+
+That is not a rule somebody has to remember. `consoleSenders` exists as its own
+function so `TestTheConsoleCannotSendAsSrosha` calls **the same code the binary
+calls** — a registry rebuilt beside it in a test would still pass on the day
+somebody fills the fallback in, which is the one day it has to fail.
+
+It matters because a fallback would make a **wrong answer look like a right
+one**: a customer whose own credential is broken presses "test", srosha sends as
+itself, and the page says it worked.
+
+**A trial resolves the way a real send resolves** — `For(source, channel, name)`,
+by the credential's name and not its id. Anything else would prove something
+other than what was asked, and an identity the source switched off has to be
+refused here for the same reason it is refused in production: switching it off
+was a decision, and standing in for it would undo it silently.
+
+**A trial is a diagnostic, not traffic.** It writes one audit row, verb
+`credential.test`, and **no notification and no delivery row**. Putting it in the
+message log would make the log claim the source sent something it did not.
+
+It also means `NOTIF_HTTP_CLIENT_*` is read by the console now. None of
+`NOTIF_SENDER_*` is, and that absence is the boundary.
+
 ---
 
 ## Gin routes the HTML surfaces, and nothing else

@@ -191,7 +191,7 @@ service starts should not need the service's secrets.
 | auth | `NOTIF_AUTH_KEY_TOUCH_AFTER` | ✅ | — | — |
 | http | `NOTIF_HTTP_ADDR` | — | ✅ | ✅ |
 | http server | `NOTIF_HTTP_SERVER_READ_HEADER_TIMEOUT`, `NOTIF_HTTP_SERVER_READ_TIMEOUT`, `NOTIF_HTTP_SERVER_WRITE_TIMEOUT`, `NOTIF_HTTP_SERVER_IDLE_TIMEOUT` | ✅ | ✅ | ✅ |
-| http client | `NOTIF_HTTP_CLIENT_TIMEOUT`, `NOTIF_HTTP_CLIENT_DIAL_TIMEOUT`, `NOTIF_HTTP_CLIENT_TLS_TIMEOUT`, `NOTIF_HTTP_CLIENT_MAX_IDLE_CONNS`, `NOTIF_HTTP_CLIENT_MAX_IDLE_PER_HOST`, `NOTIF_HTTP_CLIENT_IDLE_CONN_TIMEOUT` | — | ✅ | — |
+| http client | `NOTIF_HTTP_CLIENT_TIMEOUT`, `NOTIF_HTTP_CLIENT_DIAL_TIMEOUT`, `NOTIF_HTTP_CLIENT_TLS_TIMEOUT`, `NOTIF_HTTP_CLIENT_MAX_IDLE_CONNS`, `NOTIF_HTTP_CLIENT_MAX_IDLE_PER_HOST`, `NOTIF_HTTP_CLIENT_IDLE_CONN_TIMEOUT` | — | ✅ | ✅ |
 | db | `NOTIF_DB_DSN`, `NOTIF_DB_MAX_CONNS`, `NOTIF_DB_MAX_CONN_LIFETIME`, `NOTIF_DB_MAX_CONN_IDLE_TIME`, `NOTIF_DB_HEALTH_CHECK_PERIOD`, `NOTIF_DB_CONNECT_TIMEOUT`, `NOTIF_DB_CONNECT_ATTEMPTS`, `NOTIF_DB_CONNECT_BACKOFF` | ✅ | ✅ | ✅ |
 | mq | `NOTIF_MQ_URL`, `NOTIF_MQ_STREAM`, `NOTIF_MQ_DUPLICATE_WINDOW`, `NOTIF_MQ_MAX_AGE`, `NOTIF_MQ_CONNECT_TIMEOUT`, `NOTIF_MQ_MAX_RECONNECTS`, `NOTIF_MQ_RECONNECT_WAIT`, `NOTIF_MQ_DRAIN_TIMEOUT` | ✅ | ✅ | — |
 | ratelimit | `NOTIF_RATELIMIT_PER_MINUTE` | ✅ | — | — |
@@ -202,7 +202,7 @@ service starts should not need the service's secrets.
 | webhook | `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ | — |
 | telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ | ✅ |
 | alerts | `NOTIF_ALERT_GOTIFY_SERVER_URL`, `NOTIF_ALERT_GOTIFY_TOKEN`, `NOTIF_ALERT_QUEUE`, `NOTIF_ALERT_TIMEOUT`, `NOTIF_ALERT_READY_EVERY` | ✅ | ✅ | ✅ |
-| console | `NOTIF_CONSOLE_SMTP_HOST`, `NOTIF_CONSOLE_SMTP_PORT`, `NOTIF_CONSOLE_SMTP_USER`, `NOTIF_CONSOLE_SMTP_PASSWORD`, `NOTIF_CONSOLE_SMTP_FROM`, `NOTIF_CONSOLE_SMTP_TIMEOUT`, `NOTIF_CONSOLE_SECURE_COOKIE` | — | — | ✅ |
+| console | `NOTIF_CONSOLE_SMTP_HOST`, `NOTIF_CONSOLE_SMTP_PORT`, `NOTIF_CONSOLE_SMTP_USER`, `NOTIF_CONSOLE_SMTP_PASSWORD`, `NOTIF_CONSOLE_SMTP_FROM`, `NOTIF_CONSOLE_SMTP_TIMEOUT`, `NOTIF_CONSOLE_SECURE_COOKIE`, `NOTIF_CONSOLE_TRIAL_PER_MINUTE` | — | — | ✅ |
 | portal | `NOTIF_PORTAL_ADDR` | — | — | ✅ |
 | admin | `NOTIF_ADMIN_ADDR`, `NOTIF_ADMIN_LIST_LIMIT` | — | — | ✅ |
 
@@ -314,6 +314,19 @@ dispatcher opens both to send.
 The console also reads the **webhook policy**, and only the policy: it validates
 a callback address when a customer registers one, and never makes the callback.
 The signing secrets are the dispatcher's and are not loaded there.
+
+It reads the **http client** group too, which until this was the dispatcher's
+alone. The senders page has a button that sends a real test message, so the
+console opens a source's own credential and calls a provider directly. It holds
+no sending identity of its own — the registry it builds has an empty fallback —
+so it can never send as srosha. None of `NOTIF_SENDER_*` is read there, and
+that is the boundary rather than an omission. See `docs/ARCHITECTURE.md`.
+
+`NOTIF_CONSOLE_TRIAL_PER_MINUTE` caps that button per source, default `3`. **It
+is not the source's sending quota and cannot be**: the gateway's limiter is a
+separate bucket in a separate process, so a test costs a customer no message.
+Zero is refused at startup — a cap of zero is not a limit, it is the button
+broken forever.
 
 `NOTIF_CONSOLE_*`, `NOTIF_PORTAL_ADDR` and `NOTIF_ADMIN_ADDR` are deliberately
 separate groups, because one names the **binary** and the other two name a
