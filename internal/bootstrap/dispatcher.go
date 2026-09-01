@@ -42,24 +42,32 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 
 	res := registry.New(log)
 
+	// First, so every failure below has somewhere to report to. Unconfigured
+	// it is silent and costs nothing.
+	notify, err := alerts(cfg.Alert, res, log)
+	if err != nil {
+		_ = res.Close(ctx)
+		return nil, err
+	}
+
 	db, err := registry.Postgres(ctx, cfg.DB, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	mq, err := registry.NATS(ctx, cfg.MQ, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	callbacks, err := registry.WebhookClient(cfg.HTTPClient, cfg.Webhook, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	providers, err := registry.SenderClient(cfg.HTTPClient, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	// Mail is its own way out. Nothing is held open -- a mail server drops an
@@ -67,7 +75,7 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 	// nothing to register a close for.
 	mail, err := registry.SMTPDialer(cfg.HTTPClient.Timeout)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	// Google is its own way out too, and for the opposite reason: a service
@@ -76,7 +84,7 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 	// rather than per message.
 	tokens, err := registry.GoogleTokens(providers)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	// Apple's is the same shape and needs no client at all: a provider token is
@@ -84,14 +92,14 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 	// rules are measured against.
 	apple, err := registry.AppleTokens(system.Clock())
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	core, err := buildDispatcherCore(
 		ctx, cfg, db.Pool(), mq.JetStream(), callbacks, providers, mail, tokens, apple, log,
 	)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	// The broker's way in.
@@ -99,7 +107,7 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 		ctx, "dispatch consumer", mq.JetStream(), core.stream, cfg.Dispatch, core.dispatcher, res,
 	)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	// The other way in, for the deliveries no event ever arrived for: the rows
@@ -122,16 +130,17 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 		},
 	}, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	health, err := httpServer(ctx, binaryDispatcher, cfg.HTTP.Addr, cfg.HTTPServer, log, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	log.InfoContext(ctx, "dispatcher started",
 		"env", cfg.App.Env, "http", health.Addr())
+	notify.Notify(ctx, "dispatcher started", "env "+cfg.App.Env)
 
 	return &App{
 		log:       log,

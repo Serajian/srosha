@@ -20,3 +20,10 @@ const consoleRateLimit = 1_000_000
 // seconds, so this stays under it: a slow answer should be our error rather
 // than docker's kill.
 const probeTimeout = 3 * time.Second
+
+// gotifyIgnoredAppID is what the alerter passes as a Gotify address.
+//
+// Gotify picks the application from the token and ignores this, so the value
+// is arbitrary -- it exists only because the sender refuses an empty address,
+// which is right for a customer's message and meaningless here.
+const gotifyIgnoredAppID = "1"

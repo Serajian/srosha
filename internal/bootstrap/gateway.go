@@ -40,31 +40,39 @@ func Gateway(ctx context.Context, cfg config.Gateway) (*App, error) {
 
 	res := registry.New(log)
 
+	// First, so every failure below has somewhere to report to. Unconfigured
+	// it is silent and costs nothing.
+	notify, err := alerts(cfg.Alert, res, log)
+	if err != nil {
+		_ = res.Close(ctx)
+		return nil, err
+	}
+
 	db, err := registry.Postgres(ctx, cfg.DB, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	mq, err := registry.NATS(ctx, cfg.MQ, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	core, err := buildGatewayCore(ctx, cfg, db.Pool(), mq.JetStream(), log)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	grpc, err := gatewayGRPC(ctx, cfg, core, log, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	// Health only. Every other http route this service grows is mounted inside
 	// api/http, not opened as a second listener here.
 	health, err := httpServer(ctx, binaryGateway, cfg.GRPC.HTTPAddr, cfg.HTTPServer, log, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	// service and binary are already on every line, so naming them again here
@@ -72,6 +80,7 @@ func Gateway(ctx context.Context, cfg config.Gateway) (*App, error) {
 	// handler drops them.
 	log.InfoContext(ctx, "gateway started",
 		"env", cfg.App.Env, "grpc", grpc.Addr(), "http", health.Addr())
+	notify.Notify(ctx, "gateway started", "env "+cfg.App.Env+", grpc "+grpc.Addr())
 
 	return &App{
 		log:       log,

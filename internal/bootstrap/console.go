@@ -48,19 +48,27 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 
 	res := registry.New(log)
 
+	// First, so every failure below has somewhere to report to. Unconfigured
+	// it is silent and costs nothing.
+	notify, err := alerts(cfg.Alert, res, log)
+	if err != nil {
+		_ = res.Close(ctx)
+		return nil, err
+	}
+
 	db, err := registry.Postgres(ctx, cfg.DB, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	dialer, err := registry.SMTPDialer(cfg.Console.MailTimeout)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	core, err := buildConsoleCore(cfg, db.Pool(), dialer, log)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	pages, err := web.NewPortal(web.PortalDeps{
@@ -78,7 +86,7 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 		Log:   log,
 	})
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	panel, err := web.NewAdmin(web.AdminDeps{
@@ -89,7 +97,7 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 		Log:          log,
 	})
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	// Three listeners on purpose. The portal is public, readiness is not, and
@@ -97,12 +105,12 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 	// these on one port would publish something that must not be.
 	portal, err := servePortal(ctx, cfg.Console.PortalAddr, cfg.HTTPServer, pages, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	health, err := httpServer(ctx, binaryConsole, cfg.HTTP.Addr, cfg.HTTPServer, log, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	// cfg.Console.AdminAddr defaults to the loopback interface, not every
@@ -111,11 +119,13 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 	// in one binary, and what keeps them apart".
 	admin, err := serveAdmin(ctx, cfg.Console.AdminAddr, cfg.HTTPServer, panel, res)
 	if err != nil {
-		return abandon(ctx, res, err)
+		return abandon(ctx, res, notify, err)
 	}
 
 	log.InfoContext(ctx, "console started",
 		"env", cfg.App.Env, "portal", portal.Addr(), "http", health.Addr(), "admin", admin.Addr())
+	notify.Notify(ctx, "console started",
+		"env "+cfg.App.Env+", portal "+portal.Addr()+", admin "+admin.Addr())
 
 	return &App{
 		log:       log,

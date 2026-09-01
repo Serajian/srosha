@@ -46,6 +46,27 @@ func SenderClient(c settings.HTTPClient, res *Resources) (*http.Client, error) {
 	}, res)
 }
 
+// AlertClient reaches the operator's own Gotify, which is self-hosted and may
+// well be on a private network -- so unlike the webhook client, it refuses
+// nothing on that basis. It is the operator's own address, not one a stranger
+// supplied.
+//
+// Its own client and not the sender's, because the two must not share a fate:
+// the whole point of an alert is to arrive when the sending path is the thing
+// that is broken.
+func AlertClient(a settings.Alert, res *Resources) (*http.Client, error) {
+	return openHTTPClient("alert http client", httpclient.Config{
+		Timeout:              a.Timeout,
+		DialTimeout:          alertDialTimeout,
+		TLSTimeout:           alertTLSTimeout,
+		MaxIdleConns:         alertIdleConns,
+		MaxIdleConnsPerHost:  alertIdleConns,
+		IdleConnTimeout:      alertIdleTimeout,
+		DenyPrivateAddresses: false,
+		FollowRedirects:      true,
+	}, res)
+}
+
 // openHTTPClient registers with no readiness check: a client has no destination
 // of its own, so there is nothing to ask. Closing is real, though -- idle
 // sockets stay open to whoever was called last.

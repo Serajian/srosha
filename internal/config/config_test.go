@@ -284,3 +284,60 @@ func TestRetentionDefaultsAreFarApart(t *testing.T) {
 		t.Errorf("Schedule = %q, want an hour somebody chose", c.Retention.Schedule)
 	}
 }
+
+// Alerts are off unless both Gotify values are set.
+//
+// A half-configured alerter that silently sends nowhere is worse than one that
+// is plainly off: nobody finds out until the day they needed it.
+func TestAlertsNeedBothGotifyValues(t *testing.T) {
+	for name, env := range map[string]map[string]string{
+		"nothing set": {},
+		"no token": {
+			"NOTIF_ALERT_GOTIFY_SERVER_URL": "https://push.example",
+		},
+		"no server": {
+			"NOTIF_ALERT_GOTIFY_TOKEN": "t",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			setMinimum(t)
+			for k, v := range env {
+				t.Setenv(k, v)
+			}
+
+			cfg, err := config.LoadGateway()
+			if err != nil {
+				t.Fatalf("LoadGateway: %v", err)
+			}
+			if cfg.Alert.Configured() {
+				t.Error("alerts report themselves configured while incomplete")
+			}
+		})
+	}
+}
+
+// And on when they are all there.
+func TestAlertsAreOnWhenBothGotifyValuesAreSet(t *testing.T) {
+	setMinimum(t)
+	t.Setenv("NOTIF_ALERT_GOTIFY_SERVER_URL", "https://push.example")
+	t.Setenv("NOTIF_ALERT_GOTIFY_TOKEN", "t")
+
+	cfg, err := config.LoadGateway()
+	if err != nil {
+		t.Fatalf("LoadGateway: %v", err)
+	}
+	if !cfg.Alert.Configured() {
+		t.Error("alerts are off with everything set")
+	}
+}
+
+// A queue of zero is not a smaller queue, it is a switched-off alerter that
+// still looks configured.
+func TestAQueueOfZeroIsRefused(t *testing.T) {
+	setMinimum(t)
+	t.Setenv("NOTIF_ALERT_QUEUE", "0")
+
+	if _, err := config.LoadGateway(); err == nil {
+		t.Fatal("a queue of zero was accepted")
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/Serajian/srosha/internal/adapter/alert"
 	srhttp "github.com/Serajian/srosha/internal/adapter/api/http"
 	"github.com/Serajian/srosha/internal/config/settings"
 	"github.com/Serajian/srosha/internal/infra/httpserver"
@@ -126,7 +127,15 @@ func checks(res *registry.Resources) func(context.Context) []srhttp.Check {
 
 // abandon closes whatever already opened before giving up on the rest. Without
 // it a failure halfway through startup leaks a pool nobody will ever close.
-func abandon(ctx context.Context, res *registry.Resources, err error) (*App, error) {
+func abandon(
+	ctx context.Context, res *registry.Resources, a *alert.Alerter, err error,
+) (*App, error) {
+	// Told before the close, because the close is what drains the alerter. A
+	// deploy that dies on the way up is the case an operator most wants to
+	// hear about, and the logs it left are inside a container that is going
+	// away.
+	a.Notify(ctx, "startup failed", err.Error())
+
 	_ = res.Close(ctx)
 	return nil, err
 }
