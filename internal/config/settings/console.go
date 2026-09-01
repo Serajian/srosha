@@ -50,6 +50,14 @@ type Console struct {
 	// SecureCookie is off only for local development over plain http. A cookie
 	// without it travels in the clear.
 	SecureCookie bool
+
+	// TrialPerMinute bounds how often one source may send a test message. The
+	// button really sends, so without a cap it is a way to make srosha's server
+	// send whatever somebody wants as fast as they can click.
+	//
+	// It is not the source's sending quota and cannot be: the gateway's limiter
+	// is a separate bucket in a separate process.
+	TrialPerMinute int
 }
 
 // PortalAddr and AdminAddr are the two surfaces' listen addresses, each with
@@ -82,7 +90,13 @@ func LoadConsole(r *env.Reader, production bool) Console {
 		},
 		MailTimeout:  r.Duration("CONSOLE_SMTP_TIMEOUT", 15*time.Second),
 		SecureCookie: r.Bool("CONSOLE_SECURE_COOKIE", true),
+
+		TrialPerMinute: r.Int("CONSOLE_TRIAL_PER_MINUTE", 3),
 	}
+
+	r.Check(c.TrialPerMinute > 0,
+		"NOTIF_CONSOLE_TRIAL_PER_MINUTE must be above zero: a cap of zero is "+
+			"not a limit, it is the button refused forever")
 
 	r.Check(c.SMTP.Host != "",
 		"NOTIF_CONSOLE_SMTP_HOST is required: nobody can sign in without it")
