@@ -38,6 +38,7 @@ Host: one Linux server running Docker + Dokploy, shared with unrelated apps.
 | Compose path | `docker-compose.yml`, at the **repository root** — the application only, see below |
 | Dockerfile | `deployment/app/Dockerfile` — one image, four binaries: the three services and `migrate` |
 | Ignore file | `.dockerignore` at the **repository root**, because that is the build context |
+| Infrastructure files | `deployment/infra/` — postgres, nats and nginx, **applied by hand**, see its README |
 | Image | `srosha:latest`; the binary is selected by `command` |
 | Runtime base | `alpine:3.22` — distroless was tried and the server cannot reach `gcr.io` |
 | Isolated Deployment | OFF |
@@ -47,6 +48,15 @@ Host: one Linux server running Docker + Dokploy, shared with unrelated apps.
 | `api.srosha.ir` | gateway, gRPC | nginx `grpc_pass` straight to `127.0.0.1:50051` |
 | `panel.srosha.ir` | console, the customer portal | nginx → Traefik `web` → 8090 |
 | `admin.srosha.ir` | console, the admin panel | nginx → Traefik `web` → 8092 |
+| `db.srosha.ir` | Adminer, for looking at the database | nothing — see below |
+
+`db.srosha.ir` is a **grey-cloud** A record pointing at the host's Tailscale
+address, `100.117.112.40`. The name is public and the address is not routable
+from the internet, so Adminer is reachable from a device on the tailnet and from
+nowhere else. It has no Traefik router, no nginx server block and no certificate,
+which is why the browser says the page is not secure — the traffic is inside
+WireGuard instead. Open it at `http://db.srosha.ir:8083/?pgsql=postgres`, which
+also preselects the driver the login form otherwise gets wrong.
 
 **nginx owns 80 and 443 on this host, not Traefik.** Traefik sits behind it and
 is published only on `127.0.0.1:8000`, plain HTTP. So TLS and every certificate
@@ -96,9 +106,15 @@ docker-compose.yml
 
 ## Services and ports
 
-One host port, and only one: the gateway's 50051, bound to `127.0.0.1` so that
-the only thing which can reach it is a process already on the server — which is
-nginx. Every other port below is `expose:` on the private network.
+Two host ports on the whole machine, and both are bound to an address the
+internet cannot reach: the gateway's 50051 on `127.0.0.1`, so that only nginx
+can call it, and Adminer's 8083 on loopback and the Tailscale address. Every
+other port below is `expose:` on the private network, reachable only from
+`srosha-net`.
+
+`0.0.0.0` appears nowhere, and that is the property to preserve. The test is
+`docker port <container>` — if the left-hand side has no address on it, the
+service is on the public internet.
 
 | Service | Port | Purpose |
 | --- | --- | --- |
@@ -111,6 +127,7 @@ nginx. Every other port below is `expose:` on the private network.
 | nats | 4222 | clients |
 | nats | 8222 | monitoring JSON — unauthenticated, never published |
 | postgres | 5432 | clients |
+| adminer | 8083 | published twice: `127.0.0.1` and the host's Tailscale address, never `0.0.0.0` |
 
 There is no REST surface and none is planned. srosha is called by other services,
 not by browsers, and gRPC is what those speak: a second surface would be a second

@@ -1,0 +1,103 @@
+# NATS + JetStream for the srosha notification service.
+#
+# NOT deployed from this repository. See deployment/infra/README.md.
+#
+# Deploy as its own Dokploy Compose service, separate from the application, so
+# that redeploying the app never restarts the broker.
+#
+# PREREQUISITE (already done):
+#   docker network create srosha-net
+#
+# Dokploy settings for this service:
+#   - Source: Raw, paste this file
+#   - Advanced -> Isolated Deployment: OFF
+#   - Advanced -> Mounts -> File Mount:
+#         Mount Path: nats-server.conf
+#         Content:    the whole nats-server.conf
+#   - Environment: the three NATS_*_PASSWORD variables
+#   - Domains: NONE. This must never be reachable from the internet.
+#
+# After deploying, the build log must say "Detected: 1 mounts". If it says
+# 0 mounts, the file was not created and NATS will die with "config file not
+# found" -- fix that before anything else.
+
+services:
+  nats:
+    image: nats:2.14-alpine
+    restart: unless-stopped
+
+    # Redundant -- the image's own CMD is already
+    # ["nats-server","--config","/etc/nats/nats-server.conf"] -- but said out
+    # loud so a change to the image's default cannot quietly change ours.
+    command: ["-c", "/etc/nats/nats-server.conf"]
+
+    # expose, NOT ports. `ports` would publish 4222 on the host and put the
+    # broker on the public internet; NATS is a raw TCP protocol, so Traefik
+    # offers it no protection.
+    #
+    # To talk to it, put a client on the same network rather than opening a
+    # door to the host:
+    #   docker run --rm -it --network srosha-net natsio/nats-box \
+    #     nats -s nats://admin:<password>@nats:4222 stream ls
+    expose:
+      - "4222"
+      - "8222"
+
+    # A missing variable is not silently an empty password: nats-server exits 1
+    # with `variable reference for 'NATS_GATEWAY_PASSWORD' ... can not be
+    # found`. Verified.
+    environment:
+      NATS_GATEWAY_PASSWORD: ${NATS_GATEWAY_PASSWORD}
+      NATS_DISPATCHER_PASSWORD: ${NATS_DISPATCHER_PASSWORD}
+      NATS_ADMIN_PASSWORD: ${NATS_ADMIN_PASSWORD}
+
+    volumes:
+      # Named volume: JetStream state must survive redeploys. Losing it means
+      # losing durable consumers and every message's delivery count -- which is
+      # where the entire retry policy lives.
+      - jetstream:/data/jetstream
+
+      # Dokploy writes File Mounts into a files/ directory beside the compose
+      # file and runs compose with --project-directory <that dir>/code, so this
+      # relative path resolves to /etc/dokploy/compose/<app>/files/. Confirmed
+      # against the deploy log of the postgres service on this host.
+      - ../files/nats-server.conf:/etc/nats/nats-server.conf:ro
+
+    healthcheck:
+      # /healthz reports JetStream readiness, not just process liveness.
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # 60s, not 20s. By default /healthz checks that every stream and consumer
+      # is healthy, and after a restart that means replaying the store first.
+      # With max_file_store at 8GB the recovery can outlast a short window, and
+      # the container then sits `unhealthy` while it is in fact working.
+      start_period: 60s
+
+    # JetStream flushes state to disk on the way out. Docker's default 10s can
+    # cut that short, and the next start begins with recovery instead.
+    stop_grace_period: 1m
+
+    # Hard ceiling. Together with max_file_store in the config, this keeps a
+    # runaway stream from starving Postgres and the other apps on this host.
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+    networks:
+      - srosha-net
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  jetstream:
+
+networks:
+  srosha-net:
+    external: true

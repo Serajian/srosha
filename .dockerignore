@@ -21,3 +21,8 @@ docs/
 # ./sdk/go`, and the generated protobuf that internal/adapter/api/grpcsrv
 # imports lives inside it. Excluding it fails `go mod download` before a single
 # line is compiled.
+
+# The infrastructure files, which describe the machine rather than living in
+# the image. Excluded so that editing an nginx server block does not invalidate
+# the build cache and force a full Go rebuild on the next deploy.
+deployment/infra/
