@@ -314,6 +314,22 @@ truncated at the third `$` — measured, the container received `$2a$11` and
 nothing more. Double every `$` when pasting into Dokploy. `env_file:` is not an
 escape hatch; it is interpolated too.
 
+**Nothing here enforces any of this, and it showed.** On 2026-09-01 the `gateway`
+and `dispatcher` NATS passwords turned out to be **eight characters** — against
+the `openssl rand -hex 24` written three paragraphs above, in production, for
+however long. No test failed, no check complained, and no log line said
+anything: a short password is exactly as quiet as a long one.
+
+What finally caught them was an accident. `nats server passwd` refuses a
+password under ten characters, so two of the three hashes came back empty while
+bcrypt was being rolled out. Both were rotated to `openssl rand -hex 24` in the
+same window, which also meant updating `NOTIF_GATEWAY_MQ_URL` and
+`NOTIF_DISPATCHER_MQ_URL`, since the plaintext lives in the client's URL.
+
+Treat a tool refusing a credential as information, not as an obstacle to work
+around. And when you touch a password here, check its length while you are
+looking at it — that is the only inspection this rule gets.
+
 ### Secrets in code
 
 Every secret-typed config field uses `settings.Secret`, which redacts itself in
