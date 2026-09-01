@@ -128,9 +128,11 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 		"env "+cfg.App.Env+", portal "+portal.Addr()+", admin "+admin.Addr())
 
 	return &App{
-		log:       log,
-		resources: res,
-		failed:    watch(portal.Err(), health.Err(), admin.Err()),
+		log:        log,
+		resources:  res,
+		watch:      newWatcher(notify, log),
+		watchEvery: cfg.Alert.ReadyEvery,
+		failed:     watch(portal.Err(), health.Err(), admin.Err()),
 	}, nil
 }
 

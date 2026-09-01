@@ -143,9 +143,11 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 	notify.Notify(ctx, "dispatcher started", "env "+cfg.App.Env)
 
 	return &App{
-		log:       log,
-		resources: res,
-		failed:    watch(health.Err()),
+		log:        log,
+		resources:  res,
+		watch:      newWatcher(notify, log),
+		watchEvery: cfg.Alert.ReadyEvery,
+		failed:     watch(health.Err()),
 	}, nil
 }
 

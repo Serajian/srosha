@@ -83,9 +83,11 @@ func Gateway(ctx context.Context, cfg config.Gateway) (*App, error) {
 	notify.Notify(ctx, "gateway started", "env "+cfg.App.Env+", grpc "+grpc.Addr())
 
 	return &App{
-		log:       log,
-		resources: res,
-		failed:    watch(grpc.Err(), health.Err()),
+		log:        log,
+		resources:  res,
+		watch:      newWatcher(notify, log),
+		watchEvery: cfg.Alert.ReadyEvery,
+		failed:     watch(grpc.Err(), health.Err()),
 	}, nil
 }
 

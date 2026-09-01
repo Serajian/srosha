@@ -9,6 +9,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/Serajian/srosha/internal/adapter/alert"
 	srhttp "github.com/Serajian/srosha/internal/adapter/api/http"
@@ -27,6 +28,10 @@ type App struct {
 	// and the health endpoint -- and either one stopping on its own means the
 	// process is answering less than it claims to.
 	failed <-chan error
+
+	// watch is the readiness loop, or nil. It runs for as long as Run does.
+	watch      *watcher
+	watchEvery time.Duration
 }
 
 // Run blocks until the process is asked to stop, or until something that was
@@ -35,6 +40,12 @@ type App struct {
 // A listener that dies is the case worth the select: without it the process
 // would sit there healthy and answering nothing.
 func (a *App) Run(ctx context.Context) error {
+	// Started here rather than at build time so nothing is polling a process
+	// that never got as far as running.
+	if a.watch != nil {
+		go a.watch.run(ctx, a.resources, a.watchEvery)
+	}
+
 	select {
 	case <-ctx.Done():
 		a.log.InfoContext(ctx, "shutting down")
