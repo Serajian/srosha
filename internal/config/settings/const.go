@@ -12,3 +12,11 @@ package settings
 // With the defaults the real ratio is over a thousand, so this is never in the
 // way. It is here for the day somebody changes one number without the other.
 const minRetentionMultiple = 24
+
+// maxDiskFloorGB bounds NOTIF_ALERT_DISK_FLOOR_GB. Not a real limit on disks,
+// just far enough above any of them that a value past it is a typo rather than
+// an intention -- and low enough that the shift to bytes cannot overflow.
+const maxDiskFloorGB = 1 << 20 // a petabyte, in gigabytes
+
+// maxDiskFloor is the same bound in bytes.
+const maxDiskFloor = uint64(maxDiskFloorGB) << 30

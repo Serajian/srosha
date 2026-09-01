@@ -139,10 +139,15 @@ has no contract, no versioning and no client — nothing outside a browser is me
 to parse it, and nothing does.
 
 Three ports in this table are reachable from outside — the gateway's gRPC, the
-console's portal and the console's admin surface — and all three go out through
-Traefik on `dokploy-network`, never through `ports:`. The admin surface is public
-deliberately; what keeps a customer out of it is a cookie per host rather than a
-network, and `docs/ARCHITECTURE.md` is where that is argued.
+console's portal and the console's admin surface — and all three arrive through
+**nginx**. The console's two go on to Traefik; the gateway's does not, because
+`grpc_pass` needs HTTP/2 to the backend and Traefik's entrypoint here is
+HTTP/1.1. That is the one `ports:` in the application's compose, and it is bound
+to `127.0.0.1` so nginx is the only thing that can use it.
+
+The admin surface is public deliberately; what keeps a customer out of it is a
+cookie per host rather than a network, and `docs/ARCHITECTURE.md` is where that
+is argued.
 
 The health ports carry no API at all. `/healthz` is there for the platform to
 decide whether a container is alive; nothing a customer writes should ever call
@@ -230,6 +235,7 @@ service starts should not need the service's secrets.
 | webhook | `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ | — |
 | telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ | ✅ |
 | alerts | `NOTIF_ALERT_GOTIFY_SERVER_URL`, `NOTIF_ALERT_GOTIFY_TOKEN`, `NOTIF_ALERT_QUEUE`, `NOTIF_ALERT_TIMEOUT`, `NOTIF_ALERT_READY_EVERY` | ✅ | ✅ | ✅ |
+| disk alert | `NOTIF_ALERT_DISK_FLOOR_GB`, `NOTIF_ALERT_DISK_PATH`, `NOTIF_ALERT_DISK_EVERY` | — | ✅ | — |
 | console | `NOTIF_CONSOLE_SMTP_HOST`, `NOTIF_CONSOLE_SMTP_PORT`, `NOTIF_CONSOLE_SMTP_USER`, `NOTIF_CONSOLE_SMTP_PASSWORD`, `NOTIF_CONSOLE_SMTP_FROM`, `NOTIF_CONSOLE_SMTP_TIMEOUT`, `NOTIF_CONSOLE_SECURE_COOKIE`, `NOTIF_CONSOLE_TRIAL_PER_MINUTE` | — | — | ✅ |
 | portal | `NOTIF_PORTAL_ADDR` | — | — | ✅ |
 | admin | `NOTIF_ADMIN_ADDR`, `NOTIF_ADMIN_LIST_LIMIT` | — | — | ✅ |
@@ -253,6 +259,22 @@ its own http client and reaches Gotify directly.
 | `NOTIF_ALERT_QUEUE` | how many alerts may wait before one is dropped. Default 64 |
 | `NOTIF_ALERT_TIMEOUT` | one push. Default 10s. Nothing waits on it |
 | `NOTIF_ALERT_READY_EVERY` | how often a binary asks itself whether its dependencies are there. Default 30s |
+| `NOTIF_ALERT_DISK_FLOOR_GB` | free gigabytes worth waking somebody for. Default 5 |
+| `NOTIF_ALERT_DISK_PATH` | which mount point. Default `/` |
+| `NOTIF_ALERT_DISK_EVERY` | how often to look. Default `@every 15m` |
+
+**The disk alert runs in the dispatcher alone**, though all three binaries could
+ask. Three processes watching one disk is three copies of one alert, and the
+dispatcher is the one that already has a scheduler.
+
+**Free gigabytes, not a percentage.** 90% of a 96 GB disk is 10 GB of room and
+90% of a 20 GB disk is 2 GB; the room is what decides whether Postgres can still
+write. The default is far below where this host sits, deliberately — a threshold
+that fires the day it is introduced is one switched off the same week.
+
+Inside a container this reads the host's filesystem, because the overlay sits on
+it. Measured on the deployed host: `df /` inside the dispatcher and on the host
+agreed to within rounding.
 
 **There is no application id key, and there should not be.** Gotify ignores the
 `appid` parameter entirely: the token is what selects the application. Verified

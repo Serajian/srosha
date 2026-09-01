@@ -102,6 +102,15 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 		return abandon(ctx, res, notify, err)
 	}
 
+	// Nothing else watches the disk. It is not a request anybody makes, so no
+	// handler could notice it filling -- and when it does fill, Postgres stops
+	// writing and takes the service with it.
+	capacity := usecase.NewCapacity(
+		diskFree{}, notify, log, cfg.Alert.DiskPath, cfg.Alert.DiskFloor,
+	)
+	capacity.Watch("postgres", postgres.NewSizeReporter(db.Pool()))
+	capacity.Watch("jetstream", jetstreamBytes{mq})
+
 	// The broker's way in.
 	_, err = registry.Consumer(
 		ctx, "dispatch consumer", mq.JetStream(), core.stream, cfg.Dispatch, core.dispatcher, res,
@@ -127,6 +136,14 @@ func Dispatcher(ctx context.Context, cfg config.Dispatcher) (*App, error) {
 			Name:     "retention",
 			Schedule: cfg.Retention.Schedule,
 			Run:      core.retention.Purge,
+		},
+		{
+			// The dispatcher alone, though all three binaries could ask: three
+			// processes watching one disk is three copies of the same alert.
+			// This is the one that already has a scheduler.
+			Name:     "capacity",
+			Schedule: cfg.Alert.DiskEvery,
+			Run:      capacity.Check,
 		},
 	}, res)
 	if err != nil {
