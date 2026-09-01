@@ -56,6 +56,9 @@ services:
       NOTIF_RATELIMIT_PER_MINUTE: ${NOTIF_RATELIMIT_PER_MINUTE}
       NOTIF_RETENTION_AGE: ${NOTIF_RETENTION_AGE}
       NOTIF_TELEMETRY_LOG_LEVEL: ${NOTIF_TELEMETRY_LOG_LEVEL}
+      # Empty means alerts are off. Both, or neither -- see docs/CONFIG.md.
+      NOTIF_ALERT_GOTIFY_SERVER_URL: ${NOTIF_ALERT_GOTIFY_SERVER_URL}
+      NOTIF_ALERT_GOTIFY_TOKEN: ${NOTIF_ALERT_GOTIFY_TOKEN}
     healthcheck:
       test: ["CMD", "/app/gateway", "healthcheck"]
       interval: 15s
@@ -110,6 +113,9 @@ services:
       NOTIF_SENDER_TELEGRAM_TOKEN: ${NOTIF_SENDER_TELEGRAM_TOKEN}
       NOTIF_SENDER_BALE_TOKEN: ${NOTIF_SENDER_BALE_TOKEN}
       NOTIF_TELEMETRY_LOG_LEVEL: ${NOTIF_TELEMETRY_LOG_LEVEL}
+      # Empty means alerts are off. Both, or neither -- see docs/CONFIG.md.
+      NOTIF_ALERT_GOTIFY_SERVER_URL: ${NOTIF_ALERT_GOTIFY_SERVER_URL}
+      NOTIF_ALERT_GOTIFY_TOKEN: ${NOTIF_ALERT_GOTIFY_TOKEN}
     healthcheck:
       test: ["CMD", "/app/dispatcher", "healthcheck"]
       interval: 15s
@@ -152,6 +158,9 @@ services:
       NOTIF_CONSOLE_SMTP_FROM: ${NOTIF_CONSOLE_SMTP_FROM}
       NOTIF_CONSOLE_SECURE_COOKIE: ${NOTIF_CONSOLE_SECURE_COOKIE}
       NOTIF_TELEMETRY_LOG_LEVEL: ${NOTIF_TELEMETRY_LOG_LEVEL}
+      # Empty means alerts are off. Both, or neither -- see docs/CONFIG.md.
+      NOTIF_ALERT_GOTIFY_SERVER_URL: ${NOTIF_ALERT_GOTIFY_SERVER_URL}
+      NOTIF_ALERT_GOTIFY_TOKEN: ${NOTIF_ALERT_GOTIFY_TOKEN}
     healthcheck:
       test: ["CMD", "/app/console", "healthcheck"]
       interval: 15s
