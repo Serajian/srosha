@@ -14,7 +14,8 @@
 #   - Advanced -> Mounts -> File Mount:
 #         Mount Path: nats-server.conf
 #         Content:    the whole nats-server.conf
-#   - Environment: the three NATS_*_PASSWORD variables
+#   - Environment: the three NATS_*_PASSWORD variables, each holding a
+#     BCRYPT HASH and not a password -- see the note in nats-server.conf
 #   - Domains: NONE. This must never be reachable from the internet.
 #
 # After deploying, the build log must say "Detected: 1 mounts". If it says
