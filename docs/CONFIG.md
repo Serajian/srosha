@@ -42,11 +42,21 @@ Host: one Linux server running Docker + Dokploy, shared with unrelated apps.
 | Runtime base | `alpine:3.22` — distroless was tried and the server cannot reach `gcr.io` |
 | Isolated Deployment | OFF |
 
-| Hostname | Reaches |
-| --- | --- |
-| `api.srosha.ir` | gateway, gRPC — the router sets `scheme=h2c` |
-| `panel.srosha.ir` | console, the customer portal |
-| `admin.srosha.ir` | console, the admin panel |
+| Hostname | Reaches | Through |
+| --- | --- | --- |
+| `api.srosha.ir` | gateway, gRPC | nginx `grpc_pass` straight to `127.0.0.1:50051` |
+| `panel.srosha.ir` | console, the customer portal | nginx → Traefik `web` → 8090 |
+| `admin.srosha.ir` | console, the admin panel | nginx → Traefik `web` → 8092 |
+
+**nginx owns 80 and 443 on this host, not Traefik.** Traefik sits behind it and
+is published only on `127.0.0.1:8000`, plain HTTP. So TLS and every certificate
+are nginx's, and `websecure` is a Traefik entrypoint nothing knocks on: a router
+placed there loads, reports `enabled`, resolves a healthy backend, and receives
+nothing at all. Every router on this host is on `web`.
+
+`api.srosha.ir` skips Traefik entirely. `grpc_pass` speaks HTTP/2 straight to the
+backend and Traefik's `web` entrypoint is HTTP/1.1; enabling h2c there would mean
+editing the `traefik.yml` this host shares with every other application on it.
 
 **The deployed compose is at the repository root, and has to be.** Dokploy runs
 `docker compose --project-directory <repo root>`, and compose resolves both the
@@ -86,12 +96,13 @@ docker-compose.yml
 
 ## Services and ports
 
-Nothing publishes a host port. Every port below is `expose:` on the private
-network; `ports:` is never used.
+One host port, and only one: the gateway's 50051, bound to `127.0.0.1` so that
+the only thing which can reach it is a process already on the server — which is
+nginx. Every other port below is `expose:` on the private network.
 
 | Service | Port | Purpose |
 | --- | --- | --- |
-| gateway | 50051 | gRPC — `api.srosha.ir`, h2c behind the terminator |
+| gateway | 50051 | gRPC — published on `127.0.0.1:50051` for nginx's `grpc_pass` |
 | gateway | 8080 | `/healthz` |
 | dispatcher | 8081 | `/healthz` |
 | console | 8090 | the customer portal's pages — `panel.srosha.ir` |
