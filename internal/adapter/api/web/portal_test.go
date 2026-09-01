@@ -123,6 +123,20 @@ func (m *memCodes) ReadNewest(_ context.Context, id shared.ID) (*logincode.Login
 
 func (m *memCodes) Spend(_ context.Context, _ *logincode.LoginCode) error { return nil }
 
+// Forget drops the row, as the repository does. A fake that kept it would let
+// a failed send go on costing the quota with every test still green.
+func (m *memCodes) Forget(_ context.Context, id shared.ID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, c := range m.rows {
+		if c.ID == id {
+			m.rows = append(m.rows[:i], m.rows[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
 func (m *memCodes) CountSince(_ context.Context, id shared.ID, since time.Time) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

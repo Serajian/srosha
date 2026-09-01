@@ -91,3 +91,47 @@ func TestCountingRecentRequests(t *testing.T) {
 		t.Errorf("counted %d, want only the recent one", n)
 	}
 }
+
+// Forgetting a code takes it off the count, which is the whole reason it
+// exists: a send that failed must not spend somebody's allowance.
+func TestForgettingACodeTakesItOffTheCount(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+	ctx := context.Background()
+
+	u := aStoredUser(t, pool, "SIV", "ops2@acme.test")
+	repo := postgres.NewLoginCodeRepository(pool)
+	at := time.Now().UTC().Truncate(time.Microsecond)
+
+	kept := logincode.New(shared.ID(ulid("CD6")), u.ID, "333333", at)
+	lost := logincode.New(shared.ID(ulid("CD7")), u.ID, "444444", at)
+	for _, c := range []*logincode.LoginCode{kept, lost} {
+		if err := repo.Create(ctx, c); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+	}
+
+	if err := repo.Forget(ctx, lost.ID); err != nil {
+		t.Fatalf("Forget: %v", err)
+	}
+
+	n, err := repo.CountSince(ctx, u.ID, at.Add(-time.Minute))
+	if err != nil {
+		t.Fatalf("CountSince: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("counted %d after forgetting one of two, want 1", n)
+	}
+}
+
+// A code that is not there is not an error. Forget runs on a path where the
+// send already failed, and a second error would replace the one worth having.
+func TestForgettingACodeThatIsNotThere(t *testing.T) {
+	pool := connect(t)
+	truncate(t, pool)
+
+	repo := postgres.NewLoginCodeRepository(pool)
+	if err := repo.Forget(context.Background(), shared.ID(ulid("CD8"))); err != nil {
+		t.Errorf("Forget on a missing row = %v, want nil", err)
+	}
+}

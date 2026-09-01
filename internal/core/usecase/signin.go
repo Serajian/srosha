@@ -83,10 +83,25 @@ func (s *SignIn) Request(ctx context.Context, email string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.codes.Create(ctx, logincode.New(s.newID(), u.ID, code, now)); err != nil {
+	made := logincode.New(s.newID(), u.ID, code, now)
+	if err := s.codes.Create(ctx, made); err != nil {
 		return err
 	}
-	return s.mail.SendCode(ctx, u.Email, code)
+
+	if err := s.mail.SendCode(ctx, u.Email, code); err != nil {
+		// Nothing reached an inbox, so nothing was spent. Taking the row back
+		// is what makes the count mean codes SENT rather than codes attempted
+		// -- see Repository.Forget.
+		//
+		// Its own failure is ignored, and deliberately. The caller is already
+		// being told the send failed, and that is the error worth having; a
+		// second one about bookkeeping would replace it. This type has no
+		// logger and does not need one for a line that costs, at worst, one
+		// wasted allowance out of five.
+		_ = s.codes.Forget(ctx, made.ID)
+		return err
+	}
+	return nil
 }
 
 // find returns the person behind an address, creating the customer it will

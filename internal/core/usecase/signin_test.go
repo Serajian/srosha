@@ -208,3 +208,47 @@ func TestSigningOutEndsIt(t *testing.T) {
 		t.Error("a session survived being signed out of")
 	}
 }
+
+// A code that was never sent must not cost the quota.
+//
+// The limit exists so nobody can fill a stranger's inbox, and a send that
+// failed filled nothing. Charging for it locks the account's own owner out
+// because OUR mailer is broken -- which is what happened in production on
+// 2026-09-01: five failed sends, an hour of refusals, and not one code
+// delivered.
+func TestAFailedSendCostsNoQuota(t *testing.T) {
+	r := newSignInRig(t)
+	r.mail.err = errors.New("smtp is down")
+
+	// Twice the limit, and every one of them must fail on the mail rather
+	// than on the count.
+	for i := range usecase.MaxCodeRequests * 2 {
+		err := r.signIn.Request(context.Background(), "a@acme.test")
+		if errors.Is(err, logincode.ErrTooManyRequests) {
+			t.Fatalf("request %d was refused for asking too often, "+
+				"though nothing had been sent", i+1)
+		}
+		if err == nil {
+			t.Fatalf("request %d reported success with a broken mailer", i+1)
+		}
+	}
+
+	// And the moment the mailer works, the account is not locked out.
+	r.mail.err = nil
+	if err := r.signIn.Request(context.Background(), "a@acme.test"); err != nil {
+		t.Errorf("the first working send was refused: %v", err)
+	}
+}
+
+// The other half, which must not change: a code that WAS sent still counts.
+func TestASentCodeStillCostsQuota(t *testing.T) {
+	r := newSignInRig(t)
+
+	var err error
+	for range usecase.MaxCodeRequests + 1 {
+		err = r.signIn.Request(context.Background(), "a@acme.test")
+	}
+	if !errors.Is(err, logincode.ErrTooManyRequests) {
+		t.Errorf("Request = %v, want ErrTooManyRequests", err)
+	}
+}

@@ -57,6 +57,19 @@ func (q *Queries) CreateLoginCode(ctx context.Context, arg CreateLoginCodeParams
 	return err
 }
 
+const forgetLoginCode = `-- name: ForgetLoginCode :exec
+DELETE FROM login_codes
+WHERE id = $1
+`
+
+// Removes a code that was stored and then never sent. Deleted rather than
+// marked: a code that reached nobody is not history, and the request limit
+// counts rows.
+func (q *Queries) ForgetLoginCode(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, forgetLoginCode, id)
+	return err
+}
+
 const readNewestLoginCode = `-- name: ReadNewestLoginCode :one
 SELECT id, user_id, code, expires_at, attempts, used_at, created_at
 FROM login_codes

@@ -58,6 +58,18 @@ func (r *LoginCodeRepository) Spend(ctx context.Context, c *logincode.LoginCode)
 	return wroteCode(rows, err, "spend login code")
 }
 
+// Forget removes a code that was never sent, so it costs nobody a request.
+//
+// A missing row is not an error here. Whatever it was meant to undo is already
+// undone, and the caller is on a path where a second failure would replace the
+// error that actually matters.
+func (r *LoginCodeRepository) Forget(ctx context.Context, id shared.ID) error {
+	if err := r.q(ctx).ForgetLoginCode(ctx, id.String()); err != nil {
+		return failed("forget login code", err)
+	}
+	return nil
+}
+
 func (r *LoginCodeRepository) CountSince(
 	ctx context.Context, userID shared.ID, since time.Time,
 ) (int, error) {

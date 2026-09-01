@@ -22,4 +22,14 @@ type Repository interface {
 	// CountSince is how many codes this person has asked for in a window, which
 	// is what the request limit is measured against.
 	CountSince(ctx context.Context, userID shared.ID, since time.Time) (int, error)
+
+	// Forget removes a code that was stored and then never sent.
+	//
+	// The row has to be written before the send -- delivering a code that was
+	// not stored would hand somebody one that cannot be checked -- so a failed
+	// send leaves one behind. Left there it counts against the request limit,
+	// and that limit exists to stop somebody filling a stranger's inbox, which
+	// a failed send did not do. Charging for it locks the account's own owner
+	// out because our mailer is broken.
+	Forget(ctx context.Context, id shared.ID) error
 }
