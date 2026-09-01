@@ -266,10 +266,17 @@ Gotify is self-hosted, so there is no host that is right for everybody. It
 must be https — the application token travels as a query parameter, not a
 header, so an http address would carry it in the clear.
 
-The application token is the secret, sealed like every other credential's. A
-source's registered application id — the recipient this credential's messages
-go to — is not part of the credential at all; it is the delivery address,
-supplied per message the same way a phone number or a chat id is.
+The application token is the secret, sealed like every other credential's. It
+is also the whole of the addressing **at Gotify's end**: the token decides
+which application a message lands in, and the per-message address selects
+nothing there. It is still load-bearing here — the duplicate guard is
+`UNIQUE (notification_id, channel, address)`, so it is what keeps two Gotify
+deliveries in one message from collapsing into one.
+
+Verified 2026-09-01 against a stock Gotify 2.6.3, after months as a documented
+guess: a message sent with `appid=999`, which did not exist, arrived in the
+token's own application exactly like one sent with the right id and one sent
+with none.
 
 `NOTIF_SENDER_FCM_SERVICE_ACCOUNT` is **base64 of the whole service account json**,
 and it is the only key in this file that is encoded. A service account is

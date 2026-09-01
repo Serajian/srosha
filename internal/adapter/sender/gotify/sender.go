@@ -111,38 +111,32 @@ func (s *Sender) Send(ctx context.Context, m shared.Message) (string, error) {
 }
 
 // endpoint is the one place a credential and a recipient become a call to
-// Gotify. Read this before changing how either is used.
+// Gotify.
 //
-// ASSUMPTION, unverified -- this service has no network access to check it
-// against a real server. Gotify's documented Client-Server API posts a
-// message with
+// VERIFIED against a real server on 2026-09-01, after months as a documented
+// guess. Gotify's Client-Server API posts a message with
 //
 //	POST {server}/message?token={applicationToken}
 //
-// and the application token alone decides which application's subscribers
-// see it: a token is minted per application, so the documented request has
-// no field for an application id at all. Under that reading, the application
-// id the owner specified as this credential's address is redundant with the
-// token -- the token already says which application.
+// and **the token alone decides which application's subscribers see it**. A
+// token is minted per application, so the documented request has no field for
+// an application id -- and the server behaves exactly that way. Three requests
+// were made against a stock Gotify 2.6.3: one with the right `appid`, one with
+// none, and one with `appid=999`, which did not exist. All three returned 200
+// and all three landed in the token's own application.
 //
-// The address is not dropped for that. It travels as well, in a second query
-// parameter this service adds: `appid`. A stock Gotify server ignores query
-// parameters it does not define, so this is harmless against the documented
-// API, and it is exactly what would matter if the owner's server is not the
-// stock one -- see below.
+// So the `appid` parameter this service adds is inert at Gotify's end, and it
+// is still not pointless: the delivery table's duplicate guard is
+// UNIQUE (notification_id, channel, address), so the address is what keeps two
+// Gotify deliveries in one message from collapsing into one. Removing the
+// requirement would silently drop the second of any two Gotify routes.
 //
-// What would change if the owner's server uses a CLIENT token instead of an
-// application token: Gotify's client tokens are per-user, sent as the header
-// `X-Gotify-Key` rather than in the query string, and the documented API
-// accepts them only on the stream and management endpoints -- never on
-// POST /message, which refuses anything but an application token. A server
-// that accepts a client token here is already not the documented one, and it
-// is exactly the shape where `appid` would stop being a harmless extra and
-// start being how it picks the application to post into. This function would
-// then need the token moved into a header instead of the `token` query
-// parameter, and `appid` would become load-bearing rather than redundant.
-// That is the one thing to confirm with the owner before trusting this
-// further.
+// The old note about CLIENT tokens still holds as a caution: Gotify's client
+// tokens are per-user, sent as `X-Gotify-Key` rather than in the query string,
+// and the documented API accepts them only on the stream and management
+// endpoints -- never on POST /message. A server that accepts one here is not
+// the documented one, and this function would need the token moved into a
+// header.
 func (s *Sender) endpoint(applicationID string) (string, error) {
 	applicationID = strings.TrimSpace(applicationID)
 	if applicationID == "" {
