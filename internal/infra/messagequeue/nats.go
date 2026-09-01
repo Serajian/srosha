@@ -275,3 +275,20 @@ func (n *NATS) redact(err error) error {
 	}
 	return errors.New(strings.ReplaceAll(err.Error(), n.cfg.URL, "[REDACTED URL]"))
 }
+
+// StoredBytes is how much disk JetStream is using for this account.
+//
+// The same AccountInfo call readiness already makes, so it needs no permission
+// the gateway and dispatcher do not have: $JS.API.INFO is in both allow lists,
+// and narrowing them was done with that in mind.
+//
+// Account-wide rather than per stream. There is one stream, and if that ever
+// stops being true the number this reports is still the one that matters --
+// what JetStream is taking off the disk.
+func (n *NATS) StoredBytes(ctx context.Context) (uint64, error) {
+	info, err := n.js.AccountInfo(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("messagequeue: %w", n.redact(err))
+	}
+	return info.Store, nil
+}
