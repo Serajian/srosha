@@ -307,6 +307,13 @@ the container as `D`. Special characters break in at least three places:
 Generate with `openssl rand -hex 24`, or use a long hyphenated word phrase.
 Length provides the security; special characters only provide bugs.
 
+**`$` is the same trap, and it arrives with bcrypt.** The three
+`NATS_*_PASSWORD` variables hold bcrypt hashes, which are full of `$`. Compose
+expands `${...}` in the environment file, so a hash pasted as generated arrives
+truncated at the third `$` — measured, the container received `$2a$11` and
+nothing more. Double every `$` when pasting into Dokploy. `env_file:` is not an
+escape hatch; it is interpolated too.
+
 ### Secrets in code
 
 Every secret-typed config field uses `settings.Secret`, which redacts itself in

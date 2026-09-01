@@ -44,6 +44,14 @@ deliberate and was tested:
 
 - `nats-server` exits 1 with `variable reference for 'NATS_GATEWAY_PASSWORD'
   ... can not be found`. It does not start with an empty password.
+
+The three `NATS_*_PASSWORD` variables hold **bcrypt hashes**, not passwords.
+Make one with `docker run --rm natsio/nats-box nats server passwd --pass '<pw>'`,
+then **double every `$` before pasting it into Dokploy** — compose expands
+`${...}` in that file, so an unescaped hash arrives truncated at the third `$`.
+Clients still send the plaintext; the server never stores it. If
+`[WRN] Plaintext passwords detected` appears in the nats log, either somebody
+put a raw password back in or a hash was pasted unescaped.
 - adminer's second port uses `${ADMINER_BIND_IP:?...}`, because an empty value
   there would expand to `:8083:8080` — a database login form on `0.0.0.0`.
 
