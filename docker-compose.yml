@@ -15,8 +15,20 @@
 # docs/reference/srosha-infra-deploy.md section 2. Defining them here would
 # bring up a second database beside the real one, with an empty volume.
 #
-# Nothing publishes a host port. The only way in is Traefik, and only for the
-# three routers below.
+# How traffic actually reaches this, on the host it actually runs on:
+#
+#   internet --> nginx :443  --> 127.0.0.1:8000 --> Traefik `web` --> console
+#                (TLS ends here)                                      8090 / 8092
+#
+#   internet --> nginx :443  --> 127.0.0.1:50051 -----------------> gateway
+#                (grpc_pass, HTTP/2)                                 no Traefik
+#
+# nginx owns 80 and 443. Traefik is behind it, plain HTTP, published only on
+# 127.0.0.1:8000 -- so `websecure` is a door nobody knocks on, and every
+# router here is on `web`.
+#
+# One host port, the gateway's, bound to loopback so only nginx can reach it.
+# Nothing else is published, and the dispatcher is not routable at all.
 
 x-logging: &logging
   # Unbounded json logs are the most common way a small host runs out of disk,
@@ -69,25 +81,31 @@ services:
       resources:
         limits:
           memory: 512M
-    # Both, explicitly. Attaching a domain makes Dokploy REPLACE a service's
-    # network with dokploy-network rather than add to it, so a service listing
-    # only srosha-net loses its database and broker the moment it gets a
-    # domain -- with no deploy-time error. Infra document, Trap 1.
+    # srosha-net alone, like the dispatcher. The gateway used to be on
+    # dokploy-network so Traefik could route to it; nothing routes to it there
+    # any more, and a network it does not need is a network anything on this
+    # shared host can reach it from.
+    #
+    # Do not attach a domain to this service in Dokploy. Trap 1 cuts the other
+    # way here: Dokploy would REPLACE srosha-net with dokploy-network, and the
+    # gateway would lose the database and the broker with no deploy-time error.
     networks:
       - srosha-net
-      - dokploy-network
     logging: *logging
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=dokploy-network
-      - traefik.http.routers.srosha-api.rule=Host(`api.srosha.ir`)
-      - traefik.http.routers.srosha-api.entrypoints=websecure
-      - traefik.http.routers.srosha-api.tls.certresolver=letsencrypt
-      - traefik.http.routers.srosha-api.service=srosha-api
-      - traefik.http.services.srosha-api.loadbalancer.server.port=50051
-      # h2c is not optional: gRPC is HTTP/2 without TLS behind the terminator,
-      # and Traefik speaks HTTP/1.1 to a backend unless told otherwise.
-      - traefik.http.services.srosha-api.loadbalancer.server.scheme=h2c
+    # The gateway has no Traefik router, and that is not an omission.
+    #
+    # nginx reaches gRPC with `grpc_pass`, which speaks HTTP/2 straight to the
+    # backend. Traefik's `web` entrypoint is HTTP/1.1, and turning h2c on there
+    # would mean editing the traefik.yml this host shares with every other
+    # application on it. So api.srosha.ir goes nginx -> here, and Traefik is
+    # not in that path at all.
+    #
+    # 127.0.0.1 and nothing else, so the only thing that can reach this port is
+    # a process already on the server -- which is nginx. A container address
+    # would have been the alternative, but it changes on every redeploy and the
+    # nginx config would go stale without saying so.
+    ports:
+      - "127.0.0.1:50051:50051"
 
   dispatcher:
     build: *build
@@ -178,17 +196,26 @@ services:
     # Two routers on one container. The portal and the admin panel are two
     # listeners in one process, separated by host and by cookie -- see
     # docs/ARCHITECTURE.md.
+    #
+    # `web`, not `websecure`, and no certresolver. Traefik on this host does
+    # not hold 443 -- nginx does, and it proxies to Traefik's plain-HTTP
+    # entrypoint on 127.0.0.1:8000. A router on `websecure` loads, reports
+    # enabled, resolves a healthy backend, and is never reached by anything,
+    # because nobody knocks on that door. That cost an afternoon on
+    # 2026-09-01; the giveaway was that every other router on this host sits on
+    # `web` and only ours did not.
+    #
+    # TLS and the certificate are nginx's job, so an ACME resolver here would
+    # be a second answer to a question already answered.
     labels:
       - traefik.enable=true
       - traefik.docker.network=dokploy-network
       - traefik.http.routers.srosha-panel.rule=Host(`panel.srosha.ir`)
-      - traefik.http.routers.srosha-panel.entrypoints=websecure
-      - traefik.http.routers.srosha-panel.tls.certresolver=letsencrypt
+      - traefik.http.routers.srosha-panel.entrypoints=web
       - traefik.http.routers.srosha-panel.service=srosha-panel
       - traefik.http.services.srosha-panel.loadbalancer.server.port=8090
       - traefik.http.routers.srosha-admin.rule=Host(`admin.srosha.ir`)
-      - traefik.http.routers.srosha-admin.entrypoints=websecure
-      - traefik.http.routers.srosha-admin.tls.certresolver=letsencrypt
+      - traefik.http.routers.srosha-admin.entrypoints=web
       - traefik.http.routers.srosha-admin.service=srosha-admin
       - traefik.http.services.srosha-admin.loadbalancer.server.port=8092
 
