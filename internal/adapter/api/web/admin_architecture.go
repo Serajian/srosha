@@ -15,10 +15,12 @@ import (
 // and rendered elsewhere -- so it goes out as bytes and never through
 // pageRender.
 //
-// super_admin only, for the same kind of reason /audit is: the diagram names
-// the hosts, the ports, the stores and the network they sit on. That is the
-// shape of the deployment, and an operator approving sources has no call to
-// read it.
+// Every operator, not only a super_admin. It was the other way for a day, on
+// the argument that naming the hosts, the ports and the stores is the shape of
+// the deployment -- and the owner widened it, because an operator judging
+// whether a source may send is being asked about a system they could not see
+// the shape of. `operator` still stands in front of it, so no customer reaches
+// it.
 type architectureHandler struct{ page []byte }
 
 // show writes the document. The bytes were read when the surface was built,

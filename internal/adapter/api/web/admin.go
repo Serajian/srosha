@@ -11,7 +11,7 @@
 //	admin_people.go     peopleHandler   roles and accounts, super_admin only
 //	admin_audit.go      auditHandler    who did what, super_admin only
 //	admin_architecture.go
-//	                    architectureHandler  the diagram, super_admin only
+//	                    architectureHandler  the diagram, every operator
 //
 // Signing in is not a fourth file: an operator signs in through the same
 // signInHandler and accountHandler the portal uses, on this listener, so the
@@ -208,7 +208,16 @@ func NewAdmin(d AdminDeps) (AdminHandler, error) {
 	guarded.POST(pathRestore, review.restore)
 	guarded.GET(pathAdminLog, review.messages)
 
-	// --- the pages behind a second rule. a group of its own rather than a
+	//     pathArchitecture is here rather than behind super_admin, and that is
+	//     a decision that was made the other way first. The diagram names the
+	//     hosts, the ports and the stores, so it WAS with /audit and /people;
+	//     the owner widened it, because an operator who has to judge whether a
+	//     source may send is being asked about a system they were not allowed
+	//     to see the shape of. What it is not is a page a customer may reach:
+	//     `operator` still stands in front of it.
+	guarded.GET(pathArchitecture, architecture.show)
+
+	// --- three pages behind a second rule. a group of its own rather than a
 	//     check inside the handlers, so which pages need it is visible here,
 	//     and the use case's own super_admin check is defense in depth rather
 	//     than the only thing standing between an admin and the roster ------
@@ -226,12 +235,6 @@ func NewAdmin(d AdminDeps) (AdminHandler, error) {
 	top.GET(pathPerson, people.show)
 	top.POST(pathPersonRole, people.setRole)
 	top.POST(pathPersonActive, people.setActive)
-
-	//     pathArchitecture is the fourth thing behind that rule, and it is
-	//     here rather than under `guarded` because the diagram names the
-	//     hosts, the ports and the stores -- the deployment's own shape,
-	//     which an operator approving sources has no call to read.
-	top.GET(pathArchitecture, architecture.show)
 
 	// --- files a browser fetches -------------------------------------------
 	engine.StaticFS(pathStatic, http.FS(assets))
