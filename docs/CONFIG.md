@@ -444,13 +444,21 @@ Today it holds one file:
 | | |
 | --- | --- |
 | File | `public/guarded/admin/architecture.html` |
-| Route | `/architecture` on the admin surface — **`super_admin` only** |
+| Route | `/architecture` on the admin surface — **every operator**, `admin` and `super_admin` alike |
 | Source | `docs/assets/brand/srosha.architecture.json`, rendered by the `archify` skill |
 
-`super_admin`, for the same kind of reason `/audit` is: the diagram names every
-host, every port, every store and the private network they sit on. That is the
-shape of the deployment, and an operator approving sources has no call to read
-it.
+**Every operator, and it was `super_admin` only for a day.** The first argument
+was `/audit`'s: the diagram names every host, every port, every store and the
+private network they sit on, which is the shape of the deployment. It was
+widened deliberately — an operator being asked to judge whether a source may
+send should be able to see the system they are judging it against.
+
+What did not move is the guard in front of it. `/architecture` is behind
+`operator`, so a customer holding a valid portal session — which reaches this
+listener, because a cookie is not scoped by port — is turned away.
+
+It is still **not** `/static`. Anything under `public/static/admin/` is fetched
+without a session at all, and the diagram is not.
 
 Fonts are a stack, not files: nothing here may reach a font host at runtime, and
 the portal has to work on a network that cannot. Vazirmatn is first in every

@@ -655,36 +655,48 @@ func TestAnAdminIsRefusedOnTheAuditLog(t *testing.T) {
 	}
 }
 
-// The diagram names every host, every port, every store and the private
-// network they sit on -- the deployment's own shape. So it is behind the same
-// rule /audit and /people are, for a reason of the same kind: an operator
-// approving sources has no call to read it.
+// The diagram is every operator's, admin and super_admin alike. It was
+// super_admin only for a day, and the boundary it still has is the one that
+// matters: `operator`, so a customer holding a valid portal session does not
+// reach it -- which is the whole reason that guard exists.
 //
 // It is also the one thing this surface serves that is NOT a page: no layout,
 // no nav and no way to sign out, which is why TestEveryAdminPageIsWhole does
 // not name it. What is asserted instead is that the document itself came back,
 // and that it reaches nothing on the network to render -- see docs/CONFIG.md,
 // "Pages and assets": the panel has to work where a font host does not answer.
-func TestAnAdminIsRefusedOnTheArchitectureDiagram(t *testing.T) {
+func TestEveryOperatorReachesTheArchitectureDiagram(t *testing.T) {
 	a := newTestAdmin(t)
 
-	admin := signedInAs(t, a, "ops@srosha.ir", user.RoleAdmin)
-	if got := aget(t, a, "/architecture", admin); got.status == http.StatusOK {
-		t.Error("an admin reached /architecture")
-	}
+	for _, role := range []user.Role{user.RoleAdmin, user.RoleSuperAdmin} {
+		cookie := signedInAs(t, a, string(role)+"@srosha.ir", role)
 
-	top := signedInAs(t, a, "root@srosha.ir", user.RoleSuperAdmin)
-	page := aget(t, a, "/architecture", top)
-	if page.status != http.StatusOK {
-		t.Fatalf("a super_admin cannot reach /architecture: %d", page.status)
-	}
-	if !strings.Contains(page.body, "<svg") {
-		t.Error("/architecture answered without the diagram in it")
-	}
-	for _, host := range []string{"fonts.googleapis.com", "fonts.gstatic.com"} {
-		if strings.Contains(page.body, host) {
-			t.Errorf("the diagram reaches %s to render itself", host)
+		page := aget(t, a, "/architecture", cookie)
+		if page.status != http.StatusOK {
+			t.Fatalf("an operator whose role is %s cannot reach /architecture: %d",
+				role, page.status)
 		}
+		if !strings.Contains(page.body, "<svg") {
+			t.Errorf("/architecture answered a %s with no diagram in it", role)
+		}
+		for _, host := range []string{"fonts.googleapis.com", "fonts.gstatic.com"} {
+			if strings.Contains(page.body, host) {
+				t.Errorf("the diagram reaches %s to render itself", host)
+			}
+		}
+	}
+}
+
+// The half of the rule that did not move: a customer's session reaches this
+// listener, because a cookie is not scoped by port, and `operator` is what
+// turns it away.
+func TestACustomerIsRefusedOnTheArchitectureDiagram(t *testing.T) {
+	a := newTestAdmin(t)
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "billing@acme.test")
+
+	if got := aget(t, a, "/architecture", cookie); got.status == http.StatusOK {
+		t.Errorf("a customer read the architecture diagram:\n%s", got.body)
 	}
 }
 
@@ -772,17 +784,20 @@ func TestEveryAdminPageIsWhole(t *testing.T) {
 	whole(t, "/people/:id", personPage)
 }
 
-// A super_admin sees the /people, /audit and /architecture links on an
-// ordinary operator page; an admin does not. Both are still whole pages
-// either way, and an admin is not shown a link that would only redirect them
-// away.
-func TestTheNavShowsTheTopLinksOnlyToASuperAdmin(t *testing.T) {
+// A super_admin sees the /people and /audit links on an ordinary operator
+// page; an admin does not. Both are still whole pages either way, and an
+// admin is not shown a link that would only redirect them away.
+//
+// /architecture is deliberately NOT in that list and is asserted the other
+// way below: it is every operator's, so an admin missing it would be a link
+// withheld from somebody the route lets in.
+func TestTheNavShowsPeopleAndAuditOnlyToASuperAdmin(t *testing.T) {
 	a := newTestAdmin(t)
 
 	admin := signedInAs(t, a, "ops@srosha.ir", user.RoleAdmin)
 	top := signedInAs(t, a, "root@srosha.ir", user.RoleSuperAdmin)
 
-	topLinks := []string{`href="/people"`, `href="/audit"`, `href="/architecture"`}
+	topLinks := []string{`href="/people"`, `href="/audit"`}
 
 	asAdmin := aget(t, a, "/", admin)
 	whole(t, "/", asAdmin)
@@ -797,6 +812,16 @@ func TestTheNavShowsTheTopLinksOnlyToASuperAdmin(t *testing.T) {
 	for _, link := range topLinks {
 		if !strings.Contains(asTop.body, link) {
 			t.Errorf("a super_admin's queue page does not offer %s", link)
+		}
+	}
+
+	// The diagram is the one link both of them get. Asserted on both pages
+	// rather than on the super_admin's alone, because the mistake this
+	// catches is the link sliding back inside the {{if .SuperAdmin}} branch
+	// it used to live in -- which nothing else here would notice.
+	for who, page := range map[string]answer{"an admin": asAdmin, "a super_admin": asTop} {
+		if !strings.Contains(page.body, `href="/architecture"`) {
+			t.Errorf("%s's queue page does not offer the architecture diagram", who)
 		}
 	}
 }

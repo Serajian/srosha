@@ -58,7 +58,8 @@
       <nav class="nav" aria-label="Admin">
         <a href="/">Queue</a>
         <a href="/sources">Sources</a>
-        {{if .SuperAdmin}}<a href="/audit">Audit</a><a href="/people">People</a><a href="/architecture" target="_blank" rel="noopener">Architecture</a>{{end}}
+        <a href="/architecture" target="_blank" rel="noopener">Architecture</a>
+        {{if .SuperAdmin}}<a href="/audit">Audit</a><a href="/people">People</a>{{end}}
         <form method="post" action="/signout"><button type="submit">Sign out</button></form>
       </nav>
       {{end}}

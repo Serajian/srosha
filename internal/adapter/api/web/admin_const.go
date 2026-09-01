@@ -46,10 +46,9 @@ const (
 	pathPersonRole   = "/people/:id/role"
 	pathPersonActive = "/people/:id/active"
 
-	// pathArchitecture is the diagram of this service, served whole. It sits
-	// with the two above rather than with the queue: it names every host,
-	// every port, every store and the private network they sit on, which is
-	// the shape of the deployment and not an operator's daily work.
+	// pathArchitecture is the diagram of this service, served whole. It is
+	// listed here with the super_admin paths because it was one for a day and
+	// is not any more -- see NewAdmin, where it is mounted for every operator.
 	pathArchitecture = "/architecture"
 )
 
