@@ -1,0 +1,187 @@
+# PostgreSQL for the srosha notification service, plus Adminer to look at it.
+#
+# NOT deployed from this repository. See deployment/infra/README.md.
+#
+# Its own Dokploy Compose service, same pattern as NATS, on the same private
+# network. Deploy this before the application.
+#
+# Dokploy settings:
+#   - Advanced -> Isolated Deployment: OFF
+#   - Environment: POSTGRES_PASSWORD (and the others if you change them)
+#   - Domains: NONE -- not for postgres, and not for adminer either. See the
+#     note on the adminer service for how you reach it instead.
+#
+# Connection string used by the application:
+#   postgres://srosha:<password>@postgres:5432/srosha?sslmode=disable
+#
+# sslmode=disable is correct here: the traffic never leaves the docker bridge
+# on this host. Revisit it the day the database moves to another machine.
+
+x-logging: &logging
+  # Unbounded json logs are the most common way a small host runs out of disk,
+  # and when the disk fills postgres dies with everything else.
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+
+    expose:
+      - "5432"
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-srosha}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-srosha}
+
+      # READ THIS BEFORE THE FIRST DEPLOY. initdb runs once, against an empty
+      # volume, and the cluster's locale can never be changed afterwards --
+      # only dumped, recreated and restored. On a fresh host this line is the
+      # single moment it is decided.
+      #
+      # Without it the alpine image sets LANG=en_US.utf8, so the cluster
+      # RECORDS en_US.utf8 -- but musl has no such locale, so what you
+      # actually get is byte order. The database claims a collation it does
+      # not honour. Measured on postgres:18.6-alpine:
+      #
+      #   order by x            ->  ل م ه ک گ      (byte order, and wrong)
+      #   collate "fa-IR-x-icu" ->  ک گ ل م ه      (the Persian alphabet)
+      #
+      # So the choice is honesty, not behaviour: builtin C.UTF-8 says C and
+      # means C. Deterministic, the fastest option for indexes, and immune to
+      # the libc or ICU upgrade that silently invalidates a text index built
+      # under a linguistic collation.
+      #
+      # Persian order is then asked for where a human actually reads a sorted
+      # list -- `order by name collate "fa-IR-x-icu"` in that one query. The
+      # image already carries ICU: 908 collations, fa-IR among them. Paying
+      # for it on every ULID, timestamp and email index instead would be the
+      # wrong trade.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8"
+
+    command:
+      - postgres
+      # Roughly 25% of the 1G container limit, the usual starting point.
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - max_connections=100
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=64MB
+      # Log anything slower than a second; the delivery queries in this service
+      # should be far below that, so a hit here means a missing index.
+      - -c
+      - log_min_duration_statement=1000
+
+    # Postgres 18 keeps its data in a version subdirectory and the image
+    # declares the volume one level up (PGDATA=/var/lib/postgresql/18/docker,
+    # VOLUME /var/lib/postgresql). Mounting the older /var/lib/postgresql/data
+    # makes the image refuse to start, complaining about pg_upgrade.
+    volumes:
+      - pgdata:/var/lib/postgresql
+
+    # Docker gives a container 64MB of /dev/shm. Postgres puts parallel query
+    # workers there, and the failure is a run-time "could not resize shared
+    # memory segment" on one report rather than anything at startup.
+    shm_size: 256mb
+
+    # -h 127.0.0.1 is the point. While initdb is still running, postgres has a
+    # temporary server up on the unix socket only, so a socket check answers
+    # `select 1` and the container is called healthy before the database
+    # exists. TCP is not open until the real server is.
+    #
+    # And it queries rather than using pg_isready, which only proves the server
+    # accepts sockets -- it reports healthy even when the expected role is
+    # missing.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - psql -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB -c 'select 1' || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    # The image stops on SIGINT, which is a fast shutdown: roll back open
+    # transactions, checkpoint, exit. Docker's default 10s can cut that
+    # checkpoint short and the next start begins with crash recovery.
+    stop_grace_period: 1m
+
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+    networks:
+      - srosha-net
+
+    logging: *logging
+
+  # Adminer holds nothing back but the database password -- it has no rate
+  # limit, no account lockout, and no log of a failed attempt. A login form on
+  # the internet in front of that is one leaked password away from every
+  # customer's sending credentials. Worse, its Server field is yours to fill,
+  # so whoever reaches it can probe any host the container can see.
+  #
+  # So: no domain, no certificate, and two private doors only.
+  #
+  #   127.0.0.1        from inside the server, or over an ssh tunnel:
+  #                      ssh -N -L 8083:127.0.0.1:8083 <user>@<vps>
+  #   the Tailscale IP  from any device on the tailnet, which is what
+  #                      db.srosha.ir resolves to
+  #
+  # db.srosha.ir is a real, public DNS name pointing at a 100.64.0.0/10
+  # address. The name is public; the address is not routable from the
+  # internet, so the service stays inside the tailnet. Verified by turning
+  # Tailscale off and watching the connection fail.
+  adminer:
+    image: adminer:5
+    restart: unless-stopped
+
+    # The `:?` is not decoration. Left empty, that line becomes ":8083:8080",
+    # which is 0.0.0.0 -- a database login form published to the internet.
+    # With it, the deploy fails and says why.
+    ports:
+      - "127.0.0.1:8083:8080"
+      - "${ADMINER_BIND_IP:?set it to the tailscale IP -- an empty value would bind 0.0.0.0}:8083:8080"
+
+    environment:
+      # Fills the Server box only. The image reads no username or password --
+      # it has exactly three variables and none of them is a credential, so
+      # every sign-in is typed by hand.
+      #
+      # It also does not preselect the driver: the form opens on MySQL. Reach
+      # it at /?pgsql=postgres and both are filled in.
+      ADMINER_DEFAULT_SERVER: postgres
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    # It serves with PHP's built-in webserver, which is single-threaded and
+    # says of itself that it is not for production. For one operator on a
+    # tailnet that is exactly the right size.
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+    networks:
+      - srosha-net
+
+    logging: *logging
+
+volumes:
+  pgdata:
+
+networks:
+  srosha-net:
+    external: true
