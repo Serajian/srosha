@@ -192,7 +192,7 @@ therefore not show up locally.
 | Host | `nats:4222` |
 | Config | `nats-server.conf`, supplied via Dokploy Advanced → Volumes → File Mount |
 | JetStream store | volume `jetstream` at `/data/jetstream` |
-| Limits | `max_memory_store=256MB`, `max_file_store=8GB` |
+| Limits | `max_memory_store=256MB`, `max_file_store=2GB` — an emergency brake, and it has to sit below the disk's free space to be one |
 | Memory limit | 1G |
 | Users | `gateway`, `dispatcher`, `admin` — one credential each, never shared |
 | Passwords | in `.env` and the Dokploy Environment tab |

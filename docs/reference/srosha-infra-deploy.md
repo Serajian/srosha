@@ -491,7 +491,7 @@ disk with 12 GB free — 89% full**, shared with unrelated apps.
 | Service | Memory limit | Disk |
 | --- | --- | --- |
 | postgres | 1G | volume, `shared_buffers=256MB` |
-| nats | 1G | volume, `max_file_store=8GB` |
+| nats | 1G | volume, `max_file_store=2GB` |
 | gateway | 512M | — |
 | dispatcher | 512M | — |
 | console | 512M | — |
@@ -499,20 +499,25 @@ disk with 12 GB free — 89% full**, shared with unrelated apps.
 
 Memory is comfortable: roughly 3.6 GB committed against 15 GiB.
 
-**Disk is not, and `max_file_store=8GB` no longer does its job.** That figure was
-chosen on the previous host so that a runaway stream would make NATS refuse
-writes rather than fill the disk and take Postgres down with it. With 12 GB
-free, JetStream alone can reach 100% — the ceiling is now above the cliff it
-was meant to keep the service away from. Lowering it is an open item; until
-then, `df -h /` belongs in any look at this host.
+**Disk is the constraint, and most of it is not ours.** 30 GB of it is docker
+images for the ~30 applications running here, all of them in use. A
+`docker builder prune` recovered 3 GB on 2026-09-01 and there is little else
+safe to take.
+
+`max_file_store` was `8GB` until that day — a figure chosen on a host with room
+for it, left alone on a host without. A ceiling above the cliff brakes nothing.
+It is `2GB` now, which is the rule to keep: **the JetStream ceiling has to sit
+well below the free space, and `df -h /` is how you check that before raising
+it.**
 
 Set `logging` with `max-size` and `max-file` on **every** service. Unbounded
 JSON log files are the most common way a small host runs out of disk, and when
 the disk fills, Postgres dies along with everything else.
 
-`max_file_store: 8GB` is deliberately conservative. If a runaway loop fills it,
-NATS should start refusing writes rather than filling the disk and taking the
-database down with it.
+`max_file_store` is an emergency brake and not a size. The stream is WorkQueue,
+so a message is deleted the moment it is acknowledged and the store is nearly
+empty in normal running. The number only matters on the day nothing is
+draining — and on that day it has to be reached before the disk is.
 
 ---
 
