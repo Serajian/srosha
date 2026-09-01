@@ -24,7 +24,10 @@ GRPC_PORT := 50051
 endif
 
 DOCKER_DIR      := deployment/app
-DOCKER_COMPOSE  := $(DOCKER_DIR)/docker-compose.yml
+# At the repository root, not beside the Dockerfile: Dokploy runs compose with
+# --project-directory <root>, and compose resolves build contexts and the .env
+# it substitutes from against that directory. See the note in the file itself.
+DOCKER_COMPOSE  := docker-compose.yml
 DOCKER_FILE     := $(DOCKER_DIR)/Dockerfile
 
 # The local dependencies only -- postgres and nats, each published on loopback

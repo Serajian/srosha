@@ -35,7 +35,7 @@ Host: one Linux server running Docker + Dokploy, shared with unrelated apps.
 | --- | --- |
 | Dokploy project | `srosha` |
 | Service type | Compose with a Git source (never Application or Database) |
-| Compose path | `deployment/app/docker-compose.yml` — **the application only**, see below |
+| Compose path | `docker-compose.yml`, at the **repository root** — the application only, see below |
 | Dockerfile | `deployment/app/Dockerfile` — one image, four binaries: the three services and `migrate` |
 | Ignore file | `.dockerignore` at the **repository root**, because that is the build context |
 | Image | `srosha:latest`; the binary is selected by `command` |
@@ -47,6 +47,14 @@ Host: one Linux server running Docker + Dokploy, shared with unrelated apps.
 | `api.srosha.ir` | gateway, gRPC — the router sets `scheme=h2c` |
 | `panel.srosha.ir` | console, the customer portal |
 | `admin.srosha.ir` | console, the admin panel |
+
+**The deployed compose is at the repository root, and has to be.** Dokploy runs
+`docker compose --project-directory <repo root>`, and compose resolves both the
+build context and the `.env` it substitutes `${...}` from against that
+directory — while Dokploy writes that `.env` beside the compose file. With the
+file one level down those are two different directories: the build context
+resolves outside the checkout and every `${...}` becomes an empty string. Both
+were seen on 2026-09-01, when Dokploy started passing `--project-directory`.
 
 **The compose file deploys the application and nothing else.** `postgres` and
 `nats` are already live as their own Dokploy compose services; defining them
@@ -69,7 +77,9 @@ the moment it gets a domain — with no deploy-time error.
 ### Watch paths for auto-deploy
 
 ```
-cmd/**  internal/**  pkg/**  api/**  gen/**  go.mod  go.sum  deployment/app/**
+cmd/**  internal/**  pkg/**  api/**  sdk/go/notification/**  sdk/go/go.mod
+sdk/go/go.sum  migrations/**  go.mod  go.sum  deployment/app/**
+docker-compose.yml
 ```
 
 ---

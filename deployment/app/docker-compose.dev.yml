@@ -1,9 +1,12 @@
 # Local development only.
 #
-# This is not the compose that gets deployed. That one is written on its own
-# branch, publishes no host port, and carries more than this: it is the file
-# docs/CONFIG.md describes. Here the binaries run on the host with `go run`, so
-# postgres has to be reachable from it.
+# This is not the compose that gets deployed. That one is docker-compose.yml at
+# the repository root -- it has to sit there so Dokploy's project directory and
+# the file's own directory are the same one, and it says why at the top of
+# itself. It publishes no host port and carries more than this.
+#
+# Here the binaries run on the host with `go run`, so postgres has to be
+# reachable from it.
 #
 # nats runs here too: the one on the server is not reachable from outside it.
 
