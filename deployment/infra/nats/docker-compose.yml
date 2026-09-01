@@ -71,8 +71,9 @@ services:
       retries: 5
       # 60s, not 20s. By default /healthz checks that every stream and consumer
       # is healthy, and after a restart that means replaying the store first.
-      # With max_file_store at 8GB the recovery can outlast a short window, and
-      # the container then sits `unhealthy` while it is in fact working.
+      # A large store makes that recovery long enough to outlast a short
+      # window, and the container then sits `unhealthy` while it is in fact
+      # working.
       start_period: 60s
 
     # JetStream flushes state to disk on the way out. Docker's default 10s can
