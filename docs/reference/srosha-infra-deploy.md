@@ -130,20 +130,20 @@ business subjects. A permission set covering only the business subjects fails
 with opaque timeouts rather than a clear error — which is also why narrowing
 these has to be verified against the real binaries and not reasoned about.
 
-### 2.4 The NATS permission split, and what it does not buy
+### 2.4 The NATS permission split, measured
 
 | User | May publish | May subscribe |
 | --- | --- | --- |
-| `gateway` | `notify.>`, `$JS.API.>` | `_INBOX.>` only |
-| `dispatcher` | `$JS.API.>`, `$JS.ACK.>` | `_INBOX.>`, `notify.>` |
+| `gateway` | `notify.>`, `$JS.API.INFO`, `$JS.API.STREAM.CREATE.NOTIFY`, `$JS.API.STREAM.UPDATE.NOTIFY` | `_INBOX.>` |
+| `dispatcher` | the three above minus `notify.>`, plus `$JS.API.CONSUMER.CREATE.NOTIFY.dispatcher.>`, `$JS.API.CONSUMER.MSG.NEXT.NOTIFY.dispatcher`, `$JS.ACK.NOTIFY.dispatcher.>` | `_INBOX.>`, `$JSC.CI.>` |
 | `admin` | everything | everything |
 
-This document used to claim that a `gateway` credential cannot read anyone's
-notifications. **That is false, and it was tested on 2026-09-01.** A direct
-subscribe to `notify.>` is refused, which is the part that was true. But
-`$JS.API.>` is the entire JetStream admin surface, delete and purge included,
-and JetStream delivers to `_INBOX.>`, which the gateway may subscribe to. So
-with that credential you can:
+Both used to hold `$JS.API.>`, which is the whole JetStream admin surface. This
+document claimed the split meant a `gateway` credential could not read anyone's
+notifications; it was tested on 2026-09-01 and that was false. A direct
+subscribe to `notify.>` is refused, which was the true half, but delivery
+arrives on `_INBOX.>`, which the gateway may subscribe to, and every consumer
+and stream verb was reachable:
 
 ```
 add a second consumer beside the dispatcher's   refused -- WorkQueue holds the subject
@@ -153,10 +153,22 @@ purge the stream                                ALLOWED
 delete the stream                               ALLOWED
 ```
 
-What stops a reader today is only that the dispatcher's consumer occupies the
-WorkQueue subject — and the gateway is allowed to remove it. Narrowing
-`$JS.API.>` to the five subjects the gateway actually calls is an open item,
-recorded in `nats-server.conf` beside the block it applies to.
+All five are refused now, and both binaries still do their work.
+
+**The list was measured, not derived.** Reading the Go source gives four of the
+gateway's subjects and misses `$JSC.CI.>` entirely — the consume machinery
+subscribes to it and the name appears nowhere in this repository. A missing
+subject fails as a timeout rather than an error, so a list that looks complete
+is not evidence that it is.
+
+To re-measure after upgrading the client library: set `trace: true` in
+`nats-server.conf`, grant one user `>`, run the binary, and read the `[PUB` and
+`[SUB` lines out of `docker logs`.
+
+**The stream name is baked into those subjects.** It is `NOTIFY`, the default of
+`NOTIF_MQ_STREAM`. Changing that variable without changing these lines takes
+JetStream away from both binaries, quietly.
+
 
 ---
 
