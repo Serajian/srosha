@@ -20,7 +20,12 @@ type Dispatcher struct {
 	Webhook    settings.Webhook
 	Dispatch   settings.Dispatch
 	Retention  settings.Retention
-	Telemetry  settings.Telemetry
+
+	// Alert is the operator's own channel, reached directly rather than
+	// through this service's pipeline. Empty means off.
+	Alert settings.Alert
+
+	Telemetry settings.Telemetry
 }
 
 func LoadDispatcher() (Dispatcher, error) {
@@ -41,6 +46,7 @@ func LoadDispatcher() (Dispatcher, error) {
 		Webhook:    settings.LoadWebhook(r, app.IsProduction()),
 		Dispatch:   dispatch,
 		Retention:  settings.LoadRetention(r, dispatch),
+		Alert:      settings.LoadAlert(r),
 		Telemetry:  settings.LoadTelemetry(r, app.IsProduction()),
 	}
 

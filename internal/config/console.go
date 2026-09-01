@@ -25,7 +25,12 @@ type Console struct {
 	// It validates a callback address when a customer registers one, so it
 	// needs the policy and nothing else about webhooks.
 	WebhookPolicy settings.WebhookPolicy
-	Telemetry     settings.Telemetry
+
+	// Alert is the operator's own channel, reached directly rather than
+	// through this service's pipeline. Empty means off.
+	Alert settings.Alert
+
+	Telemetry settings.Telemetry
 }
 
 // LoadConsole reads the environment and reports everything wrong with it at
@@ -43,6 +48,7 @@ func LoadConsole() (Console, error) {
 		Crypto:     settings.LoadCrypto(r),
 
 		WebhookPolicy: settings.LoadWebhookPolicy(r, app.IsProduction()),
+		Alert:         settings.LoadAlert(r),
 		Telemetry:     settings.LoadTelemetry(r, app.IsProduction()),
 	}
 

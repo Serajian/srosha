@@ -133,7 +133,7 @@ func newOperatorRigWithLimit(t *testing.T, listLimit int32) *operatorRig {
 	return &operatorRig{
 		ops: usecase.NewOperators(
 			repo, users, notifs, deliveries, creds, log,
-			usecase.NewGate(log, seqIDs(), fixedNow(at)), fixedNow(at), listLimit,
+			usecase.NewGate(log, nil, seqIDs(), fixedNow(at)), fixedNow(at), listLimit,
 		),
 		log:         log,
 		repo:        repo,

@@ -35,7 +35,12 @@ type Gateway struct {
 	// it needs the policy -- and nothing else about webhooks. The signing
 	// secrets are the dispatcher's and must not be loaded here.
 	WebhookPolicy settings.WebhookPolicy
-	Telemetry     settings.Telemetry
+
+	// Alert is the operator's own channel, reached directly rather than
+	// through this service's pipeline. Empty means off.
+	Alert settings.Alert
+
+	Telemetry settings.Telemetry
 }
 
 // LoadGateway reads the environment and reports everything wrong with it at
@@ -58,6 +63,7 @@ func LoadGateway() (Gateway, error) {
 		Crypto:       settings.LoadCrypto(r),
 
 		WebhookPolicy: settings.LoadWebhookPolicy(r, app.IsProduction()),
+		Alert:         settings.LoadAlert(r),
 		Telemetry:     settings.LoadTelemetry(r, app.IsProduction()),
 	}
 

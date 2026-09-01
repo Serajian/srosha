@@ -263,6 +263,7 @@ func TestTheGateWritesThroughToPostgres(t *testing.T) {
 	at := time.Now().UTC().Truncate(time.Microsecond)
 	gate := usecase.NewGate(
 		postgres.NewAuditRepository(pool),
+		nil,
 		func() shared.ID { return shared.ID(ulid("GA1")) },
 		func() time.Time { return at },
 	)

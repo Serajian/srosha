@@ -3,6 +3,7 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,7 +103,7 @@ func anOperator(t *testing.T) *user.User {
 func newGate(t *testing.T, log *auditLog) *usecase.Gate {
 	t.Helper()
 
-	return usecase.NewGate(log, seqIDs(), fixedNow(gateNow))
+	return usecase.NewGate(log, nil, seqIDs(), fixedNow(gateNow))
 }
 
 func TestAChangeLeavesExactlyOneRow(t *testing.T) {
@@ -193,7 +194,7 @@ func TestAnActorIsRequired(t *testing.T) {
 // where it lives on the source is overwritten by the next decision.
 func TestTheReasonReachesTheAuditRow(t *testing.T) {
 	log := &auditLog{}
-	gate := usecase.NewGate(log, seqIDs(), fixedNow(time.Now().UTC()))
+	gate := usecase.NewGate(log, nil, seqIDs(), fixedNow(time.Now().UTC()))
 	actor := anOperator(t)
 
 	act := usecase.Act{
@@ -212,5 +213,89 @@ func TestTheReasonReachesTheAuditRow(t *testing.T) {
 	}
 	if log.entries[0].Note != "no working address" {
 		t.Errorf("note = %q", log.entries[0].Note)
+	}
+}
+
+// heard records what the gate told an operator.
+type heard struct{ subjects, details []string }
+
+func (h *heard) Notify(_ context.Context, subject, detail string) {
+	h.subjects = append(h.subjects, subject)
+	h.details = append(h.details, detail)
+}
+
+// The audit records attempts and the alert records what happened. A source
+// that failed to register must not reach an operator as one that did.
+func TestTheGateAlertsOnlyAfterTheChangeSucceeds(t *testing.T) {
+	log := &auditLog{}
+	told := &heard{}
+	g := usecase.NewGate(log, told, seqIDs(), fixedNow(gateNow))
+
+	act := usecase.Act{Verb: usecase.ActSourceCreate, TargetType: "source", TargetID: "01K0"}
+	err := g.Do(t.Context(), anActor(t), act, func(context.Context) error {
+		return errors.New("the change failed")
+	})
+	if err == nil {
+		t.Fatal("a failing change was reported as done")
+	}
+
+	if len(told.subjects) != 0 {
+		t.Errorf("an operator was told about a change that did not happen: %v", told.subjects)
+	}
+	if len(log.entries) != 1 {
+		t.Errorf("the attempt was not audited: %d rows", len(log.entries))
+	}
+}
+
+// And it does alert when the change went through.
+func TestTheGateAlertsWhenTheChangeHappens(t *testing.T) {
+	told := &heard{}
+	g := usecase.NewGate(&auditLog{}, told, seqIDs(), fixedNow(gateNow))
+
+	act := usecase.Act{Verb: usecase.ActSourceCreate, TargetType: "source", TargetID: "01K0SRC"}
+	if err := g.Do(t.Context(), anActor(t), act, func(context.Context) error {
+		return nil
+	}); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+
+	if len(told.subjects) != 1 {
+		t.Fatalf("told %d things, want 1: %v", len(told.subjects), told.subjects)
+	}
+}
+
+// What an operator reads has to name the verb, what it happened to, and who
+// did it -- those three are the whole message.
+func TestTheAlertNamesTheVerbTheTargetAndTheActor(t *testing.T) {
+	told := &heard{}
+	g := usecase.NewGate(&auditLog{}, told, seqIDs(), fixedNow(gateNow))
+
+	actor := anActor(t)
+	act := usecase.Act{Verb: usecase.ActSourceCreate, TargetType: "source", TargetID: "01K0SRC"}
+	if err := g.Do(t.Context(), actor, act, func(context.Context) error { return nil }); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+
+	if !strings.Contains(told.subjects[0], usecase.ActSourceCreate) {
+		t.Errorf("subject %q does not name the verb", told.subjects[0])
+	}
+	if !strings.Contains(told.details[0], "01K0SRC") {
+		t.Errorf("detail %q does not name the target", told.details[0])
+	}
+	if !strings.Contains(told.details[0], actor.Email) {
+		t.Errorf("detail %q does not name who did it", told.details[0])
+	}
+}
+
+// A gate with no alerter is silent rather than broken, so nothing that was
+// built before this existed has to learn about it.
+func TestAGateWithNoAlerterIsSilent(t *testing.T) {
+	g := usecase.NewGate(&auditLog{}, nil, seqIDs(), fixedNow(gateNow))
+
+	act := usecase.Act{Verb: usecase.ActKeyIssue, TargetType: "key", TargetID: "01K0KEY"}
+	if err := g.Do(t.Context(), anActor(t), act, func(context.Context) error {
+		return nil
+	}); err != nil {
+		t.Fatalf("Do with no alerter: %v", err)
 	}
 }

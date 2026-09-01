@@ -9,7 +9,9 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"time"
 
+	"github.com/Serajian/srosha/internal/adapter/alert"
 	srhttp "github.com/Serajian/srosha/internal/adapter/api/http"
 	"github.com/Serajian/srosha/internal/config/settings"
 	"github.com/Serajian/srosha/internal/infra/httpserver"
@@ -26,6 +28,10 @@ type App struct {
 	// and the health endpoint -- and either one stopping on its own means the
 	// process is answering less than it claims to.
 	failed <-chan error
+
+	// watch is the readiness loop, or nil. It runs for as long as Run does.
+	watch      *watcher
+	watchEvery time.Duration
 }
 
 // Run blocks until the process is asked to stop, or until something that was
@@ -34,6 +40,12 @@ type App struct {
 // A listener that dies is the case worth the select: without it the process
 // would sit there healthy and answering nothing.
 func (a *App) Run(ctx context.Context) error {
+	// Started here rather than at build time so nothing is polling a process
+	// that never got as far as running.
+	if a.watch != nil {
+		go a.watch.run(ctx, a.resources, a.watchEvery)
+	}
+
 	select {
 	case <-ctx.Done():
 		a.log.InfoContext(ctx, "shutting down")
@@ -126,7 +138,15 @@ func checks(res *registry.Resources) func(context.Context) []srhttp.Check {
 
 // abandon closes whatever already opened before giving up on the rest. Without
 // it a failure halfway through startup leaks a pool nobody will ever close.
-func abandon(ctx context.Context, res *registry.Resources, err error) (*App, error) {
+func abandon(
+	ctx context.Context, res *registry.Resources, a *alert.Alerter, err error,
+) (*App, error) {
+	// Told before the close, because the close is what drains the alerter. A
+	// deploy that dies on the way up is the case an operator most wants to
+	// hear about, and the logs it left are inside a container that is going
+	// away.
+	a.Notify(ctx, "startup failed", err.Error())
+
 	_ = res.Close(ctx)
 	return nil, err
 }

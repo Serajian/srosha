@@ -201,11 +201,41 @@ service starts should not need the service's secrets.
 | webhook policy | `NOTIF_WEBHOOK_ALLOW_INSECURE_URL`, `NOTIF_WEBHOOK_ALLOW_PRIVATE_URL` | ✅ | ✅ | ✅ |
 | webhook | `NOTIF_WEBHOOK_TIMEOUT`, `NOTIF_WEBHOOK_MAX_FAILURES` | — | ✅ | — |
 | telemetry | `NOTIF_TELEMETRY_LOG_LEVEL`, `NOTIF_TELEMETRY_LOG_FORMAT`, `NOTIF_TELEMETRY_LOG_SOURCE` | ✅ | ✅ | ✅ |
+| alerts | `NOTIF_ALERT_GOTIFY_SERVER_URL`, `NOTIF_ALERT_GOTIFY_TOKEN`, `NOTIF_ALERT_QUEUE`, `NOTIF_ALERT_TIMEOUT`, `NOTIF_ALERT_READY_EVERY` | ✅ | ✅ | ✅ |
 | console | `NOTIF_CONSOLE_SMTP_HOST`, `NOTIF_CONSOLE_SMTP_PORT`, `NOTIF_CONSOLE_SMTP_USER`, `NOTIF_CONSOLE_SMTP_PASSWORD`, `NOTIF_CONSOLE_SMTP_FROM`, `NOTIF_CONSOLE_SMTP_TIMEOUT`, `NOTIF_CONSOLE_SECURE_COOKIE` | — | — | ✅ |
 | portal | `NOTIF_PORTAL_ADDR` | — | — | ✅ |
 | admin | `NOTIF_ADMIN_ADDR`, `NOTIF_ADMIN_LIST_LIMIT` | — | — | ✅ |
 
 `NOTIF_MQ_URL` carries a **different** NATS user per binary. Do not collapse them.
+
+### Operator alerts
+
+Both Gotify values empty means alerts are off, which is every laptop. Set, they
+carry what an operator has to act on: every audited change, whether each binary
+came up, and a dependency going down or coming back.
+
+**It does not go through srosha's own pipeline.** An alert that travelled the
+path it reports on would be silent exactly when it matters, so the alerter holds
+its own http client and reaches Gotify directly.
+
+| Key | |
+| --- | --- |
+| `NOTIF_ALERT_GOTIFY_SERVER_URL` | the operator's own Gotify. https only — the token travels in the query string |
+| `NOTIF_ALERT_GOTIFY_TOKEN` | an application token. **Secret** — Dokploy's Environment tab, never here |
+| `NOTIF_ALERT_QUEUE` | how many alerts may wait before one is dropped. Default 64 |
+| `NOTIF_ALERT_TIMEOUT` | one push. Default 10s. Nothing waits on it |
+| `NOTIF_ALERT_READY_EVERY` | how often a binary asks itself whether its dependencies are there. Default 30s |
+
+**There is no application id key, and there should not be.** Gotify ignores the
+`appid` parameter entirely: the token is what selects the application. Verified
+on 2026-09-01 against a real server — a message sent with `appid=999`, which
+does not exist, landed in the token's own application exactly like one sent with
+the right id and one sent with none.
+
+**Whoever holds that token sees customer email addresses.** An alert for
+`source.create` names the customer who registered, because the actor of that
+audited action is the customer. That is the same visibility `/audit` has, and
+the reason `/audit` is `super_admin` only. Treat the token accordingly.
 
 ### Names that exist only in the compose file
 
