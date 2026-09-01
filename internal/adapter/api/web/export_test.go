@@ -78,4 +78,5 @@ var AdminPathsSharedWithThePortal = []string{
 var AdminOnlyPaths = []string{
 	pathApprove, pathRefuse, pathSuspend, pathRestore, pathAdminLog,
 	pathAudit, pathPeople, pathPerson, pathPersonRole, pathPersonActive,
+	pathArchitecture,
 }

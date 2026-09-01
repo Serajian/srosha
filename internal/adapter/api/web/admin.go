@@ -10,6 +10,8 @@
 //	admin_review.go     reviewHandler   the queue and one source's decisions
 //	admin_people.go     peopleHandler   roles and accounts, super_admin only
 //	admin_audit.go      auditHandler    who did what, super_admin only
+//	admin_architecture.go
+//	                    architectureHandler  the diagram, super_admin only
 //
 // Signing in is not a fourth file: an operator signs in through the same
 // signInHandler and accountHandler the portal uses, on this listener, so the
@@ -165,6 +167,10 @@ func NewAdmin(d AdminDeps) (AdminHandler, error) {
 	if err != nil {
 		return AdminHandler{}, err
 	}
+	diagram, err := guardedFile(surfaceAdmin, fileArchitecture)
+	if err != nil {
+		return AdminHandler{}, err
+	}
 
 	engine := newEngine(engineConfig{Debug: d.Debug, Render: pages, Log: d.Log})
 	sessions := newSessions(d.SignIn, adminCookieName, d.SecureCookie)
@@ -174,6 +180,7 @@ func NewAdmin(d AdminDeps) (AdminHandler, error) {
 	review := &reviewHandler{ops: d.Operators, log: d.Log}
 	people := &peopleHandler{ops: d.Operators, log: d.Log}
 	audit := &auditHandler{ops: d.Operators, log: d.Log}
+	architecture := &architectureHandler{page: diagram}
 
 	// --- getting in. no session, by definition. the same four steps as the
 	//     portal, on this listener, so the panel does not depend on the public
@@ -201,7 +208,7 @@ func NewAdmin(d AdminDeps) (AdminHandler, error) {
 	guarded.POST(pathRestore, review.restore)
 	guarded.GET(pathAdminLog, review.messages)
 
-	// --- three pages behind a second rule. a group of its own rather than a
+	// --- the pages behind a second rule. a group of its own rather than a
 	//     check inside the handlers, so which pages need it is visible here,
 	//     and the use case's own super_admin check is defense in depth rather
 	//     than the only thing standing between an admin and the roster ------
@@ -219,6 +226,12 @@ func NewAdmin(d AdminDeps) (AdminHandler, error) {
 	top.GET(pathPerson, people.show)
 	top.POST(pathPersonRole, people.setRole)
 	top.POST(pathPersonActive, people.setActive)
+
+	//     pathArchitecture is the fourth thing behind that rule, and it is
+	//     here rather than under `guarded` because the diagram names the
+	//     hosts, the ports and the stores -- the deployment's own shape,
+	//     which an operator approving sources has no call to read.
+	top.GET(pathArchitecture, architecture.show)
 
 	// --- files a browser fetches -------------------------------------------
 	engine.StaticFS(pathStatic, http.FS(assets))
