@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"log/slog"
+	"net/http"
 
 	"github.com/Serajian/srosha/internal/adapter/api/web"
 	"github.com/Serajian/srosha/internal/adapter/auth"
@@ -10,6 +11,8 @@ import (
 	"github.com/Serajian/srosha/internal/adapter/mailer"
 	"github.com/Serajian/srosha/internal/adapter/ratelimit"
 	"github.com/Serajian/srosha/internal/adapter/secret"
+	"github.com/Serajian/srosha/internal/adapter/sender"
+	"github.com/Serajian/srosha/internal/adapter/sender/email"
 	"github.com/Serajian/srosha/internal/adapter/system"
 	"github.com/Serajian/srosha/internal/config"
 	"github.com/Serajian/srosha/internal/config/settings"
@@ -66,7 +69,7 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 		return abandon(ctx, res, notify, err)
 	}
 
-	core, err := buildConsoleCore(cfg, db.Pool(), dialer, notify, log)
+	core, err := buildConsoleCore(cfg, db.Pool(), dialer, notify, res, log)
 	if err != nil {
 		return abandon(ctx, res, notify, err)
 	}
@@ -76,6 +79,7 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 		Sources:      core.sources,
 		Keys:         core.keys,
 		Senders:      core.senders,
+		Trials:       core.trials,
 		Callbacks:    core.callbacks,
 		SecureCookie: cfg.Console.SecureCookie,
 
@@ -173,11 +177,18 @@ type consoleCore struct {
 	senders   *usecase.Credentials
 	callbacks *usecase.Registrar
 	operators *usecase.Operators
+
+	// senders as a registry, not as a use case: this is what a trial sends
+	// through. It can open a source's own identity and no other -- see
+	// consoleSenders.
+	senderRegistry *sender.Registry
+
+	trials *usecase.Trials
 }
 
 func buildConsoleCore(
 	cfg config.Console, pool *pgxpool.Pool, dialer *smtp.Dialer,
-	notify usecase.Alerter, log *slog.Logger,
+	notify usecase.Alerter, res *registry.Resources, log *slog.Logger,
 ) (consoleCore, error) {
 	var core consoleCore
 
@@ -220,7 +231,7 @@ func buildConsoleCore(
 		gate, ids.Generate, now,
 	)
 
-	if err := buildIdentityCore(&core, cfg, pool, ids, now, log); err != nil {
+	if err := buildIdentityCore(&core, cfg, pool, dialer, gate, ids, now, res, log); err != nil {
 		return core, err
 	}
 
@@ -247,8 +258,9 @@ func buildConsoleCore(
 // The rate limiter is required by source.Service and never consulted here: it
 // is spent by Admit, which is the sending path, and the console does not send.
 func buildIdentityCore(
-	core *consoleCore, cfg config.Console, pool *pgxpool.Pool,
-	ids *system.IDs, now shared.NowFunc, log *slog.Logger,
+	core *consoleCore, cfg config.Console, pool *pgxpool.Pool, dialer *smtp.Dialer,
+	gate *usecase.Gate, ids *system.IDs, now shared.NowFunc,
+	res *registry.Resources, log *slog.Logger,
 ) error {
 	keys, err := crypto.NewKeyring(cfg.Crypto.Keys, cfg.Crypto.ActiveID)
 	if err != nil {
@@ -287,9 +299,45 @@ func buildIdentityCore(
 		return err
 	}
 
+	providers, err := registry.SenderClient(cfg.HTTPClient, res)
+	if err != nil {
+		return err
+	}
+	tokens, err := registry.GoogleTokens(providers)
+	if err != nil {
+		return err
+	}
+	apple, err := registry.AppleTokens(now)
+	if err != nil {
+		return err
+	}
+
+	// One service, not two: the registry resolves the same rows the use case
+	// writes.
+	creds := credential.NewService(credentialRows, now)
+
+	// The dialer is the one sign-in codes go through. It is a connection
+	// factory and not an account -- the source's own identity is supplied per
+	// send -- so sharing it lends the customer nothing of srosha's.
+	core.senderRegistry, err = consoleSenders(creds, secrets, providers, dialer, tokens, apple)
+	if err != nil {
+		return err
+	}
+
+	// A bucket of its own, and not the one above. That one is the SENDING
+	// quota, spent in the gateway; a test must not look like it costs a
+	// customer a message.
+	trialLimit, err := ratelimit.NewMemory(cfg.Console.TrialPerMinute, now)
+	if err != nil {
+		return err
+	}
+	core.trials = usecase.NewTrials(
+		sources, creds, core.senderRegistry, gate, trialLimit, ids.Generate,
+	)
+
 	core.senders = usecase.NewCredentials(
 		sources,
-		credential.NewService(credentialRows, now),
+		creds,
 		secrets,
 		credentialRows,
 		credentialRows,
@@ -298,4 +346,24 @@ func buildIdentityCore(
 		now,
 	)
 	return nil
+}
+
+// consoleSenders builds the registry a trial sends through, and exists as its
+// own function for one reason: the empty Fallback below is the security
+// boundary of the whole feature, and a boundary a test cannot reach is a
+// comment.
+//
+// With an identity of srosha's in there, a customer whose own credential is
+// broken would press "test", srosha would send as itself, and the page would
+// say it worked -- a wrong answer wearing a right one's clothes. Every branch
+// of Registry.ours asks configured() first, so an empty Fallback refuses all
+// eight channels.
+//
+// TestTheConsoleCannotSendAsSrosha calls THIS function, so filling the fallback
+// in turns it red.
+func consoleSenders(
+	creds *credential.Service, secrets sender.Secrets, providers *http.Client,
+	dialer email.Dialer, tokens sender.GoogleTokens, apple sender.AppleTokens,
+) (*sender.Registry, error) {
+	return sender.NewRegistry(creds, secrets, providers, dialer, tokens, apple, sender.Fallback{})
 }

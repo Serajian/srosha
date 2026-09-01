@@ -45,6 +45,11 @@ const (
 	ActKeyIssue      = "key.issue"
 	ActKeyRevoke     = "key.revoke"
 
+	// ActCredentialTest is the customer testing their own identity, so its
+	// actor is the customer -- which is why it is not in sourceDecisionVerbs
+	// below.
+	ActCredentialTest = "credential.test" //nolint:gosec // an audit verb, not a secret
+
 	ActUserRole       = "user.role"
 	ActUserDeactivate = "user.deactivate"
 	ActUserActivate   = "user.activate"
@@ -70,3 +75,10 @@ const (
 var sourceDecisionVerbs = []string{
 	ActSourceApprove, ActSourceRefuse, ActSourceSuspend, ActSourceRestore,
 }
+
+// What a trial actually says. Somebody who receives one unexpectedly has to be
+// able to tell what it is without asking anybody.
+const (
+	trialTitle = "srosha test"
+	trialBody  = "This is a test message sent from srosha to check a sending identity."
+)

@@ -427,7 +427,14 @@ func (r *Registry) buildAPNs(cfg apns.Config, key string) (delivery.Sender, erro
 	return apns.New(r.client, source, cfg)
 }
 
+// ErrNoSender says this deployment has no identity for the channel at all --
+// not that the one it has is broken. The console builds its registry with an
+// empty Fallback on purpose, so this is the only answer its fallback path can
+// give, and its test says so by name rather than by message text.
+var ErrNoSender = errors.New("no sender configured for this channel")
+
 func noSender(c shared.Channel) error {
 	return errs.InvalidInputErr("no sender configured for this channel").
+		WithErr(ErrNoSender).
 		WithStr("channel " + c.String())
 }

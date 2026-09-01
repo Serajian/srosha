@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Serajian/srosha/internal/core/domain/credential"
+	"github.com/Serajian/srosha/internal/core/domain/user"
 	"github.com/Serajian/srosha/internal/core/domain/webhook"
 	"github.com/Serajian/srosha/internal/core/shared"
 	"github.com/Serajian/srosha/internal/core/usecase"
@@ -32,6 +33,18 @@ type SenderPages interface {
 	) (*credential.Credential, error)
 }
 
+// TrialPages sends one real message through an identity the source registered,
+// so a customer finds out whether it works now rather than when a notification
+// does not arrive. usecase.Trials satisfies it.
+//
+// Its own interface rather than a method on SenderPages: two binaries build the
+// use case behind SenderPages and only the console can send.
+type TrialPages interface {
+	Run(
+		ctx context.Context, actor *user.User, sourceID string, credentialID shared.ID,
+	) (string, error)
+}
+
 // CallbackPages is where a source is told what happened. usecase.Registrar
 // satisfies it.
 type CallbackPages interface {
@@ -50,6 +63,7 @@ type CallbackPages interface {
 // here, first, on every route.
 type identityHandler struct {
 	senders   SenderPages
+	trials    TrialPages
 	callbacks CallbackPages
 	sources   SourcePages
 	log       *slog.Logger
@@ -61,6 +75,11 @@ type (
 		SourceID string
 		Senders  []credential.Credential
 		Problem  string
+
+		// Result is the good news, and Problem the bad. Two fields rather than
+		// one with a flag beside it: the page styles them differently, and a
+		// single field would need the template to ask which kind it is.
+		Result string
 	}
 	callbackPage struct {
 		chrome
@@ -139,14 +158,46 @@ func (h *identityHandler) addSender(c *gin.Context) {
 }
 
 func (h *identityHandler) listSendersWith(c *gin.Context, id, problem string) {
+	h.renderSenders(c, id, problem, "")
+}
+
+func (h *identityHandler) listSendersOK(c *gin.Context, id, result string) {
+	h.renderSenders(c, id, "", result)
+}
+
+func (h *identityHandler) renderSenders(c *gin.Context, id, problem, result string) {
 	senders, err := h.senders.List(c.Request.Context(), id)
 	if err != nil {
 		notFound(c)
 		return
 	}
 	c.HTML(http.StatusOK, pageSenders, sendersPage{
-		chrome: inside, SourceID: id, Senders: senders, Problem: problem,
+		chrome: inside, SourceID: id, Senders: senders, Problem: problem, Result: result,
 	})
+}
+
+// testSender really sends. It renders the list again with the answer rather
+// than redirecting, for the same reason keyHandler.issue does: a redirect needs
+// somewhere to keep the message in the meantime, and every such place outlives
+// the page it was meant for.
+//
+// The provider's own words are what reaches the screen. "401 Unauthorized" is
+// something a customer can act on; "test failed" is not.
+func (h *identityHandler) testSender(c *gin.Context) {
+	id, ok := h.mine(c)
+	if !ok {
+		return
+	}
+
+	providerID, err := h.trials.Run(
+		c.Request.Context(), signedInUser(c), id, shared.ID(c.Param("senderID")),
+	)
+	if err != nil {
+		h.log.WarnContext(c.Request.Context(), "trial refused", "error", err)
+		h.listSendersWith(c, id, message(err))
+		return
+	}
+	h.listSendersOK(c, id, "Sent. The provider called it "+providerID+".")
 }
 
 // switchSender turns one identity off or back on. Which of the two is decided

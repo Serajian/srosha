@@ -25,4 +25,14 @@ var (
 	// names their own account. One sentinel for both: it is the same door,
 	// closed the same way, whichever of the two somebody tried.
 	ErrSelfTarget = errors.New("actor is the target")
+
+	// ErrTrialNoAddress is a trial with nowhere to go: the source has no
+	// default address on that channel. Its own sentinel because the page says
+	// something a customer can act on -- go and set one -- rather than the
+	// generic invalid-input every other refusal shares.
+	ErrTrialNoAddress = errors.New("source has no default address on this channel")
+
+	// ErrTrialTooMany is the cap. The button really sends, and the refusal has
+	// to be told apart from a provider refusing us.
+	ErrTrialTooMany = errors.New("too many trials for this source")
 )

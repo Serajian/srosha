@@ -7,12 +7,16 @@ import (
 )
 
 // Console is everything the console binary needs, and nothing else. It has no
-// broker, no sending credentials and no callback secrets: it serves pages and
-// reads rows.
+// broker and no callback secrets: it serves pages and reads rows.
+//
+// It holds no sending identity of its own -- the registry it builds has an
+// empty Fallback -- but it does open a source's own, to send a trial message.
+// That is why it needs an http client.
 type Console struct {
 	App        settings.App
 	HTTPServer settings.HTTPServer
 	HTTP       settings.HTTP
+	HTTPClient settings.HTTPClient
 	DB         settings.DB
 	Console    settings.Console
 
@@ -43,6 +47,7 @@ func LoadConsole() (Console, error) {
 		App:        app,
 		HTTPServer: settings.LoadHTTPServer(r),
 		HTTP:       settings.LoadHTTP(r),
+		HTTPClient: settings.LoadHTTPClient(r),
 		DB:         settings.LoadDB(r),
 		Console:    settings.LoadConsole(r, app.IsProduction()),
 		Crypto:     settings.LoadCrypto(r),
