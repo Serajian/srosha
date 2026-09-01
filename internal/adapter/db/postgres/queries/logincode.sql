@@ -22,3 +22,10 @@ SELECT count(*)
 FROM login_codes
 WHERE user_id = @user_id
   AND created_at >= @since;
+
+-- name: ForgetLoginCode :exec
+-- Removes a code that was stored and then never sent. Deleted rather than
+-- marked: a code that reached nobody is not history, and the request limit
+-- counts rows.
+DELETE FROM login_codes
+WHERE id = @id;

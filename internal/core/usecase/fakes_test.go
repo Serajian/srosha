@@ -941,6 +941,20 @@ func (f *fakeCodes) ReadNewest(
 // has already written to the row this would update.
 func (f *fakeCodes) Spend(_ context.Context, _ *logincode.LoginCode) error { return nil }
 
+// Forget drops the row, the way the repository does. A fake that kept it would
+// make TestAFailedSendCostsNoQuota pass against a database that does not.
+func (f *fakeCodes) Forget(_ context.Context, id shared.ID) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, c := range f.rows {
+		if c.ID == id {
+			f.rows = append(f.rows[:i], f.rows[i+1:]...)
+			return nil
+		}
+	}
+	return nil
+}
+
 func (f *fakeCodes) CountSince(
 	_ context.Context, userID shared.ID, since time.Time,
 ) (int, error) {
