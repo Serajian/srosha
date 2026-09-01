@@ -30,6 +30,7 @@ const (
 	pathSourceEdit = "/sources/:id/edit"
 	pathSenderOff  = "/sources/:id/senders/:senderID/off"
 	pathSenderOn   = "/sources/:id/senders/:senderID/on"
+	pathSenderTest = "/sources/:id/senders/:senderID/test"
 	pathSourceKeys = "/sources/:id/keys"
 	pathKeyRevoke  = "/sources/:id/keys/:keyID/revoke"
 )

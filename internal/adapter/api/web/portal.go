@@ -35,6 +35,7 @@ type PortalDeps struct {
 	Sources   SourcePages
 	Keys      KeyPages
 	Senders   SenderPages
+	Trials    TrialPages
 	Callbacks CallbackPages
 
 	// SecureCookie is off only for local development over plain http.
@@ -60,6 +61,9 @@ func (d PortalDeps) validate() error {
 	}
 	if d.Senders == nil {
 		errs = append(errs, errors.New("no credentials use case"))
+	}
+	if d.Trials == nil {
+		errs = append(errs, errors.New("no trials use case"))
 	}
 	if d.Callbacks == nil {
 		errs = append(errs, errors.New("no webhook use case"))
@@ -118,7 +122,8 @@ func NewPortal(d PortalDeps) (PortalHandler, error) {
 	sources := &sourceHandler{sources: d.Sources, log: d.Log}
 	keys := &keyHandler{keys: d.Keys, log: d.Log}
 	identity := &identityHandler{
-		senders: d.Senders, callbacks: d.Callbacks, sources: d.Sources, log: d.Log,
+		senders: d.Senders, trials: d.Trials, callbacks: d.Callbacks,
+		sources: d.Sources, log: d.Log,
 	}
 
 	// --- getting in. no session, by definition ---------------------------
@@ -149,6 +154,7 @@ func NewPortal(d PortalDeps) (PortalHandler, error) {
 	authed.POST(pathSourceSenders, identity.addSender)
 	authed.POST(pathSenderOff, identity.switchSender(false))
 	authed.POST(pathSenderOn, identity.switchSender(true))
+	authed.POST(pathSenderTest, identity.testSender)
 	authed.GET(pathSourceCallback, identity.showCallback)
 	authed.POST(pathSourceCallback, identity.setCallback)
 

@@ -79,6 +79,7 @@ func Console(ctx context.Context, cfg config.Console) (*App, error) {
 		Sources:      core.sources,
 		Keys:         core.keys,
 		Senders:      core.senders,
+		Trials:       core.trials,
 		Callbacks:    core.callbacks,
 		SecureCookie: cfg.Console.SecureCookie,
 
@@ -181,6 +182,8 @@ type consoleCore struct {
 	// through. It can open a source's own identity and no other -- see
 	// consoleSenders.
 	senderRegistry *sender.Registry
+
+	trials *usecase.Trials
 }
 
 func buildConsoleCore(
@@ -228,7 +231,7 @@ func buildConsoleCore(
 		gate, ids.Generate, now,
 	)
 
-	if err := buildIdentityCore(&core, cfg, pool, dialer, ids, now, res, log); err != nil {
+	if err := buildIdentityCore(&core, cfg, pool, dialer, gate, ids, now, res, log); err != nil {
 		return core, err
 	}
 
@@ -256,7 +259,8 @@ func buildConsoleCore(
 // is spent by Admit, which is the sending path, and the console does not send.
 func buildIdentityCore(
 	core *consoleCore, cfg config.Console, pool *pgxpool.Pool, dialer *smtp.Dialer,
-	ids *system.IDs, now shared.NowFunc, res *registry.Resources, log *slog.Logger,
+	gate *usecase.Gate, ids *system.IDs, now shared.NowFunc,
+	res *registry.Resources, log *slog.Logger,
 ) error {
 	keys, err := crypto.NewKeyring(cfg.Crypto.Keys, cfg.Crypto.ActiveID)
 	if err != nil {
@@ -319,6 +323,17 @@ func buildIdentityCore(
 	if err != nil {
 		return err
 	}
+
+	// A bucket of its own, and not the one above. That one is the SENDING
+	// quota, spent in the gateway; a test must not look like it costs a
+	// customer a message.
+	trialLimit, err := ratelimit.NewMemory(cfg.Console.TrialPerMinute, now)
+	if err != nil {
+		return err
+	}
+	core.trials = usecase.NewTrials(
+		sources, creds, core.senderRegistry, gate, trialLimit, ids.Generate,
+	)
 
 	core.senders = usecase.NewCredentials(
 		sources,

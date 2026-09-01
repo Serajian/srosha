@@ -6,6 +6,7 @@
 </p>
 
 {{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
+{{if .Result}}<p class="result" role="status">{{.Result}}</p>{{end}}
 
 <form method="post" action="/sources/{{.SourceID}}/senders">
   <label for="channel">Channel</label>
@@ -59,10 +60,18 @@
         <button type="submit" class="quiet">Turn on</button>
       </form>
     {{end}}
+    <form method="post" action="/sources/{{$.SourceID}}/senders/{{.ID}}/test">
+      <button type="submit" class="quiet">Send a test</button>
+    </form>
   </li>
   {{end}}
 </ul>
 {{end}}
+
+<p class="hint">
+  A test sends a real message to this channel's default address — the one set on
+  the source — and shows you what the provider said back.
+</p>
 
 <p class="fine"><a href="/sources/{{.SourceID}}">Back to the source</a></p>
 {{end}}

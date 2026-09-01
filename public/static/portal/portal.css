@@ -223,6 +223,19 @@ button.quiet:hover { color: var(--text); border-color: var(--edge); }
   line-height: 1.6;
 }
 
+/* The counterpart of .problem: same shape, the brand blue rather than the red,
+   so a customer reading the senders page can tell the two apart at a glance. */
+.result {
+  margin: 0 0 22px;
+  padding: 12px 15px;
+  border: 1px solid rgba(51, 165, 222, .30);
+  border-radius: var(--radius);
+  background: rgba(51, 165, 222, .09);
+  color: #6FC0EC;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
 .fine {
   margin: 26px 0 0;
   padding-top: 20px;

@@ -517,6 +517,28 @@ func (m *memSenders) List(
 	return m.rows[sourceID], nil
 }
 
+// memTrials is the send behind the button. What actually reaches a provider is
+// usecase.Trials' business and is tested there; this only has to be able to
+// answer either way.
+type memTrials struct {
+	providerID string
+	err        error
+
+	asked int
+	cred  shared.ID
+}
+
+func (m *memTrials) Run(
+	_ context.Context, _ *user.User, _ string, credentialID shared.ID,
+) (string, error) {
+	m.asked++
+	m.cred = credentialID
+	if m.err != nil {
+		return "", m.err
+	}
+	return m.providerID, nil
+}
+
 type memCallbacks struct {
 	mu   sync.Mutex
 	rows map[string]*webhook.Webhook
@@ -554,6 +576,7 @@ type testPortal struct {
 	users   *memUsers
 	sources *memSources
 	senders *memSenders
+	trials  *memTrials
 	keys    *memKeys
 	audit   *memAudit
 }
@@ -579,6 +602,7 @@ func newTestPortal(t *testing.T) *testPortal {
 	)
 
 	sources := &memSources{}
+	trials := &memTrials{providerID: "prov-42"}
 	audit := &memAudit{}
 	gate := usecase.NewGate(audit, nil, ids, now)
 
@@ -590,6 +614,7 @@ func newTestPortal(t *testing.T) *testPortal {
 		Sources:      useSources,
 		Keys:         usecase.NewKeys(keys, useSources, &mintKeys{}, gate, ids, now),
 		Senders:      senders,
+		Trials:       trials,
 		Callbacks:    &memCallbacks{rows: map[string]*webhook.Webhook{}},
 		SecureCookie: false,
 		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -602,7 +627,7 @@ func newTestPortal(t *testing.T) *testPortal {
 	t.Cleanup(srv.Close)
 	return &testPortal{
 		Server: srv, mail: mail, users: users, sources: sources,
-		senders: senders, keys: keys, audit: audit,
+		senders: senders, trials: trials, keys: keys, audit: audit,
 	}
 }
 
@@ -1477,5 +1502,86 @@ func TestThePortalWritesItsOwnCookie(t *testing.T) {
 	}
 	if in.sessionNamed(web.PortalCookieName) == nil {
 		t.Fatal("the portal set no session cookie of its own")
+	}
+}
+
+// --- testing a sender ------------------------------------------------------
+
+// aSenderToTest is one signed-in customer with one source and one identity on
+// it -- the state somebody is in when the button is worth pressing.
+func aSenderToTest(t *testing.T, p *testPortal) (cookie *http.Cookie, id, sender string) {
+	t.Helper()
+
+	cookie = signedIn(t, p, "me@acme.test")
+	post(t, p, "/sources", url.Values{"name": {"acme-billing"}}, cookie)
+	id = onlySourceID(t, p)
+
+	post(t, p, "/sources/"+id+"/senders", url.Values{
+		"channel": {"telegram"}, "name": {"our-support-bot"}, "secret": {"a-token"},
+	}, cookie)
+
+	return cookie, id, p.senders.rows[id][0].ID.String()
+}
+
+// The button really sends, and the page says what came back. The provider's own
+// id is the handle a customer takes to the provider's own dashboard.
+func TestATrialShowsTheProvidersMessageID(t *testing.T) {
+	p := newTestPortal(t)
+	cookie, id, sender := aSenderToTest(t, p)
+
+	got := post(t, p, "/sources/"+id+"/senders/"+sender+"/test", nil, cookie)
+	if got.status != http.StatusOK {
+		t.Fatalf("POST test = %d\n%s", got.status, got.body)
+	}
+	if !strings.Contains(got.body, "prov-42") {
+		t.Errorf("the page does not say what the provider called it:\n%s", tail(got.body, 400))
+	}
+	if p.trials.cred.String() != sender {
+		t.Errorf("it tested %q, not the sender on the page", p.trials.cred)
+	}
+}
+
+// The provider's own words reach the screen. This is the whole feature: a
+// customer can act on "401 Unauthorized" and cannot act on "test failed".
+func TestAFailedTrialShowsWhatTheProviderSaid(t *testing.T) {
+	p := newTestPortal(t)
+	cookie, id, sender := aSenderToTest(t, p)
+	p.trials.err = errs.InvalidInputErr("telegram: 401 Unauthorized")
+
+	got := post(t, p, "/sources/"+id+"/senders/"+sender+"/test", nil, cookie)
+	if got.status != http.StatusOK {
+		t.Fatalf("POST test = %d", got.status)
+	}
+	if !strings.Contains(got.body, "401 Unauthorized") {
+		t.Errorf("the provider's answer did not reach the page:\n%s", tail(got.body, 400))
+	}
+}
+
+// Either way the senders page is rendered again, whole. A page that stops
+// mid-tag is how a render error hides.
+func TestTheSendersPageIsWholeAfterATrial(t *testing.T) {
+	p := newTestPortal(t)
+	cookie, id, sender := aSenderToTest(t, p)
+	path := "/sources/" + id + "/senders/" + sender + "/test"
+
+	whole(t, path, post(t, p, path, nil, cookie))
+
+	p.trials.err = errs.InvalidInputErr("telegram: 401 Unauthorized")
+	whole(t, path, post(t, p, path, nil, cookie))
+}
+
+// A stranger's source is not found, the same as every other route here. The
+// trial must not even be attempted.
+func TestAStrangerCannotTestSomebodyElsesSender(t *testing.T) {
+	p := newTestPortal(t)
+	_, id, sender := aSenderToTest(t, p)
+	theirs := signedIn(t, p, "them@acme.test")
+
+	got := post(t, p, "/sources/"+id+"/senders/"+sender+"/test", nil, theirs)
+	if got.status != http.StatusNotFound {
+		t.Fatalf("a stranger got %d, want 404", got.status)
+	}
+	if p.trials.asked != 0 {
+		t.Error("it ran a trial on somebody else's identity")
 	}
 }
