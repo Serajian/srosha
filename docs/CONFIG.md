@@ -388,20 +388,51 @@ because `go:embed` cannot reach outside its own directory.
 | Directory | `public/` |
 | Served to a browser | `public/static/<surface>/` — `static/portal/`, `static/admin/` |
 | Rendered on the server | `public/templates/<surface>/` — `templates/portal/`, `templates/admin/` |
+| Served behind a guard | `public/guarded/<surface>/` — `guarded/admin/architecture.html` |
 | Stylesheet | one per surface: `portal/portal.css`, `admin/admin.css` |
 | Logo | `crane.svg`, copied into each surface's directory |
 | Email bodies | `public/templates/email/` — rendered, never served, and not a surface |
 | URL prefix | `/static/` — mapped to one surface's directory, never to `public/` |
 
-**The two halves are not the same thing.** `static/` is fetched byte for byte;
+**The three are not the same thing.** `static/` is fetched byte for byte;
 `templates/` is rendered and never served. Serving `templates/` would hand out
 the shape of every page and every field name in one request, so nothing may point
 a file server at the root of that FS — `web.browserFiles(surface)` subs into
 `static/<surface>`, so each surface sees its own assets and nothing else.
 
+`guarded/` is the third, and it is what neither of the other two could hold: a
+whole document, served byte for byte, that not everybody signed in may read.
+Under `static/` it would be public to anybody who guessed the url; under
+`templates/` it would be parsed as a template, which it is not.
+
+**Nothing serves `guarded/` as a file system.** `web.guardedFile(surface, name)`
+reads **one named file**, chosen where the surface is built and never by the
+request, so the guard is on the route rather than on a directory whose contents
+nobody listed. It is read at startup, so a missing file is a console that will
+not start rather than a page that fails the first time somebody opens it.
+
+Today it holds one file:
+
+| | |
+| --- | --- |
+| File | `public/guarded/admin/architecture.html` |
+| Route | `/architecture` on the admin surface — **`super_admin` only** |
+| Source | `docs/assets/brand/srosha.architecture.json`, rendered by the `archify` skill |
+
+`super_admin`, for the same kind of reason `/audit` is: the diagram names every
+host, every port, every store and the private network they sit on. That is the
+shape of the deployment, and an operator approving sources has no call to read
+it.
+
 Fonts are a stack, not files: nothing here may reach a font host at runtime, and
 the portal has to work on a network that cannot. Vazirmatn is first in every
 stack and takes over the moment its `woff2` is dropped in beside the stylesheet.
+
+That applies to `guarded/` too, and it is not automatic there: the generated
+diagram arrives with a Google Fonts `<link>` in its head, which is stripped
+before the file is committed. `TestAnAdminIsRefusedOnTheArchitectureDiagram`
+asserts the served bytes name no font host, so the strip cannot be forgotten the
+next time the diagram is regenerated.
 
 ---
 
@@ -415,6 +446,7 @@ stack and takes over the moment its `woff2` is dropped in beside the stylesheet.
 | Monochrome | `docs/assets/brand/srosha-mono-512.png` (سرمه‌ای), `srosha-mono-white-512.png` (سفید) |
 | README hero | `docs/assets/brand/srosha-hero.png` — 1280×400 |
 | Architecture diagram | `docs/assets/brand/architecture.svg` — used in `README.md` |
+| Architecture diagram, interactive | `docs/assets/brand/srosha.architecture.json` — the source the admin surface's `/architecture` page is rendered from |
 | Palette | `#3256AE` royal · `#33A5DE` sky · `#4934A2` violet · `#317DC6` azure · `#10182B` ink |
 | Wordmark font | Onest (Google Fonts), weight 700 |
 

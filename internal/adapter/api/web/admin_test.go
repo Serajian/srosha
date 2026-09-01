@@ -655,6 +655,39 @@ func TestAnAdminIsRefusedOnTheAuditLog(t *testing.T) {
 	}
 }
 
+// The diagram names every host, every port, every store and the private
+// network they sit on -- the deployment's own shape. So it is behind the same
+// rule /audit and /people are, for a reason of the same kind: an operator
+// approving sources has no call to read it.
+//
+// It is also the one thing this surface serves that is NOT a page: no layout,
+// no nav and no way to sign out, which is why TestEveryAdminPageIsWhole does
+// not name it. What is asserted instead is that the document itself came back,
+// and that it reaches nothing on the network to render -- see docs/CONFIG.md,
+// "Pages and assets": the panel has to work where a font host does not answer.
+func TestAnAdminIsRefusedOnTheArchitectureDiagram(t *testing.T) {
+	a := newTestAdmin(t)
+
+	admin := signedInAs(t, a, "ops@srosha.ir", user.RoleAdmin)
+	if got := aget(t, a, "/architecture", admin); got.status == http.StatusOK {
+		t.Error("an admin reached /architecture")
+	}
+
+	top := signedInAs(t, a, "root@srosha.ir", user.RoleSuperAdmin)
+	page := aget(t, a, "/architecture", top)
+	if page.status != http.StatusOK {
+		t.Fatalf("a super_admin cannot reach /architecture: %d", page.status)
+	}
+	if !strings.Contains(page.body, "<svg") {
+		t.Error("/architecture answered without the diagram in it")
+	}
+	for _, host := range []string{"fonts.googleapis.com", "fonts.gstatic.com"} {
+		if strings.Contains(page.body, host) {
+			t.Errorf("the diagram reaches %s to render itself", host)
+		}
+	}
+}
+
 // A source's own page is exactly where /audit's own boundary would be worth
 // breaking to widen: this proves it stays narrow. The four operator verbs
 // (approve, refuse, suspend, restore) are safe for an admin because their
@@ -739,18 +772,21 @@ func TestEveryAdminPageIsWhole(t *testing.T) {
 	whole(t, "/people/:id", personPage)
 }
 
-// A super_admin sees the /people and /audit links on an ordinary operator
-// page; an admin does not. Both are still whole pages either way, and an
-// admin is not shown a link that would only redirect them away.
-func TestTheNavShowsPeopleOnlyToASuperAdmin(t *testing.T) {
+// A super_admin sees the /people, /audit and /architecture links on an
+// ordinary operator page; an admin does not. Both are still whole pages
+// either way, and an admin is not shown a link that would only redirect them
+// away.
+func TestTheNavShowsTheTopLinksOnlyToASuperAdmin(t *testing.T) {
 	a := newTestAdmin(t)
 
 	admin := signedInAs(t, a, "ops@srosha.ir", user.RoleAdmin)
 	top := signedInAs(t, a, "root@srosha.ir", user.RoleSuperAdmin)
 
+	topLinks := []string{`href="/people"`, `href="/audit"`, `href="/architecture"`}
+
 	asAdmin := aget(t, a, "/", admin)
 	whole(t, "/", asAdmin)
-	for _, link := range []string{`href="/people"`, `href="/audit"`} {
+	for _, link := range topLinks {
 		if strings.Contains(asAdmin.body, link) {
 			t.Errorf("an admin's queue page offers %s", link)
 		}
@@ -758,7 +794,7 @@ func TestTheNavShowsPeopleOnlyToASuperAdmin(t *testing.T) {
 
 	asTop := aget(t, a, "/", top)
 	whole(t, "/", asTop)
-	for _, link := range []string{`href="/people"`, `href="/audit"`} {
+	for _, link := range topLinks {
 		if !strings.Contains(asTop.body, link) {
 			t.Errorf("a super_admin's queue page does not offer %s", link)
 		}

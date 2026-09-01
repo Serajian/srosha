@@ -1,0 +1,399 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "srosha — notification service",
+    "output": "srosha-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Serajian/srosha",
+      "revision": "51c14eee98f97f11a4fe14837d4221ffab2ad5d9"
+    },
+    "views": [
+      {
+        "id": "send-path",
+        "label": "Send path",
+        "focus": [
+          "source",
+          "traefik",
+          "gateway",
+          "nats",
+          "dispatcher",
+          "providers"
+        ],
+        "note": "A message from a customer service to the channel provider that delivers it."
+      },
+      {
+        "id": "durable-state",
+        "label": "Durable state",
+        "focus": [
+          "gateway",
+          "postgres",
+          "dispatcher",
+          "migrate"
+        ],
+        "note": "The deliveries table is the outbox; migrate runs before any binary starts."
+      },
+      {
+        "id": "console",
+        "label": "Console surfaces",
+        "focus": [
+          "browser",
+          "traefik",
+          "console",
+          "postgres"
+        ],
+        "note": "Portal and admin live in one process on two hostnames."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "source",
+      "type": "external",
+      "label": "Customer service",
+      "sublabel": "gRPC client",
+      "pos": [
+        40,
+        140
+      ],
+      "size": [
+        170,
+        68
+      ],
+      "sources": [
+        {
+          "path": "sdk/go/srosha/client.go",
+          "label": "Go SDK"
+        }
+      ]
+    },
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "Customers & operators",
+      "sublabel": "browser",
+      "pos": [
+        40,
+        420
+      ],
+      "size": [
+        170,
+        68
+      ]
+    },
+    {
+      "id": "traefik",
+      "type": "cloud",
+      "label": "Traefik",
+      "sublabel": "TLS · dokploy-network",
+      "pos": [
+        302,
+        280
+      ],
+      "size": [
+        170,
+        68
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "gateway",
+      "sublabel": "gRPC :50051 · api.srosha.ir",
+      "pos": [
+        564,
+        140
+      ],
+      "size": [
+        170,
+        68
+      ],
+      "sources": [
+        {
+          "path": "cmd/gateway/main.go"
+        },
+        {
+          "path": "internal/adapter/api/grpcsrv/notification.go"
+        }
+      ]
+    },
+    {
+      "id": "console",
+      "type": "backend",
+      "label": "console",
+      "sublabel": "portal :8090 · admin :8092",
+      "pos": [
+        564,
+        420
+      ],
+      "size": [
+        170,
+        68
+      ],
+      "sources": [
+        {
+          "path": "internal/adapter/api/web/web.go"
+        },
+        {
+          "path": "internal/adapter/api/web/portal.go"
+        }
+      ]
+    },
+    {
+      "id": "nats",
+      "type": "messagebus",
+      "label": "NATS JetStream",
+      "sublabel": ":4222 · one user per binary",
+      "pos": [
+        826,
+        140
+      ],
+      "size": [
+        170,
+        68
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL 18",
+      "sublabel": "srosha :5432 · the outbox",
+      "pos": [
+        826,
+        420
+      ],
+      "size": [
+        170,
+        68
+      ],
+      "sources": [
+        {
+          "path": "migrations/00008_create_deliveries.sql",
+          "label": "deliveries"
+        }
+      ]
+    },
+    {
+      "id": "dispatcher",
+      "type": "backend",
+      "label": "dispatcher",
+      "sublabel": "workers · reconcile sweep",
+      "pos": [
+        1088,
+        160
+      ],
+      "size": [
+        170,
+        68
+      ],
+      "sources": [
+        {
+          "path": "internal/core/usecase/dispatch.go"
+        }
+      ]
+    },
+    {
+      "id": "migrate",
+      "type": "backend",
+      "label": "migrate",
+      "sublabel": "goose · advisory lock",
+      "pos": [
+        1088,
+        524
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "cmd/migrate/main.go"
+        }
+      ]
+    },
+    {
+      "id": "providers",
+      "type": "external",
+      "label": "Channel providers",
+      "sublabel": "8 channels, one sender each",
+      "pos": [
+        1088,
+        36
+      ],
+      "size": [
+        170,
+        72
+      ],
+      "sources": [
+        {
+          "path": "internal/adapter/sender/registry.go"
+        }
+      ]
+    },
+    {
+      "id": "callback",
+      "type": "external",
+      "label": "Source callback",
+      "sublabel": "signed webhook",
+      "pos": [
+        1088,
+        300
+      ],
+      "size": [
+        170,
+        68
+      ],
+      "sources": [
+        {
+          "path": "internal/adapter/notifier/notifier.go"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "One VPS · Docker + Dokploy",
+      "wraps": [
+        "traefik",
+        "gateway",
+        "console",
+        "nats",
+        "postgres",
+        "dispatcher",
+        "migrate"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "srosha-net · expose only, nothing publishes a host port",
+      "wraps": [
+        "gateway",
+        "console",
+        "nats",
+        "postgres",
+        "dispatcher",
+        "migrate"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "source-grpc",
+      "from": "source",
+      "to": "traefik",
+      "label": "gRPC · api.srosha.ir",
+      "variant": "emphasis"
+    },
+    {
+      "id": "browser-https",
+      "from": "browser",
+      "to": "traefik",
+      "label": "HTTPS · panel / admin"
+    },
+    {
+      "id": "edge-gateway",
+      "from": "traefik",
+      "to": "gateway",
+      "label": "h2c",
+      "variant": "emphasis"
+    },
+    {
+      "id": "edge-console",
+      "from": "traefik",
+      "to": "console",
+      "label": "cookie per host"
+    },
+    {
+      "id": "gateway-write",
+      "from": "gateway",
+      "to": "postgres",
+      "label": "message + deliveries, one transaction"
+    },
+    {
+      "id": "gateway-publish",
+      "from": "gateway",
+      "to": "nats",
+      "label": "publish event",
+      "variant": "emphasis"
+    },
+    {
+      "id": "nats-consume",
+      "from": "nats",
+      "to": "dispatcher",
+      "label": "consume",
+      "variant": "emphasis"
+    },
+    {
+      "id": "dispatcher-rows",
+      "from": "dispatcher",
+      "to": "postgres",
+      "label": "claim pending · record SENT / FAILED",
+      "labelDy": 78
+    },
+    {
+      "id": "console-rows",
+      "from": "console",
+      "to": "postgres",
+      "label": "sources, keys, credentials",
+      "labelDy": 51
+    },
+    {
+      "id": "migrate-schema",
+      "from": "migrate",
+      "to": "postgres",
+      "label": "every deploy migrates first",
+      "variant": "dashed"
+    },
+    {
+      "id": "dispatcher-send",
+      "from": "dispatcher",
+      "to": "providers",
+      "label": "send",
+      "variant": "emphasis"
+    },
+    {
+      "id": "dispatcher-callback",
+      "from": "dispatcher",
+      "to": "callback",
+      "label": "HMAC-signed result",
+      "variant": "dashed",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Edge",
+      "items": [
+        "Three hostnames, one Traefik",
+        "No host port is published"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Send path",
+      "items": [
+        "One transaction, then NATS",
+        "PENDING rows are the outbox"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Recovery",
+      "items": [
+        "The dispatcher claims rows",
+        "Age is the retry counter"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Console",
+      "items": [
+        "Portal and admin, one process",
+        "One cookie per hostname"
+      ]
+    }
+  ]
+}

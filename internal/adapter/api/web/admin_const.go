@@ -45,7 +45,18 @@ const (
 	pathPerson       = "/people/:id"
 	pathPersonRole   = "/people/:id/role"
 	pathPersonActive = "/people/:id/active"
+
+	// pathArchitecture is the diagram of this service, served whole. It sits
+	// with the two above rather than with the queue: it names every host,
+	// every port, every store and the private network they sit on, which is
+	// the shape of the deployment and not an operator's daily work.
+	pathArchitecture = "/architecture"
 )
+
+// fileArchitecture is the document pathArchitecture answers with, under
+// public/guarded/admin/. Not a page name: it is served byte for byte and
+// never goes through a template, so newPageRender never hears about it.
+const fileArchitecture = "architecture.html"
 
 // Form fields, spelled once so the template and the handler cannot drift.
 const (
