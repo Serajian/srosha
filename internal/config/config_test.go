@@ -12,11 +12,18 @@ import (
 // setMinimum sets only what has no sensible default.
 func setMinimum(t *testing.T) {
 	t.Helper()
-	t.Setenv("NOTIF_DB_DSN", "postgres://srosha:pw@postgres:5432/srosha")
-	t.Setenv("NOTIF_MQ_URL", "nats://gateway:pw@nats:4222")
+	t.Setenv("NOTIF_DB_DSN", "postgres://srosha:"+testPassword+"@postgres:5432/srosha")
+	t.Setenv("NOTIF_MQ_URL", "nats://gateway:"+testPassword+"@nats:4222")
 	t.Setenv("NOTIF_CRYPTO_KEYS", `{"1":"`+testKey+`"}`)
 	t.Setenv("NOTIF_CRYPTO_KEY_ID", "1")
 }
+
+// testPassword is what `openssl rand -hex 24` gives, which is what the
+// documentation asks for. It used to be "pw" here, and that stopped being
+// acceptable the day config started refusing a password too short to be one --
+// see checkURLPassword. A fixture that would fail in production is a fixture
+// testing something nobody deploys.
+const testPassword = "7457fe75015215534673052488ffb6facda98c6664d4c3d6"
 
 // testKey is 32 zero bytes in standard base64. Key material never has to be
 // real to be the right length, and the length is the only thing config checks.
@@ -339,5 +346,69 @@ func TestAQueueOfZeroIsRefused(t *testing.T) {
 
 	if _, err := config.LoadGateway(); err == nil {
 		t.Fatal("a queue of zero was accepted")
+	}
+}
+
+// Two of the three NATS passwords were eight characters, in production, for
+// weeks. The rule was already written down and nothing enforced it: a short
+// password is exactly as quiet as a long one.
+func TestProductionRefusesAShortPassword(t *testing.T) {
+	for _, tc := range []struct{ name, key, value string }{
+		{"the broker", "NOTIF_MQ_URL", "nats://gateway:D7yo00pQ@nats:4222"},
+		{"the database", "NOTIF_DB_DSN", "postgres://srosha:D7yo00pQ@postgres:5432/srosha"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setMinimum(t)
+			t.Setenv("NOTIF_APP_ENV", "production")
+			t.Setenv(tc.key, tc.value)
+
+			_, err := config.LoadDispatcher()
+			if err == nil {
+				t.Fatal("production accepted an eight-character password")
+			}
+			if !strings.Contains(err.Error(), tc.key) {
+				t.Errorf("the error does not say which key: %v", err)
+			}
+			// The length belongs in a log. The password does not.
+			if strings.Contains(err.Error(), "D7yo00pQ") {
+				t.Errorf("the error printed the password: %v", err)
+			}
+		})
+	}
+}
+
+// A laptop's postgres is `srosha` with the password `srosha`. A check that
+// makes local work unpleasant is one somebody switches off, and then it is not
+// guarding production either.
+func TestDevelopmentLeavesShortPasswordsAlone(t *testing.T) {
+	setMinimum(t)
+	t.Setenv("NOTIF_APP_ENV", "development")
+	t.Setenv("NOTIF_DB_DSN", "postgres://srosha:srosha@127.0.0.1:7001/srosha?sslmode=disable")
+
+	if _, err := config.LoadDispatcher(); err != nil {
+		t.Fatalf("development refused what a laptop actually uses: %v", err)
+	}
+}
+
+// The local broker url carries no credentials at all, which must not read as a
+// password of length zero.
+func TestAUrlWithNoPasswordIsNotAShortOne(t *testing.T) {
+	setMinimum(t)
+	t.Setenv("NOTIF_APP_ENV", "production")
+	t.Setenv("NOTIF_MQ_URL", "nats://nats:4222")
+
+	if _, err := config.LoadDispatcher(); err != nil {
+		t.Fatalf("a url carrying no password was refused: %v", err)
+	}
+}
+
+// What the documentation tells you to generate has to pass, or the
+// documentation is the thing that is wrong.
+func TestWhatTheDocumentationAsksForIsAccepted(t *testing.T) {
+	setMinimum(t)
+	t.Setenv("NOTIF_APP_ENV", "production")
+
+	if _, err := config.LoadDispatcher(); err != nil {
+		t.Fatalf("production refused a password made the documented way: %v", err)
 	}
 }

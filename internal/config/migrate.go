@@ -26,7 +26,7 @@ func LoadMigrate() (Migrate, error) {
 
 	c := Migrate{
 		App:       app,
-		DB:        settings.LoadDB(r),
+		DB:        settings.LoadDB(r, app.IsProduction()),
 		Migration: settings.LoadMigration(r),
 		Telemetry: settings.LoadTelemetry(r, app.IsProduction()),
 	}

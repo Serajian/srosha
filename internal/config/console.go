@@ -48,7 +48,7 @@ func LoadConsole() (Console, error) {
 		HTTPServer: settings.LoadHTTPServer(r),
 		HTTP:       settings.LoadHTTP(r),
 		HTTPClient: settings.LoadHTTPClient(r),
-		DB:         settings.LoadDB(r),
+		DB:         settings.LoadDB(r, app.IsProduction()),
 		Console:    settings.LoadConsole(r, app.IsProduction()),
 		Crypto:     settings.LoadCrypto(r),
 

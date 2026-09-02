@@ -38,7 +38,7 @@ type MQ struct {
 	DrainTimeout time.Duration
 }
 
-func LoadMQ(r *env.Reader) MQ {
+func LoadMQ(r *env.Reader, production bool) MQ {
 	mq := MQ{
 		URL:             r.RequiredSecret("MQ_URL"),
 		Stream:          r.Str("MQ_STREAM", "NOTIFY"),
@@ -49,6 +49,8 @@ func LoadMQ(r *env.Reader) MQ {
 		ReconnectWait:   r.Duration("MQ_RECONNECT_WAIT", 2*time.Second),
 		DrainTimeout:    r.Duration("MQ_DRAIN_TIMEOUT", 15*time.Second),
 	}
+
+	checkURLPassword(r, production, "MQ_URL", mq.URL)
 
 	r.Check(mq.Stream != "", "NOTIF_MQ_STREAM must not be empty")
 

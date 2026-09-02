@@ -345,8 +345,20 @@ same window, which also meant updating `NOTIF_GATEWAY_MQ_URL` and
 `NOTIF_DISPATCHER_MQ_URL`, since the plaintext lives in the client's URL.
 
 Treat a tool refusing a credential as information, not as an obstacle to work
-around. And when you touch a password here, check its length while you are
-looking at it — that is the only inspection this rule gets.
+around.
+
+**That habit is no longer the only inspection.** `config` refuses to start a
+binary whose `NOTIF_MQ_URL` or `NOTIF_DB_DSN` carries a password shorter than 16
+characters, and only in production — a laptop's `srosha`/`srosha` is left alone,
+because a check that makes local work unpleasant is one somebody switches off.
+The error names the key and the length and never the password.
+
+Sixteen is not a strength calculation. It sits far below the `openssl rand
+-hex 24` above, so following the documentation always passes, and far above the
+eight characters that went unnoticed, so the thing that actually happened
+cannot happen again quietly. Provider passwords — SMTP, a bot token — are not
+checked: those are not ours to set, and refusing one would be this service
+telling a customer their own mail host is wrong.
 
 ### Secrets in code
 

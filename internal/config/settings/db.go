@@ -25,7 +25,7 @@ type DB struct {
 	ConnectBackoff  time.Duration
 }
 
-func LoadDB(r *env.Reader) DB {
+func LoadDB(r *env.Reader, production bool) DB {
 	db := DB{
 		DSN:               r.RequiredSecret("DB_DSN"),
 		MaxConns:          r.Int("DB_MAX_CONNS", 10),
@@ -36,6 +36,8 @@ func LoadDB(r *env.Reader) DB {
 		ConnectAttempts:   r.Int("DB_CONNECT_ATTEMPTS", 5),
 		ConnectBackoff:    r.Duration("DB_CONNECT_BACKOFF", 2*time.Second),
 	}
+
+	checkURLPassword(r, production, "DB_DSN", db.DSN)
 
 	r.Check(db.MaxConns > 0, "NOTIF_DB_MAX_CONNS must be above zero")
 	r.Check(db.ConnectAttempts > 0, "NOTIF_DB_CONNECT_ATTEMPTS must be above zero")
