@@ -23,7 +23,7 @@ delivers.
 ## How it works
 
 <p align="center">
-  <img src="docs/assets/brand/architecture.svg" alt="Architecture: a client submits to the gateway over gRPC; the gateway persists to PostgreSQL and publishes to NATS JetStream; the dispatcher consumes the queue, sends over the eight channels, records the outcome, and fires a signed status webhook back to the client" width="100%">
+  <img src="docs/assets/brand/architecture.svg" alt="Architecture: a client submits to the gateway over gRPC; the gateway persists to PostgreSQL and publishes to NATS JetStream; the dispatcher consumes the queue, sends over the eight channels, records the outcome, and fires a signed status webhook back to the client. A browser reaches the console, which reads and writes the same database. migrate runs the schema to completion before any of them start." width="100%">
 </p>
 
 Four binaries from one image, sharing one core:
