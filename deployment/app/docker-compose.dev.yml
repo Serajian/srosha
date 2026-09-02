@@ -10,6 +10,15 @@
 #
 # nats runs here too: the one on the server is not reachable from outside it.
 
+# Without this, compose names the project after the directory the file sits in,
+# which is `app` -- a name that says nothing on a machine running five other
+# stacks, and one that puts this project's volumes under `app_pgdata` and
+# `app_natsdata` where nobody would look for them.
+#
+# Naming it here rather than passing -p means every way in agrees: the Makefile
+# targets, `docker compose ls`, and a bare `docker compose -f ...` typed by hand.
+name: srosha-dev
+
 services:
   postgres:
     image: postgres:18-alpine
