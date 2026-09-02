@@ -543,6 +543,10 @@ r, err := c.Submit(ctx, srosha.Message{
 Each route is a delivery with its own outcome. One failing does not stop the
 others, and §5 is how you find out which did what.
 
+These are compiled too, by `ExampleClient_Submit_everyChannel`. A wrong field
+name or a constructor that has been renamed fails the build rather than reaching
+a reader.
+
 ## 7. Sending as yourself
 
 By default a message goes out as srosha's own identity, if the operator
@@ -711,6 +715,10 @@ srosha.RawCredential{
 ```
 
 None of them print their secret, through `%v` or `json.Marshal`.
+
+Every snippet above is compiled by `go test ./...` — see
+`ExampleCredentials_Register_everyChannel` in `example_test.go`. Change one here
+and change it there, or the next `make prepush` will say so.
 
 ### Changing one later
 

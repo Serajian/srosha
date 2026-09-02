@@ -294,3 +294,163 @@ func ExampleVerifier_Verify() {
 		w.WriteHeader(http.StatusOK)
 	})
 }
+
+// Every credential in the README's "What each channel needs", so that section
+// cannot rot without `go test ./...` saying so.
+//
+// A wrong field name in an SDK's own documentation is the worst kind: the
+// reader copies it and meets the compiler, not us. These were checked by hand
+// once, on 2026-09-01, which is exactly the sort of checking that stops
+// happening. Keep the two in step -- if you change a snippet there, change it
+// here, and if this stops compiling, that section is already wrong.
+func ExampleCredentials_Register_everyChannel() {
+	// Telegram and Bale: one token, from BotFather.
+	_ = srosha.TelegramCredential{Token: "123456:AAH…"}
+	_ = srosha.BaleCredential{Token: "123456:AAH…"}
+
+	// Email: a server, an account and an address. Port 465 is TLS from the
+	// first byte, anything else is STARTTLS, and zero means 587.
+	_ = srosha.SMTPCredential{
+		Host:     "smtp.acme.test",
+		Port:     587,
+		Username: "noreply@acme.test",
+		From:     "noreply@acme.test",
+		Password: "your-password",
+	}
+
+	// Matrix: https, and a bare address -- no path, no credentials in the url.
+	_ = srosha.MatrixCredential{
+		Homeserver: "https://matrix.acme.test",
+		Token:      "your-access-token",
+	}
+
+	// Gotify: the same shape, and an application token rather than a client
+	// one. It alone decides which application a message lands in.
+	_ = srosha.GotifyCredential{
+		ServerURL: "https://gotify.acme.test",
+		Token:     "your-app-token",
+	}
+
+	// WhatsApp: Meta's id for the number, which is not the number.
+	_ = srosha.WhatsAppCredential{
+		PhoneNumberID: "109876543210987",
+		Token:         "your-access-token",
+	}
+
+	// FCM: the whole service account json file, as it came. Not base64 of it,
+	// and not a path to it.
+	key, err := os.ReadFile("service-account.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	_ = srosha.FCMCredential{ServiceAccount: string(key)}
+
+	// APNs: four values and a file. An unset Environment means production,
+	// which is what a shipped app uses -- a token from a development build is
+	// unknown there and comes back as FailureNotReachable.
+	p8, err := os.ReadFile("AuthKey_ABC123DEFG.p8")
+	if err != nil {
+		log.Fatal(err)
+	}
+	_ = srosha.APNsCredential{
+		Key:    string(p8),
+		KeyID:  "ABC123DEFG",
+		TeamID: "DEF456GHIJ",
+		Topic:  "test.acme.app",
+	}
+
+	// Raw: a channel this build has no type for yet.
+	_ = srosha.RawCredential{
+		Channel: srosha.Channel("something-new"),
+		Config:  `{"endpoint":"https://acme.test"}`,
+		Secret:  "your-token",
+	}
+}
+
+// Every send in the README's "One of each", for the same reason as above: the
+// section is only true for as long as something compiles it.
+func ExampleClient_Submit_everyChannel() {
+	ctx := context.Background()
+
+	c, _ := srosha.New(ctx, "srosha.acme.test:443", "srosha_your-key")
+	defer func() { _ = c.Close() }()
+
+	// Telegram and Bale: a chat id. Title and Body arrive as one text with a
+	// blank line between them.
+	_, _ = c.Submit(ctx, srosha.Message{
+		Title:  "Deploy finished",
+		Body:   "srosha 1.4.0 is live.",
+		Routes: []srosha.Route{srosha.TelegramTo("123456789")},
+	})
+	_, _ = c.Submit(ctx, srosha.Message{
+		Body:   "The service is up.",
+		Routes: []srosha.Route{srosha.BaleTo("-100123456789")},
+	})
+
+	// Email: Title is the subject line.
+	_, _ = c.Submit(ctx, srosha.Message{
+		Title:  "Your order shipped",
+		Body:   "Tracking: 1Z999.",
+		Routes: []srosha.Route{srosha.EmailTo("someone@acme.test")},
+	})
+
+	// Gotify: the address is a positive integer that Gotify ignores and srosha
+	// does not. Two Gotify routes in one message need different ones, or the
+	// second folds into the first as a duplicate.
+	_, _ = c.Submit(ctx, srosha.Message{
+		Title: "Disk is running out",
+		Body:  "4.0 GB free of 96.0 GB at /",
+		Routes: []srosha.Route{
+			srosha.GotifyTo("1").From("ops"),
+			srosha.GotifyTo("2").From("oncall"),
+		},
+	})
+
+	// Matrix: a room id, never a user id.
+	_, _ = c.Submit(ctx, srosha.Message{
+		Body:   "Build 412 failed.",
+		Routes: []srosha.Route{srosha.MatrixTo("!abcdef:matrix.acme.test")},
+	})
+
+	// WhatsApp: outside a window the recipient opened, an approved template
+	// goes instead of your text.
+	_, _ = c.Submit(ctx, srosha.Message{
+		Body: "Your order shipped.",
+		Metadata: map[string]string{
+			"template":        "order_shipped",
+			"template_params": `["Ali","123"]`,
+		},
+		Routes: []srosha.Route{srosha.WhatsAppTo("+989121234567")},
+	})
+
+	// FCM: the whole Metadata map becomes the push's data payload.
+	_, _ = c.Submit(ctx, srosha.Message{
+		Title:    "New message",
+		Body:     "Ali sent you a photo.",
+		Metadata: map[string]string{"thread_id": "42"},
+		Routes:   []srosha.Route{srosha.FCMTo("your-device-token")},
+	})
+
+	// APNs: the map sits beside Apple's own aps key.
+	_, _ = c.Submit(ctx, srosha.Message{
+		Title:    "New message",
+		Body:     "Ali sent you a photo.",
+		Metadata: map[string]string{"thread_id": "42"},
+		Routes:   []srosha.Route{srosha.APNsTo("a1b2c3d4")},
+	})
+
+	// All of them at once, which is the point of Routes being a list: one
+	// message, one idempotency key, one place to ask what happened to each.
+	_, _ = c.Submit(ctx, srosha.Message{
+		IdempotencyKey: "incident-4711",
+		Title:          "Database unreachable",
+		Body:           "Retrying since 03:12.",
+		Priority:       srosha.PriorityHigh,
+		Routes: []srosha.Route{
+			srosha.EmailTo("oncall@acme.test"),
+			srosha.TelegramTo("-100123456789"),
+			srosha.GotifyTo("1"),
+			srosha.Matrix(),
+		},
+	})
+}
