@@ -57,8 +57,8 @@ func LoadGateway() (Gateway, error) {
 		GRPC:         settings.LoadGRPC(r),
 		Auth:         settings.LoadAuth(r),
 		HTTPServer:   settings.LoadHTTPServer(r),
-		DB:           settings.LoadDB(r),
-		MQ:           settings.LoadMQ(r),
+		DB:           settings.LoadDB(r, app.IsProduction()),
+		MQ:           settings.LoadMQ(r, app.IsProduction()),
 		RateLimit:    settings.LoadRateLimit(r),
 		Crypto:       settings.LoadCrypto(r),
 

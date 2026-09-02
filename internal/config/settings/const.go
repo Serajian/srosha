@@ -20,3 +20,10 @@ const maxDiskFloorGB = 1 << 20 // a petabyte, in gigabytes
 
 // maxDiskFloor is the same bound in bytes.
 const maxDiskFloor = uint64(maxDiskFloorGB) << 30
+
+// minCredentialLen is the shortest password production accepts inside a
+// connection url. Not a strength calculation: it is far enough below the
+// `openssl rand -hex 24` the documentation asks for that following the
+// documentation always passes, and far enough above the eight characters found
+// in production on 2026-09-01 that the thing which went unnoticed cannot.
+const minCredentialLen = 16

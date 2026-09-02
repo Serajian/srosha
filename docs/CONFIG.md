@@ -263,6 +263,12 @@ its own http client and reaches Gotify directly.
 | `NOTIF_ALERT_DISK_PATH` | which mount point. Default `/` |
 | `NOTIF_ALERT_DISK_EVERY` | how often to look. Default `@every 15m` |
 
+**Production refuses a short password.** `NOTIF_MQ_URL` and `NOTIF_DB_DSN` carry
+theirs inside the url, and a binary will not start if one is under 16
+characters — see `internal/config/settings/credential.go`. Development is left
+alone. Generate with `openssl rand -hex 24`, which is hex only and therefore
+survives a shell, a compose file and a url.
+
 **The disk alert runs in the dispatcher alone**, though all three binaries could
 ask. Three processes watching one disk is three copies of one alert, and the
 dispatcher is the one that already has a scheduler.
