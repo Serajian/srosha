@@ -18,6 +18,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/nats-io/nkeys"
 )
 
 // Config is what this package needs. It is not the service's settings type:
@@ -28,6 +29,17 @@ import (
 // comes from config and is named in one place rather than two.
 type Config struct {
 	URL string
+
+	// NkeySeed is an ed25519 private key, and when it is set it is how this
+	// client proves who it is: the server holds only the matching public key,
+	// sends a nonce on connect, and the client signs it. The secret never
+	// crosses the wire and the server never holds one.
+	//
+	// Empty means fall back to whatever the url carries, which for us is a
+	// password. Both are supported on purpose -- a deployment cannot switch
+	// the client and the server in the same instant, so the code has to work
+	// either way for the length of one rollout. See docs/reference.
+	NkeySeed string
 
 	// ConnectTimeout bounds one dial, and bounds the wait at startup: nats
 	// retries underneath, and this is how long the process lets it before
@@ -102,8 +114,14 @@ func (n *NATS) Connect(ctx context.Context) error {
 		return errors.New("messagequeue: already connected")
 	}
 
+	auth, err := n.authOption()
+	if err != nil {
+		return err
+	}
+
 	closed := make(chan struct{})
 	conn, err := nats.Connect(n.cfg.URL,
+		auth,
 		nats.Timeout(n.cfg.ConnectTimeout),
 		nats.MaxReconnects(n.cfg.MaxReconnects),
 		nats.ReconnectWait(n.cfg.ReconnectWait),
@@ -291,4 +309,34 @@ func (n *NATS) StoredBytes(ctx context.Context) (uint64, error) {
 		return 0, fmt.Errorf("messagequeue: %w", n.redact(err))
 	}
 	return info.Store, nil
+}
+
+// authOption turns the seed into the signer nats asks for, or does nothing.
+//
+// nats.NkeyOptionFromSeed exists and reads a file. Ours arrives in the
+// environment like every other secret this service holds, and writing it to a
+// file to read it straight back would put it somewhere it was not before.
+//
+// The keypair is made once here rather than per signature: it is asked for on
+// every reconnect, and reconnecting is the thing this client does most.
+func (n *NATS) authOption() (nats.Option, error) {
+	seed := strings.TrimSpace(n.cfg.NkeySeed)
+	if seed == "" {
+		// The url carries a password, or the server wants none. Either way
+		// there is nothing to add.
+		return func(*nats.Options) error { return nil }, nil
+	}
+
+	kp, err := nkeys.FromSeed([]byte(seed))
+	if err != nil {
+		// Never the seed itself, and not the library's message either: that
+		// one quotes the input back.
+		return nil, errors.New("messagequeue: the nkey seed is not a valid seed")
+	}
+	pub, err := kp.PublicKey()
+	if err != nil {
+		return nil, errors.New("messagequeue: the nkey seed has no public key")
+	}
+
+	return nats.Nkey(pub, kp.Sign), nil
 }

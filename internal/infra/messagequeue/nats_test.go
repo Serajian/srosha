@@ -178,3 +178,41 @@ func TestAFailedConnectLeavesNoConnection(t *testing.T) {
 		t.Error("a handle was left behind after a failed connect")
 	}
 }
+
+// A seed that is not one has to be caught before any dialing, and its own
+// text must not appear in the error: the seed is the credential.
+func TestABadNkeySeedIsRefusedWithoutRepeatingIt(t *testing.T) {
+	cfg := nowhere()
+	cfg.NkeySeed = "SUNOTAREALSEEDATALL"
+
+	n, err := messagequeue.New(cfg, discard())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	err = n.Connect(context.Background())
+	if err == nil {
+		t.Fatal("Connect() accepted a seed that is not one")
+	}
+	if strings.Contains(err.Error(), cfg.NkeySeed) {
+		t.Errorf("the error carries the seed: %v", err)
+	}
+}
+
+// No seed is the ordinary case until the rollout finishes, and it must behave
+// exactly as it did before this option existed: the url authenticates, and the
+// only reason the connection fails here is that nothing is listening.
+func TestNoSeedLeavesTheUrlDoingTheWork(t *testing.T) {
+	n, err := messagequeue.New(nowhere(), discard())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	err = n.Connect(context.Background())
+	if err == nil {
+		t.Fatal("Connect() reached a port nothing listens on")
+	}
+	if strings.Contains(err.Error(), "seed") {
+		t.Errorf("a config with no seed failed for a seed reason: %v", err)
+	}
+}
