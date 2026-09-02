@@ -80,6 +80,10 @@ type (
 		// one with a flag beside it: the page styles them differently, and a
 		// single field would need the template to ask which kind it is.
 		Result string
+
+		// Guides is what the form teaches: per channel, what its secret is and
+		// what belongs in Settings. See portal_channels.go.
+		Guides []channelGuide
 	}
 	callbackPage struct {
 		chrome
@@ -109,23 +113,31 @@ func (h *identityHandler) mine(c *gin.Context) (string, bool) {
 	return id, true
 }
 
+// newSendersPage is where this page starts, on all three paths that render it.
+// Built here rather than spelled out at each one, because the guidance is what
+// the form teaches and a page missing it is a form that says nothing again.
+func newSendersPage(sourceID string) sendersPage {
+	return sendersPage{chrome: inside, SourceID: sourceID, Guides: channelGuides}
+}
+
 func (h *identityHandler) showSenders(c *gin.Context) {
 	id, ok := h.mine(c)
 	if !ok {
 		return
 	}
 
+	page := newSendersPage(id)
+
 	senders, err := h.senders.List(c.Request.Context(), id)
 	if err != nil {
 		h.log.ErrorContext(c.Request.Context(), "could not list senders", "error", err)
-		c.HTML(
-			http.StatusOK,
-			pageSenders,
-			sendersPage{chrome: inside, SourceID: id, Problem: message(err)},
-		)
+		page.Problem = message(err)
+		c.HTML(http.StatusOK, pageSenders, page)
 		return
 	}
-	c.HTML(http.StatusOK, pageSenders, sendersPage{chrome: inside, SourceID: id, Senders: senders})
+
+	page.Senders = senders
+	c.HTML(http.StatusOK, pageSenders, page)
 }
 
 // addSender registers one of the source's own identities.
@@ -171,9 +183,10 @@ func (h *identityHandler) renderSenders(c *gin.Context, id, problem, result stri
 		notFound(c)
 		return
 	}
-	c.HTML(http.StatusOK, pageSenders, sendersPage{
-		chrome: inside, SourceID: id, Senders: senders, Problem: problem, Result: result,
-	})
+
+	page := newSendersPage(id)
+	page.Senders, page.Problem, page.Result = senders, problem, result
+	c.HTML(http.StatusOK, pageSenders, page)
 }
 
 // testSender really sends. It renders the list again with the answer rather

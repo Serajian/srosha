@@ -8,40 +8,50 @@
 {{if .Problem}}<p class="problem" role="alert">{{.Problem}}</p>{{end}}
 {{if .Result}}<p class="result" role="status">{{.Result}}</p>{{end}}
 
+{{/* The two lists below carry a line per channel, and every line is rendered.
+     senders.js hides all but the one that was picked and puts that channel's
+     example in the Settings placeholder — so with no script the page says
+     everything at once, which is longer and still right. */}}
 <form method="post" action="/sources/{{.SourceID}}/senders">
   <label for="channel">Channel</label>
   <select id="channel" name="channel" required>
     <option value="">Pick one</option>
-    <option value="email">email</option>
-    <option value="telegram">telegram</option>
-    <option value="bale">bale</option>
-    <option value="whatsapp">whatsapp</option>
-    <option value="matrix">matrix</option>
-    <option value="gotify">gotify</option>
-    <option value="fcm">fcm</option>
-    <option value="apns">apns</option>
+    {{range .Guides}}<option value="{{.Channel}}">{{.Channel}}</option>
+    {{end}}
   </select>
 
   <label for="name">Name</label>
   <input id="name" name="name" type="text" placeholder="our-support-bot" required>
-  <p class="hint">How you refer to this identity when you send. Only you see it.</p>
+  <p class="hint">
+    Lowercase letters, digits and dashes, and nothing else. How you refer to
+    this identity when you send, and only you see it.
+  </p>
 
   <label for="secret">Secret</label>
   <input id="secret" name="secret" type="password" autocomplete="off" required>
-  <p class="hint">
-    The bot token, the mailbox password, the signing key. srosha seals it and
-    never shows it again.
-  </p>
+  <p class="hint">srosha seals it and never shows it again.</p>
+  <ul class="guide">
+    {{range .Guides}}
+    <li data-channel="{{.Channel}}"><b>{{.Channel}}</b> {{.Identity}}</li>
+    {{end}}
+  </ul>
 
   <label for="config">Settings <span class="optional">— optional, JSON</span></label>
-  <input id="config" name="config" type="text" placeholder='{"host":"smtp.acme.test"}'>
+  <input id="config" name="config" type="text">
+  <ul class="guide">
+    {{range .Guides}}
+    <li data-channel="{{.Channel}}" data-settings="{{.Settings}}"><b>{{.Channel}}</b> {{.Hint}}</li>
+    {{end}}
+  </ul>
   <p class="hint">
-    What is not secret: a host, a sending number, an app's bundle id. What each
-    channel wants is in the SDK's README.
+    All of it, including how to send once this is registered, is on the
+    <a href="/reference">reference page</a>.
   </p>
 
   <button type="submit">Register this sender</button>
 </form>
+
+<script src="/static/senders.js" defer></script>
 
 {{if .Senders}}
 <ul class="cards">

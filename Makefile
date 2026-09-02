@@ -495,6 +495,15 @@ sdk: ## [Test] Build, vet and test the SDK module
 	fi
 	@echo "$(COLOR_GREEN)✅ SDK module is clean.$(COLOR_RESET)"
 
+# The portal serves the SDK's README on /reference, and go:embed cannot reach
+# outside public/ -- so the file is copied in rather than read where it lives.
+# The copy is what drifts, so TestThePortalsCopyOfTheSDKReadmeIsCurrent fails
+# the moment the two differ, and this target is what fixes it.
+.PHONY: sdk-docs
+sdk-docs: ## [Build] Refresh the portal's copy of the SDK README. WRITES FILES.
+	@cp sdk/go/README.md public/guarded/portal/sdk.md
+	@echo "$(COLOR_GREEN)✅ public/guarded/portal/sdk.md is the current README.$(COLOR_RESET)"
+
 # --- run by hand -------------------------------------------------------------
 
 .PHONY: fix

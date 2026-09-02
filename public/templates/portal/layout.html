@@ -40,11 +40,12 @@
   </aside>
 
   <main class="column">
-    <div class="form">
+    <div class="form{{if .Wide}} wide{{end}}">
       {{if .SignedIn}}
       <nav class="nav" aria-label="Portal">
         <a href="/sources">Sources</a>
         <a href="/">Account</a>
+        <a href="/reference">Reference</a>
         <form method="post" action="/signout"><button type="submit">Sign out</button></form>
       </nav>
       {{end}}
