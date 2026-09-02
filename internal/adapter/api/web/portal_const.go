@@ -69,3 +69,14 @@ const (
 	fieldConfig = "config"
 	fieldURL    = "url"
 )
+
+// The reference: the SDK's README, served inside the portal rather than left
+// in a module a customer only has once they know what to import.
+//
+// fileSDKReadme is a copy under public/guarded/portal, refreshed by
+// `make sdk-docs` and held current by a test in package public.
+const (
+	pathReference = "/reference"
+	pageReference = "reference"
+	fileSDKReadme = "sdk.md"
+)

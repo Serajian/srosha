@@ -20,6 +20,7 @@
 //	portal_source.go     sourceHandler    a customer's own sources
 //	portal_key.go        keyHandler       their keys
 //	portal_identity.go   identityHandler  their senders and callback
+//	portal_channels.go   channelGuide     what each channel wants, on the form
 package web
 
 import (
@@ -84,11 +85,21 @@ func (d PortalDeps) validate() error {
 // would not render a nav-less layout -- html/template refuses a field that is
 // not there, and the page stops mid-tag with the error going nowhere. That is
 // exactly how the sign-in form disappeared once.
-type chrome struct{ SignedIn bool }
+// Wide widens the column for a page that is a document rather than a form.
+// Every page but the reference leaves it false, and the layout reads it once.
+type chrome struct {
+	SignedIn bool
+	Wide     bool
+}
 
 // inside is what a page behind the guard embeds. The sign-in pages embed the
 // zero value, which is the honest answer: nobody is signed in yet.
-var inside = chrome{SignedIn: true}
+//
+// wide is the same page with room to read a document in.
+var (
+	inside = chrome{SignedIn: true}
+	wide   = chrome{SignedIn: true, Wide: true}
+)
 
 // New builds this surface, on an engine of its own.
 //
@@ -105,11 +116,19 @@ func NewPortal(d PortalDeps) (PortalHandler, error) {
 		pageSources, pageSourceNew, pageSource, pageSourceEdit,
 		pageKeys, pageKeyIssued,
 		pageSenders, pageCallback, pageCallbackSecret,
+		pageReference,
 	)
 	if err != nil {
 		return PortalHandler{}, err
 	}
 	assets, err := browserFiles(surfacePortal)
+	if err != nil {
+		return PortalHandler{}, err
+	}
+
+	// Read once, here, so a missing copy is a console that will not start
+	// rather than a page that 500s the first time somebody opens it.
+	readme, err := guardedFile(surfacePortal, fileSDKReadme)
 	if err != nil {
 		return PortalHandler{}, err
 	}
@@ -125,6 +144,7 @@ func NewPortal(d PortalDeps) (PortalHandler, error) {
 		senders: d.Senders, trials: d.Trials, callbacks: d.Callbacks,
 		sources: d.Sources, log: d.Log,
 	}
+	reference := &referenceHandler{doc: string(readme)}
 
 	// --- getting in. no session, by definition ---------------------------
 	engine.GET(pathSignIn, in.show)
@@ -157,6 +177,7 @@ func NewPortal(d PortalDeps) (PortalHandler, error) {
 	authed.POST(pathSenderTest, identity.testSender)
 	authed.GET(pathSourceCallback, identity.showCallback)
 	authed.POST(pathSourceCallback, identity.setCallback)
+	authed.GET(pathReference, reference.show)
 
 	// --- files a browser fetches -----------------------------------------
 	engine.StaticFS(pathStatic, http.FS(assets))

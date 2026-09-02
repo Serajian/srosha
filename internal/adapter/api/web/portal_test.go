@@ -1239,6 +1239,156 @@ func TestIdentityPagesRefuseSomebodyElsesSource(t *testing.T) {
 	}
 }
 
+// settingsGuidance pulls what the senders form says about one channel's
+// Settings: the example it offers as a placeholder, and the sentence beside it.
+//
+// It reads the rendered page rather than the table behind it, because the table
+// being right is not the property worth holding -- the page carrying it is.
+func settingsGuidance(t *testing.T, body, channel string) (example, said string) {
+	t.Helper()
+
+	open := `<li data-channel="` + channel + `" data-settings="`
+	i := strings.Index(body, open)
+	if i < 0 {
+		t.Fatalf("the senders form says nothing about %s's settings", channel)
+	}
+
+	rest := body[i+len(open):]
+	shut := strings.Index(rest, `"`)
+	end := strings.Index(rest, "</li>")
+	if shut < 0 || end < 0 {
+		t.Fatalf("%s's settings line does not close:\n%s", channel, rest[:min(200, len(rest))])
+	}
+	return rest[:shut], rest[shut:end]
+}
+
+// A channel a customer can pick and is told nothing about is a channel they
+// configure by guessing. This is what fails the day a ninth is added: it reads
+// shared.AllChannels, so the form cannot quietly cover seven of nine.
+func TestEveryChannelIsOnTheSendersForm(t *testing.T) {
+	p := newTestPortal(t)
+	cookie, id := aSourceOfMine(t, p, "a@acme.test")
+
+	page := get(t, p, "/sources/"+id+"/senders", cookie)
+	whole(t, "/senders", page)
+
+	for _, c := range shared.AllChannels() {
+		if !strings.Contains(page.body, `<option value="`+c.String()+`">`) {
+			t.Errorf("%s cannot be picked on the senders form", c)
+		}
+		if !strings.Contains(page.body, `<li data-channel="`+c.String()+`">`) {
+			t.Errorf("the senders form does not say what %s's secret is", c)
+		}
+
+		if _, said := settingsGuidance(t, page.body, c.String()); said == "" {
+			t.Errorf("the senders form says nothing about %s's settings", c)
+		}
+	}
+}
+
+// The placeholder used to be {"host":"smtp.acme.test"} whatever was picked --
+// wrong for five channels and, for these three, an invitation to invent
+// settings that nothing reads.
+func TestTheSendersFormSaysWhenAChannelTakesNoSettings(t *testing.T) {
+	p := newTestPortal(t)
+	cookie, id := aSourceOfMine(t, p, "a@acme.test")
+
+	page := get(t, p, "/sources/"+id+"/senders", cookie)
+
+	// The three whose secret is the whole identity: two bot tokens and a
+	// service account. See internal/adapter/sender -- none has a config.go.
+	for _, c := range []shared.Channel{
+		shared.ChannelTelegram, shared.ChannelBale, shared.ChannelFCM,
+	} {
+		example, said := settingsGuidance(t, page.body, c.String())
+		if example != "" {
+			t.Errorf("%s offers a settings example (%q) and reads none", c, example)
+		}
+		if !strings.Contains(said, "no settings") {
+			t.Errorf("%s does not say it takes no settings: %q", c, said)
+		}
+	}
+
+	// And the five that do read something offer it, rather than mail's.
+	for _, c := range []shared.Channel{
+		shared.ChannelEmail, shared.ChannelWhatsApp, shared.ChannelMatrix,
+		shared.ChannelGotify, shared.ChannelAPNs,
+	} {
+		if example, _ := settingsGuidance(t, page.body, c.String()); example == "" {
+			t.Errorf("%s reads settings and the form offers no example", c)
+		}
+	}
+}
+
+// The rule is in credential.validateName, and a customer who breaks it is told
+// "credential name has the wrong format" without ever being told the format.
+func TestTheSendersFormStatesTheNameRule(t *testing.T) {
+	p := newTestPortal(t)
+	cookie, id := aSourceOfMine(t, p, "a@acme.test")
+
+	page := get(t, p, "/sources/"+id+"/senders", cookie)
+
+	if !strings.Contains(page.body, "Lowercase letters, digits and dashes") {
+		t.Errorf("the senders form does not say what a name may contain:\n%s", page.body)
+	}
+}
+
+// --- the reference ---------------------------------------------------------
+
+// The README is on the page whole, not summarized. The strings below are its
+// own headings: if the copy were empty, or the field were dropped from the
+// template, the page would still render and say nothing.
+func TestTheReferencePageCarriesTheSDKReadme(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "a@acme.test")
+
+	page := get(t, p, "/reference", cookie)
+	whole(t, "/reference", page)
+
+	for _, said := range []string{
+		"Before you can send anything",
+		"Getting an API key",
+		"What each channel needs",
+	} {
+		if !strings.Contains(page.body, said) {
+			t.Errorf("the reference page does not carry %q", said)
+		}
+	}
+}
+
+// It is markdown in a page, never markup: the README is somebody's document
+// and the day it grows a <script> the portal must render five characters, not
+// run one.
+func TestTheReferencePageDoesNotRenderTheReadmeAsMarkup(t *testing.T) {
+	p := newTestPortal(t)
+	cookie := signedIn(t, p, "a@acme.test")
+
+	page := get(t, p, "/reference", cookie)
+
+	// The README is full of html-ish fragments in its code fences. Whatever
+	// they are, they arrive escaped -- so the one thing that must not appear
+	// is an unescaped opening script tag.
+	if strings.Contains(page.body, "<script>") {
+		t.Error("the reference page rendered the README as html")
+	}
+}
+
+// A document is not a page anybody may read. It is behind the same guard as
+// everything else, and the reason it is worth its own test is that it is the
+// only route on this surface serving a file rather than rows.
+func TestTheReferencePageNeedsASession(t *testing.T) {
+	p := newTestPortal(t)
+
+	got := get(t, p, "/reference")
+
+	if got.status != http.StatusSeeOther {
+		t.Fatalf("GET /reference signed out = %d, want a redirect to sign in", got.status)
+	}
+	if got.location() != "/signin" {
+		t.Errorf("it sent them to %q instead of the sign-in page", got.location())
+	}
+}
+
 // --- getting anywhere ------------------------------------------------------
 
 // The bug this catches shipped once: /sources existed and nothing linked to it,
@@ -1251,6 +1401,7 @@ func TestEveryPageBehindTheGuardCanReachTheOthers(t *testing.T) {
 		"/", "/sources", "/sources/new",
 		"/sources/" + id, "/sources/" + id + "/keys",
 		"/sources/" + id + "/senders", "/sources/" + id + "/callback",
+		"/reference",
 	} {
 		got := get(t, p, path, cookie)
 		whole(t, path, got)
