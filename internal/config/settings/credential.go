@@ -2,6 +2,7 @@ package settings
 
 import (
 	"net/url"
+	"strings"
 
 	"github.com/Serajian/srosha/pkg/env"
 )
@@ -52,4 +53,25 @@ func checkURLPassword(r *env.Reader, production bool, key string, raw env.Secret
 			"%d. Generate one with `openssl rand -hex 24`: hex only, so nothing "+
 			"in it can be eaten by a shell, a compose file or a url",
 		key, len(pw), minCredentialLen)
+}
+
+// checkNkeySeed refuses a seed that is not one, at startup rather than at the
+// first connection.
+//
+// A user seed is `S` for seed, `U` for user, and 56 more characters of base32.
+// Checking the shape here means a typo is a message naming the key, instead of
+// an authorization failure the broker reports and this service reads as "the
+// broker refused us".
+func checkNkeySeed(r *env.Reader, seed env.Secret) {
+	v := seed.Reveal()
+
+	// The prefix and the length, never the value.
+	r.Check(len(v) == nkeySeedLen,
+		"NOTIF_MQ_NKEY_SEED is %d characters, and a user seed is %d",
+		len(v), nkeySeedLen)
+	r.Check(strings.HasPrefix(v, nkeyUserSeedPrefix),
+		"NOTIF_MQ_NKEY_SEED does not begin with %q, so it is not a user seed. "+
+			"Generate one with `nk -gen user -pubout`: the line starting %q is "+
+			"this, and the one starting \"U\" goes in nats-server.conf",
+		nkeyUserSeedPrefix, nkeyUserSeedPrefix)
 }

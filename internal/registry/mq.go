@@ -21,6 +21,7 @@ func NATS(
 ) (*messagequeue.NATS, error) {
 	mq, err := messagequeue.New(messagequeue.Config{
 		URL:            s.URL.Reveal(),
+		NkeySeed:       s.NkeySeed.Reveal(),
 		ConnectTimeout: s.ConnectTimeout,
 		MaxReconnects:  s.MaxReconnects,
 		ReconnectWait:  s.ReconnectWait,

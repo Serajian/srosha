@@ -8,7 +8,23 @@ import (
 
 type MQ struct {
 	// URL is a secret: each binary connects as its own user, password included.
+	//
+	// Unless NkeySeed is set, in which case the url carries no credentials at
+	// all and this stops being a secret in practice. It keeps the type: a value
+	// that is sometimes a secret is a secret.
 	URL env.Secret
+
+	// NkeySeed replaces the password in the url with a signature.
+	//
+	// The server holds the matching public key and sends a nonce on connect;
+	// this signs it. Nothing reusable crosses the wire, and the server holds no
+	// credential at all -- which is what a password, hashed or not, can never
+	// give: bcrypt protects the lock while the key sits in the client's
+	// environment either way.
+	//
+	// Empty falls back to the url. Both work on purpose, because a deployment
+	// cannot move the client and the server in the same instant.
+	NkeySeed env.Secret
 
 	// Stream and DuplicateWindow belong together: retrying a publish is only
 	// safe because the broker drops a message id it has seen inside this
@@ -41,6 +57,7 @@ type MQ struct {
 func LoadMQ(r *env.Reader, production bool) MQ {
 	mq := MQ{
 		URL:             r.RequiredSecret("MQ_URL"),
+		NkeySeed:        r.Secret("MQ_NKEY_SEED", ""),
 		Stream:          r.Str("MQ_STREAM", "NOTIFY"),
 		DuplicateWindow: r.Duration("MQ_DUPLICATE_WINDOW", time.Hour),
 		MaxAge:          r.Duration("MQ_MAX_AGE", 24*time.Hour),
@@ -50,7 +67,13 @@ func LoadMQ(r *env.Reader, production bool) MQ {
 		DrainTimeout:    r.Duration("MQ_DRAIN_TIMEOUT", 15*time.Second),
 	}
 
-	checkURLPassword(r, production, "MQ_URL", mq.URL)
+	// Only when the url is what authenticates. With a seed there is no
+	// password to be short.
+	if mq.NkeySeed.Reveal() == "" {
+		checkURLPassword(r, production, "MQ_URL", mq.URL)
+	} else {
+		checkNkeySeed(r, mq.NkeySeed)
+	}
 
 	r.Check(mq.Stream != "", "NOTIF_MQ_STREAM must not be empty")
 

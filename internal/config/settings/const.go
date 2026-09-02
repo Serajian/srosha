@@ -27,3 +27,9 @@ const maxDiskFloor = uint64(maxDiskFloorGB) << 30
 // documentation always passes, and far enough above the eight characters found
 // in production on 2026-09-01 that the thing which went unnoticed cannot.
 const minCredentialLen = 16
+
+// A NATS user seed: "S" for seed, "U" for user, then base32.
+const (
+	nkeyUserSeedPrefix = "SU"
+	nkeySeedLen        = 58
+)

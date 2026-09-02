@@ -360,6 +360,42 @@ cannot happen again quietly. Provider passwords — SMTP, a bot token — are no
 checked: those are not ours to set, and refusing one would be this service
 telling a customer their own mail host is wrong.
 
+### nkeys, and the order they go in
+
+A password is a shared secret: the client sends it and the server holds
+something derived from it. bcrypt improves the server's half and leaves the
+client's alone, which is why `docker inspect` on the gateway still yields a
+working credential after all of it.
+
+An nkey is not shared. The server holds a **public** key, sends a nonce on
+connect, and the client signs it with a seed. Nothing reusable crosses the wire,
+and the server holds no credential at all — so the public key can sit in
+`nats-server.conf` in git, which removes every `$VAR` from that file and with it
+the entire class of escaping bug that took the broker down on 2026-09-01.
+
+The client still holds a seed. That does not change: something on the client has
+to be able to authenticate.
+
+**Both work at once, and that is the point.** With `NOTIF_MQ_NKEY_SEED` empty
+the url authenticates exactly as before, so the code can be deployed long before
+the broker moves. The switch is then:
+
+```bash
+docker run --rm natsio/nats-box nk -gen user -pubout    # once per user
+```
+
+1. Put each `SU…` seed in that binary's `NOTIF_MQ_NKEY_SEED`, and strip the
+   userinfo from its `NOTIF_MQ_URL` — `nats://nats:4222`. Save, do not deploy.
+2. Replace `user`/`password` with `nkey: "U…"` in `nats-server.conf`, keeping
+   each permissions block exactly as it is. The identity changes; the
+   authorisation does not.
+3. Deploy nats, then the application. There is a gap of a minute, the same as
+   any credential change, because both sides move together.
+4. `docker logs <nats> | grep -i "authorization violation"` — empty.
+
+If step 3 goes wrong, putting the passwords back in both places is the way out,
+and it works because the code never stopped supporting them.
+
 ### Secrets in code
 
 Every secret-typed config field uses `settings.Secret`, which redacts itself in
