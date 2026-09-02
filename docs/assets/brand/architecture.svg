@@ -1,44 +1,7 @@
-<svg viewBox="0 0 1200 440" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img">
-  <title>Srosha architecture: client submits to the gateway, which persists to PostgreSQL and publishes to NATS JetStream; the dispatcher consumes, sends over Email, Telegram, Bale and WhatsApp, and fires a signed status webhook back to the client</title>
-  <rect x="0" y="0" width="1200" height="440" rx="16" fill="#0f172a"/>
+<svg viewBox="0 0 1200 530" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img">
+  <title>Srosha architecture: a client submits over gRPC to the gateway, which persists to PostgreSQL and publishes to NATS JetStream; the dispatcher consumes the queue, sends over eight channels — Email, Telegram, Bale, WhatsApp, Matrix, Gotify, FCM and APNs — records the outcome, and fires a signed status webhook back to the client. A browser reaches the console, which reads and writes the same database. The migrate binary runs the schema to completion before any of them start.</title>
+  <rect x="0" y="0" width="1200" height="530" rx="16" fill="#0f172a"/>
 
-  <!-- client -->
-  <rect x="55" y="165" width="160" height="86" rx="10" fill="#1a2440" stroke="#33a5de" stroke-width="1.5"/>
-  <text x="135" y="202" text-anchor="middle" fill="#f2f5fa" font-size="22" font-weight="600">Client</text>
-  <text x="135" y="230" text-anchor="middle" fill="#8fa0bd" font-size="17">any service</text>
-
-  <!-- gateway -->
-  <rect x="320" y="150" width="205" height="116" rx="10" fill="#1a2440" stroke="#3256ae" stroke-width="1.5"/>
-  <text x="422" y="186" text-anchor="middle" fill="#f2f5fa" font-size="22" font-weight="600">gateway</text>
-  <text x="422" y="214" text-anchor="middle" fill="#8fa0bd" font-size="17">gRPC :50051</text>
-  <text x="422" y="238" text-anchor="middle" fill="#8fa0bd" font-size="17">health :8080</text>
-
-  <!-- nats -->
-  <rect x="620" y="62" width="215" height="80" rx="10" fill="#1a2440" stroke="#4934a2" stroke-width="1.5"/>
-  <text x="727" y="96" text-anchor="middle" fill="#f2f5fa" font-size="21" font-weight="600">NATS JetStream</text>
-  <text x="727" y="122" text-anchor="middle" fill="#8fa0bd" font-size="17">work queue</text>
-
-  <!-- postgres -->
-  <rect x="620" y="296" width="215" height="80" rx="10" fill="#1a2440" stroke="#4934a2" stroke-width="1.5"/>
-  <text x="727" y="330" text-anchor="middle" fill="#f2f5fa" font-size="21" font-weight="600">PostgreSQL</text>
-  <text x="727" y="356" text-anchor="middle" fill="#8fa0bd" font-size="17">state of record</text>
-
-  <!-- dispatcher -->
-  <rect x="620" y="172" width="215" height="86" rx="10" fill="#1a2440" stroke="#3256ae" stroke-width="1.5"/>
-  <text x="727" y="208" text-anchor="middle" fill="#f2f5fa" font-size="22" font-weight="600">dispatcher</text>
-  <text x="727" y="236" text-anchor="middle" fill="#8fa0bd" font-size="17">consume · send · record</text>
-
-  <!-- channels -->
-  <rect x="990" y="58" width="150" height="58" rx="10" fill="#12305c" stroke="#33a5de" stroke-width="1.5"/>
-  <text x="1065" y="94" text-anchor="middle" fill="#e8f2fb" font-size="20" font-weight="600">Email</text>
-  <rect x="990" y="146" width="150" height="58" rx="10" fill="#12305c" stroke="#33a5de" stroke-width="1.5"/>
-  <text x="1065" y="182" text-anchor="middle" fill="#e8f2fb" font-size="20" font-weight="600">Telegram</text>
-  <rect x="990" y="234" width="150" height="58" rx="10" fill="#12305c" stroke="#33a5de" stroke-width="1.5"/>
-  <text x="1065" y="270" text-anchor="middle" fill="#e8f2fb" font-size="20" font-weight="600">Bale</text>
-  <rect x="990" y="322" width="150" height="58" rx="10" fill="#12305c" stroke="#33a5de" stroke-width="1.5"/>
-  <text x="1065" y="358" text-anchor="middle" fill="#e8f2fb" font-size="20" font-weight="600">WhatsApp</text>
-
-  <!-- arrows -->
   <defs>
     <marker id="arw" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
       <path d="M0 0 L9 4 L0 8 Z" fill="#33a5de"/>
@@ -46,26 +9,108 @@
     <marker id="arwv" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
       <path d="M0 0 L9 4 L0 8 Z" fill="#7a5fd0"/>
     </marker>
+    <marker id="arwm" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0 0 L9 4 L0 8 Z" fill="#8fa0bd"/>
+    </marker>
   </defs>
 
-  <line x1="215" y1="196" x2="312" y2="196" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
-  <text x="263" y="184" text-anchor="middle" fill="#33a5de" font-size="17">submit</text>
-  <line x1="312" y1="228" x2="220" y2="228" stroke="#8fa0bd" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arw)"/>
-  <text x="266" y="252" text-anchor="middle" fill="#8fa0bd" font-size="17">ack + id</text>
+  <!-- who talks to it -->
+  <rect x="40" y="120" width="150" height="80" rx="10" fill="#1a2440" stroke="#33a5de" stroke-width="1.5"/>
+  <text x="115" y="155" text-anchor="middle" fill="#f2f5fa" font-size="21" font-weight="600">Client</text>
+  <text x="115" y="181" text-anchor="middle" fill="#8fa0bd" font-size="16">any service</text>
 
-  <line x1="525" y1="180" x2="612" y2="112" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
-  <text x="556" y="128" text-anchor="middle" fill="#9d8fe0" font-size="17">publish</text>
-  <line x1="525" y1="240" x2="612" y2="324" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
-  <text x="548" y="300" text-anchor="middle" fill="#9d8fe0" font-size="17">persist</text>
+  <rect x="40" y="300" width="150" height="74" rx="10" fill="#1a2440" stroke="#33a5de" stroke-width="1.5"/>
+  <text x="115" y="332" text-anchor="middle" fill="#f2f5fa" font-size="21" font-weight="600">Browser</text>
+  <text x="115" y="356" text-anchor="middle" fill="#8fa0bd" font-size="16">a person</text>
 
-  <line x1="727" y1="150" x2="727" y2="164" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
-  <line x1="727" y1="266" x2="727" y2="288" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
+  <!-- gateway -->
+  <rect x="240" y="105" width="195" height="110" rx="10" fill="#1a2440" stroke="#3256ae" stroke-width="1.5"/>
+  <text x="337" y="140" text-anchor="middle" fill="#f2f5fa" font-size="22" font-weight="600">gateway</text>
+  <text x="337" y="167" text-anchor="middle" fill="#8fa0bd" font-size="16">gRPC :50051</text>
+  <text x="337" y="191" text-anchor="middle" fill="#8fa0bd" font-size="16">health :8080</text>
 
-  <line x1="843" y1="196" x2="982" y2="92" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
-  <line x1="843" y1="210" x2="982" y2="176" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
-  <line x1="843" y1="226" x2="982" y2="260" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
-  <line x1="843" y1="240" x2="982" y2="344" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
+  <!-- console -->
+  <rect x="240" y="290" width="195" height="94" rx="10" fill="#1a2440" stroke="#3256ae" stroke-width="1.5"/>
+  <text x="337" y="322" text-anchor="middle" fill="#f2f5fa" font-size="22" font-weight="600">console</text>
+  <text x="337" y="348" text-anchor="middle" fill="#8fa0bd" font-size="16">portal :8090</text>
+  <text x="337" y="370" text-anchor="middle" fill="#8fa0bd" font-size="16">admin :8092</text>
 
-  <path d="M727 376 L727 408 L135 408 L135 259" stroke="#8fa0bd" stroke-width="2" fill="none" stroke-dasharray="6 5" marker-end="url(#arw)"/>
-  <text x="430" y="398" text-anchor="middle" fill="#8fa0bd" font-size="17">status webhook, signed with HMAC</text>
+  <!-- nats -->
+  <rect x="505" y="40" width="195" height="74" rx="10" fill="#1a2440" stroke="#4934a2" stroke-width="1.5"/>
+  <text x="602" y="72" text-anchor="middle" fill="#f2f5fa" font-size="20" font-weight="600">NATS JetStream</text>
+  <text x="602" y="96" text-anchor="middle" fill="#8fa0bd" font-size="16">work queue</text>
+
+  <!-- dispatcher -->
+  <rect x="505" y="142" width="195" height="86" rx="10" fill="#1a2440" stroke="#3256ae" stroke-width="1.5"/>
+  <text x="602" y="176" text-anchor="middle" fill="#f2f5fa" font-size="22" font-weight="600">dispatcher</text>
+  <text x="602" y="202" text-anchor="middle" fill="#8fa0bd" font-size="16">consume · send · record</text>
+
+  <!-- postgres -->
+  <rect x="505" y="300" width="195" height="74" rx="10" fill="#1a2440" stroke="#4934a2" stroke-width="1.5"/>
+  <text x="602" y="332" text-anchor="middle" fill="#f2f5fa" font-size="20" font-weight="600">PostgreSQL</text>
+  <text x="602" y="356" text-anchor="middle" fill="#8fa0bd" font-size="16">state of record</text>
+
+  <!-- migrate: not in the request path, and drawn that way -->
+  <rect x="505" y="400" width="195" height="52" rx="10" fill="#141c33" stroke="#8fa0bd" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="602" y="422" text-anchor="middle" fill="#c6d2e4" font-size="19" font-weight="600">migrate</text>
+  <text x="602" y="442" text-anchor="middle" fill="#8fa0bd" font-size="15">runs first, then exits</text>
+
+  <!-- the eight channels -->
+  <rect x="760" y="40" width="390" height="240" rx="12" fill="#101a33" stroke="#1f3a63" stroke-width="1.5"/>
+  <text x="776" y="66" fill="#8fa0bd" font-size="16">eight channels</text>
+
+  <rect x="776" y="80" width="176" height="40" rx="8" fill="#12305c" stroke="#33a5de" stroke-width="1.2"/>
+  <text x="864" y="106" text-anchor="middle" fill="#e8f2fb" font-size="18" font-weight="600">Email</text>
+  <rect x="966" y="80" width="176" height="40" rx="8" fill="#12305c" stroke="#33a5de" stroke-width="1.2"/>
+  <text x="1054" y="106" text-anchor="middle" fill="#e8f2fb" font-size="18" font-weight="600">Telegram</text>
+
+  <rect x="776" y="128" width="176" height="40" rx="8" fill="#12305c" stroke="#33a5de" stroke-width="1.2"/>
+  <text x="864" y="154" text-anchor="middle" fill="#e8f2fb" font-size="18" font-weight="600">Bale</text>
+  <rect x="966" y="128" width="176" height="40" rx="8" fill="#12305c" stroke="#33a5de" stroke-width="1.2"/>
+  <text x="1054" y="154" text-anchor="middle" fill="#e8f2fb" font-size="18" font-weight="600">WhatsApp</text>
+
+  <rect x="776" y="176" width="176" height="40" rx="8" fill="#12305c" stroke="#33a5de" stroke-width="1.2"/>
+  <text x="864" y="202" text-anchor="middle" fill="#e8f2fb" font-size="18" font-weight="600">Matrix</text>
+  <rect x="966" y="176" width="176" height="40" rx="8" fill="#12305c" stroke="#33a5de" stroke-width="1.2"/>
+  <text x="1054" y="202" text-anchor="middle" fill="#e8f2fb" font-size="18" font-weight="600">Gotify</text>
+
+  <rect x="776" y="224" width="176" height="40" rx="8" fill="#12305c" stroke="#33a5de" stroke-width="1.2"/>
+  <text x="864" y="250" text-anchor="middle" fill="#e8f2fb" font-size="18" font-weight="600">FCM</text>
+  <rect x="966" y="224" width="176" height="40" rx="8" fill="#12305c" stroke="#33a5de" stroke-width="1.2"/>
+  <text x="1054" y="250" text-anchor="middle" fill="#e8f2fb" font-size="18" font-weight="600">APNs</text>
+
+  <!-- client in, ack back -->
+  <line x1="190" y1="145" x2="232" y2="145" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
+  <text x="211" y="134" text-anchor="middle" fill="#33a5de" font-size="15">submit</text>
+  <line x1="232" y1="180" x2="196" y2="180" stroke="#8fa0bd" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arwm)"/>
+  <text x="214" y="203" text-anchor="middle" fill="#8fa0bd" font-size="15">ack + id</text>
+
+  <!-- browser in -->
+  <line x1="190" y1="337" x2="232" y2="337" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
+
+  <!-- gateway out -->
+  <line x1="435" y1="140" x2="497" y2="86" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
+  <text x="466" y="103" text-anchor="middle" fill="#9d8fe0" font-size="15">publish</text>
+  <line x1="435" y1="198" x2="497" y2="312" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
+  <text x="444" y="268" text-anchor="middle" fill="#9d8fe0" font-size="15">persist</text>
+
+  <!-- console reaches the same rows -->
+  <line x1="435" y1="337" x2="497" y2="337" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
+  <text x="466" y="326" text-anchor="middle" fill="#9d8fe0" font-size="15">read · write</text>
+
+  <!-- the queue, and what comes back out of it -->
+  <line x1="602" y1="114" x2="602" y2="134" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
+  <line x1="602" y1="228" x2="602" y2="292" stroke="#7a5fd0" stroke-width="2.5" marker-end="url(#arwv)"/>
+  <text x="646" y="266" text-anchor="middle" fill="#9d8fe0" font-size="15">record</text>
+
+  <!-- migrate goes first -->
+  <line x1="602" y1="400" x2="602" y2="382" stroke="#8fa0bd" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arwm)"/>
+
+  <!-- send -->
+  <line x1="700" y1="185" x2="752" y2="163" stroke="#33a5de" stroke-width="2.5" marker-end="url(#arw)"/>
+  <text x="726" y="146" text-anchor="middle" fill="#33a5de" font-size="15">send</text>
+
+  <!-- and the way the client hears about it -->
+  <path d="M690 228 L740 228 L740 492 L22 492 L22 160 L32 160" stroke="#8fa0bd" stroke-width="2" fill="none" stroke-dasharray="6 5" marker-end="url(#arwm)"/>
+  <text x="430" y="480" text-anchor="middle" fill="#8fa0bd" font-size="16">status webhook, signed with HMAC</text>
 </svg>
