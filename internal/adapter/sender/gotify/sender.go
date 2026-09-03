@@ -69,7 +69,11 @@ func (s *Sender) Send(ctx context.Context, m shared.Message) (string, error) {
 		return "", err
 	}
 
-	payload, err := json.Marshal(sendRequest{Title: m.Title, Message: m.Body})
+	payload, err := json.Marshal(sendRequest{
+		Title:   m.Title,
+		Message: m.Body,
+		Extras:  s.cfg.renderAs(),
+	})
 	if err != nil {
 		return "", refused("message could not be encoded for gotify")
 	}

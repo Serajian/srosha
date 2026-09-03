@@ -34,6 +34,15 @@ type request struct {
 // token in the clear over plain http.
 func gotifyServer(t *testing.T, status int, answer string) (*gotify.Sender, *request) {
 	t.Helper()
+	return gotifyServerWith(t, gotify.Config{}, status, answer)
+}
+
+// gotifyServerWith is the same, for the tests that care what the credential
+// says rather than only what comes back.
+func gotifyServerWith(
+	t *testing.T, cfg gotify.Config, status int, answer string,
+) (*gotify.Sender, *request) {
+	t.Helper()
 
 	got := &request{}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +59,8 @@ func gotifyServer(t *testing.T, status int, answer string) (*gotify.Sender, *req
 	}))
 	t.Cleanup(server.Close)
 
-	s, err := gotify.New(server.Client(), token, gotify.Config{ServerURL: server.URL})
+	cfg.ServerURL = server.URL
+	s, err := gotify.New(server.Client(), token, cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -280,5 +290,62 @@ func TestNeitherSecretReachesAnError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), token) {
 		t.Errorf("the token is in the error: %v", err)
+	}
+}
+
+// Plain is Gotify's own default, so saying it out loud would put a key on the
+// wire for every message this service has ever sent, to state what was already
+// true. Absent is the whole point.
+func TestPlainSendsNoExtrasAtAll(t *testing.T) {
+	for _, cfg := range []gotify.Config{{}, {ContentType: "text/plain"}} {
+		s, got := gotifyServerWith(t, cfg, http.StatusOK, okAnswer)
+
+		if _, err := s.Send(context.Background(), msg("Deploy", "it is done")); err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+		if _, ok := got.body["extras"]; ok {
+			t.Errorf("plain put extras on the wire: %v", got.body["extras"])
+		}
+	}
+}
+
+// The shape Gotify documents, exactly: extras, then the client::display key,
+// then contentType. A typo in any of the three is a message that renders as
+// plain text and says nothing about why.
+func TestMarkdownAsksTheClientToRenderIt(t *testing.T) {
+	s, got := gotifyServerWith(t,
+		gotify.Config{ContentType: "text/markdown"}, http.StatusOK, okAnswer)
+
+	if _, err := s.Send(context.Background(), msg("Deploy", "**it is done**")); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	extras, ok := got.body["extras"].(map[string]any)
+	if !ok {
+		t.Fatalf("no extras on the wire: %v", got.body)
+	}
+	shown, ok := extras["client::display"].(map[string]any)
+	if !ok {
+		t.Fatalf("extras has no client::display: %v", extras)
+	}
+	if shown["contentType"] != "text/markdown" {
+		t.Errorf("contentType = %v, want text/markdown", shown["contentType"])
+	}
+
+	// And the body is untouched: srosha does not escape, here or anywhere.
+	if got.body["message"] != "**it is done**" {
+		t.Errorf("the body was rewritten: %v", got.body["message"])
+	}
+}
+
+// Registration is where a typo should be caught, not the first send.
+func TestAnUnknownContentTypeIsRefusedAtRegistration(t *testing.T) {
+	_, err := gotify.ParseConfig([]byte(
+		`{"server_url":"https://gotify.acme.test","content_type":"text/html"}`))
+	if err == nil {
+		t.Fatal("a content type Gotify does not render was accepted")
+	}
+	if !strings.Contains(err.Error(), "content type") {
+		t.Errorf("the error does not say what is wrong: %v", err)
 	}
 }

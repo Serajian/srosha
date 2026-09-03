@@ -15,6 +15,25 @@ var errNoMessageID = errors.New("gotify accepted the message without naming it")
 type sendRequest struct {
 	Title   string `json:"title"`
 	Message string `json:"message"`
+
+	// Extras is how Gotify is told the message is not plain text, and it is
+	// omitted entirely when it is: an absent key means the client's default,
+	// while an empty object is a shape the API has no reason to accept.
+	Extras *extras `json:"extras,omitempty"`
+}
+
+// extras carries the one key this service sets. Gotify's extras are an open
+// map that clients and plugins read; `client::display` is the documented one
+// for how a client should render a message.
+//
+// A named type rather than map[string]any because the shape is fixed and known
+// -- a map would let a typo compile.
+type extras struct {
+	Display display `json:"client::display"`
+}
+
+type display struct {
+	ContentType string `json:"contentType"`
 }
 
 // apiResponse is the message Gotify made, on success. Documented as returning

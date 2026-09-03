@@ -623,12 +623,19 @@ secret changes, say so: that is what `Rotate` is.
 One of these goes in the `Credential` field above. Every `Name` here is an
 example — it is yours, and only you ever see it.
 
-**Telegram and Bale** — one token, from BotFather.
+**Telegram and Bale** — one token, from BotFather, and optionally a parse mode.
 
 ```go
 srosha.TelegramCredential{Token: "123456:AAH…"}
-srosha.BaleCredential{Token: "123456:AAH…"}
+srosha.BaleCredential{Token: "123456:AAH…", ParseMode: "HTML"}
 ```
+
+`ParseMode` is `"MarkdownV2"` or `"HTML"`; empty is plain text. srosha does not
+escape for you — escaping on your behalf would break the markup you meant — and
+Telegram refuses a body it cannot parse, permanently: one attempt, no retry, its
+own description on the delivery. MarkdownV2 also wants `.` `-` `!` `(` `)`
+escaped, so `HTML` is the gentler of the two, and neither belongs on an identity
+that sends text a person typed.
 
 **Email** — not one value, which is what makes it the awkward one. A server, an
 account and an address, and any of them wrong is a message that never arrives,
@@ -641,6 +648,8 @@ srosha.SMTPCredential{
 	Username: "noreply@acme.test",     // anything else is STARTTLS. 0 means 587
 	From:     "noreply@acme.test",     // what the recipient sees
 	Password: mailPassword,
+	// ContentType: "text/html" to send html. Empty is plain, and srosha does
+	// not convert between them -- an html body has to be html.
 }
 ```
 
@@ -660,10 +669,15 @@ the application id entirely.
 
 ```go
 srosha.GotifyCredential{
-	ServerURL: "https://gotify.acme.test",
-	Token:     appToken,               // an application token, not a client one
+	ServerURL:   "https://gotify.acme.test",
+	Token:       appToken,             // an application token, not a client one
+	ContentType: "text/markdown",      // or empty for plain
 }
 ```
+
+`ContentType` is safe in a way `ParseMode` is not: Gotify does not check the
+body against it, so markup it cannot parse is shown as written rather than
+refused. This one can go on an identity that carries text a person typed.
 
 **WhatsApp** — Meta's id for the number, which is not the number.
 

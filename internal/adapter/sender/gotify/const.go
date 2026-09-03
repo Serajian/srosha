@@ -24,3 +24,10 @@ const maxTextLen = 32 << 10
 // document rate limiting at all; this is the same fallback the bot channels
 // use for the same undocumented case.
 const defaultRetryAfter = 30 * time.Second
+
+// What a Gotify client is told to render. Gotify's own default is plain, so
+// TypePlain is the absence of the key rather than a value on the wire.
+const (
+	TypePlain    = "text/plain"
+	TypeMarkdown = "text/markdown"
+)

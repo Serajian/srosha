@@ -615,12 +615,19 @@ if err := register(); err != nil && !errors.Is(err, srosha.ErrDuplicate) {
 یکی از این‌ها در فیلدِ `Credential` بالا می‌نشیند. هر `Name` اینجا فقط یک نمونه است —
 مالِ خودتان است و کسِ دیگری نمی‌بیندش.
 
-**تلگرام و بله** — یک توکن، از BotFather.
+**تلگرام و بله** — یک توکن از BotFather، و اختیاری، یک حالتِ نشانه‌گذاری.
 
 ```go
 srosha.TelegramCredential{Token: "123456:AAH…"}
-srosha.BaleCredential{Token: "123456:AAH…"}
+srosha.BaleCredential{Token: "123456:AAH…", ParseMode: "HTML"}
 ```
+
+`ParseMode` یا `"MarkdownV2"` است یا `"HTML"`؛ خالی یعنی متنِ خام. srosha برایتان
+escape **نمی‌کند** — escape کردن به‌جای شما همان نشانه‌گذاری‌ای را می‌شکند که منظورتان
+بوده — و تلگرام متنی را که نتواند parse کند رد می‌کند، آن هم **دائمی**: یک تلاش،
+بدونِ retry، و توضیحِ خودش روی همان delivery. MarkdownV2 حتی `.` و `-` و `!` و
+`(` و `)` را هم escape‌شده می‌خواهد، پس `HTML` ملایم‌تر است — و هیچ‌کدام روی هویتی که
+متنِ تایپ‌شدهٔ یک آدم را می‌فرستد نباید باشد.
 
 **ایمیل** — یک مقدار نیست، و همین دشوارش می‌کند. یک سرور، یک حساب و یک آدرس، و هر
 کدامشان غلط باشد پیامی است که هرگز نمی‌رسد — پس همه‌شان موقعِ ثبت چک می‌شوند، نه
@@ -633,6 +640,8 @@ srosha.SMTPCredential{
 	Username: "noreply@acme.test",     // هر چیزِ دیگر STARTTLS. صفر یعنی ۵۸۷
 	From:     "noreply@acme.test",     // چیزی که گیرنده می‌بیند
 	Password: mailPassword,
+	// ContentType: "text/html" برای فرستادنِ html. خالی یعنی خام، و srosha
+	// بینِ این دو تبدیل نمی‌کند — بدنهٔ html باید html باشد.
 }
 ```
 
@@ -652,10 +661,15 @@ srosha.MatrixCredential{
 
 ```go
 srosha.GotifyCredential{
-	ServerURL: "https://gotify.acme.test",
-	Token:     appToken,               // توکنِ application، نه client
+	ServerURL:   "https://gotify.acme.test",
+	Token:       appToken,             // توکنِ application، نه client
+	ContentType: "text/markdown",      // یا خالی برای متنِ خام
 }
 ```
+
+`ContentType` برخلافِ `ParseMode` بی‌خطر است: Gotify متن را در برابرِ آن بررسی
+نمی‌کند، پس نشانه‌گذاری‌ای که نتواند بخواند را همان‌طور که هست نشان می‌دهد نه اینکه
+پیام را رد کند. این یکی را می‌شود روی هویتی گذاشت که متنِ آدم‌ها را می‌برد.
 
 **واتس‌اپ** — شناسهٔ Meta برای آن شماره، که خودِ شماره نیست.
 
