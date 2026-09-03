@@ -304,18 +304,20 @@ func ExampleVerifier_Verify() {
 // happening. Keep the two in step -- if you change a snippet there, change it
 // here, and if this stops compiling, that section is already wrong.
 func ExampleCredentials_Register_everyChannel() {
-	// Telegram and Bale: one token, from BotFather.
+	// Telegram and Bale: one token, from BotFather, and optionally a parse
+	// mode. srosha does not escape, and Telegram refuses what it cannot parse.
 	_ = srosha.TelegramCredential{Token: "123456:AAH…"}
-	_ = srosha.BaleCredential{Token: "123456:AAH…"}
+	_ = srosha.BaleCredential{Token: "123456:AAH…", ParseMode: "HTML"}
 
 	// Email: a server, an account and an address. Port 465 is TLS from the
 	// first byte, anything else is STARTTLS, and zero means 587.
 	_ = srosha.SMTPCredential{
-		Host:     "smtp.acme.test",
-		Port:     587,
-		Username: "noreply@acme.test",
-		From:     "noreply@acme.test",
-		Password: "your-password",
+		Host:        "smtp.acme.test",
+		Port:        587,
+		Username:    "noreply@acme.test",
+		From:        "noreply@acme.test",
+		Password:    "your-password",
+		ContentType: "text/html",
 	}
 
 	// Matrix: https, and a bare address -- no path, no credentials in the url.
@@ -326,9 +328,12 @@ func ExampleCredentials_Register_everyChannel() {
 
 	// Gotify: the same shape, and an application token rather than a client
 	// one. It alone decides which application a message lands in.
+	// ContentType is safe here in a way ParseMode is not: Gotify shows markup
+	// it cannot parse rather than refusing the message.
 	_ = srosha.GotifyCredential{
-		ServerURL: "https://gotify.acme.test",
-		Token:     "your-app-token",
+		ServerURL:   "https://gotify.acme.test",
+		Token:       "your-app-token",
+		ContentType: "text/markdown",
 	}
 
 	// WhatsApp: Meta's id for the number, which is not the number.

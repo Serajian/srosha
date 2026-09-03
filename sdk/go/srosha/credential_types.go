@@ -42,22 +42,55 @@ type Credential interface {
 type TelegramCredential struct {
 	// Never marshaled: a credential reaches a log line eventually.
 	Token string `json:"-"`
+
+	// ParseMode lets the body carry markup: "MarkdownV2" or "HTML". Empty is
+	// plain text, and plain text is the only mode where a message cannot fail
+	// for its own punctuation.
+	//
+	// srosha does not escape for you, deliberately -- escaping on your behalf
+	// would break the markup you meant. Telegram refuses a body it cannot
+	// parse, and that refusal is permanent: one attempt, no retry, and its own
+	// description comes back on the delivery. MarkdownV2 in particular wants
+	// `.` `-` `!` `(` `)` escaped as well, so HTML is the gentler of the two.
+	//
+	// Do not set it on an identity that sends text a person typed.
+	ParseMode string
 }
 
-func (c TelegramCredential) channel() Channel          { return ChannelTelegram }
-func (c TelegramCredential) Settings() (string, error) { return "", nil }
-func (c TelegramCredential) secret() string            { return c.Token }
-func (c TelegramCredential) String() string            { return "TelegramCredential{…}" }
+func (c TelegramCredential) channel() Channel { return ChannelTelegram }
+func (c TelegramCredential) Settings() (string, error) {
+	if c.ParseMode == "" {
+		return "", nil
+	}
+	return marshal(map[string]any{"parse_mode": c.ParseMode})
+}
+func (c TelegramCredential) secret() string { return c.Token }
+func (c TelegramCredential) String() string {
+	return fmt.Sprintf("TelegramCredential{ParseMode:%q}", c.ParseMode)
+}
 
 // BaleCredential is a bot token from Bale's BotFather.
 type BaleCredential struct {
 	Token string `json:"-"`
+
+	// ParseMode is Telegram's field and Bale mirrors that API, so the same
+	// values apply and the same warning does. Whether Bale honors it has not
+	// been verified against a live server; the portal's "Send a test" answers
+	// that in one click.
+	ParseMode string
 }
 
-func (c BaleCredential) channel() Channel          { return ChannelBale }
-func (c BaleCredential) Settings() (string, error) { return "", nil }
-func (c BaleCredential) secret() string            { return c.Token }
-func (c BaleCredential) String() string            { return "BaleCredential{…}" }
+func (c BaleCredential) channel() Channel { return ChannelBale }
+func (c BaleCredential) Settings() (string, error) {
+	if c.ParseMode == "" {
+		return "", nil
+	}
+	return marshal(map[string]any{"parse_mode": c.ParseMode})
+}
+func (c BaleCredential) secret() string { return c.Token }
+func (c BaleCredential) String() string {
+	return fmt.Sprintf("BaleCredential{ParseMode:%q}", c.ParseMode)
+}
 
 // SMTPCredential is a mail account: where to hand a message over, and as whom.
 type SMTPCredential struct {
@@ -75,6 +108,11 @@ type SMTPCredential struct {
 	// From is the address recipients see.
 	From string
 
+	// ContentType is what the body is: "text/plain" or "text/html". Empty is
+	// plain. srosha does not convert between them -- an html body has to be
+	// html.
+	ContentType string
+
 	Password string `json:"-"`
 }
 
@@ -82,12 +120,18 @@ func (c SMTPCredential) channel() Channel { return ChannelEmail }
 func (c SMTPCredential) secret() string   { return c.Password }
 
 func (c SMTPCredential) Settings() (string, error) {
-	return marshal(map[string]any{
+	settings := map[string]any{
 		"host":     c.Host,
 		"port":     c.Port,
 		"username": c.Username,
 		"from":     c.From,
-	})
+	}
+	// Left out when empty rather than sent as "": srosha reads an absent
+	// content type as plain, and an empty one is a value nobody chose.
+	if c.ContentType != "" {
+		settings["content_type"] = c.ContentType
+	}
+	return marshal(settings)
 }
 
 func (c SMTPCredential) String() string {
@@ -132,6 +176,15 @@ func (c MatrixCredential) String() string {
 type GotifyCredential struct {
 	ServerURL string
 
+	// ContentType asks the Gotify client to render the body: "text/markdown",
+	// or empty for plain.
+	//
+	// Safe in a way ParseMode is not. Gotify does not check the body against
+	// the type -- markup it cannot parse is shown as written, where Telegram
+	// refuses the whole message. So this one can be turned on for text a person
+	// typed.
+	ContentType string
+
 	Token string `json:"-"`
 }
 
@@ -139,11 +192,16 @@ func (c GotifyCredential) channel() Channel { return ChannelGotify }
 func (c GotifyCredential) secret() string   { return c.Token }
 
 func (c GotifyCredential) Settings() (string, error) {
-	return marshal(map[string]any{"server_url": c.ServerURL})
+	settings := map[string]any{"server_url": c.ServerURL}
+	if c.ContentType != "" {
+		settings["content_type"] = c.ContentType
+	}
+	return marshal(settings)
 }
 
 func (c GotifyCredential) String() string {
-	return fmt.Sprintf("GotifyCredential{ServerURL:%q}", c.ServerURL)
+	return fmt.Sprintf("GotifyCredential{ServerURL:%q, ContentType:%q}",
+		c.ServerURL, c.ContentType)
 }
 
 // WhatsAppCredential is a business number.

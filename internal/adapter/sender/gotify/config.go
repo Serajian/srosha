@@ -2,6 +2,7 @@ package gotify
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -17,6 +18,15 @@ import (
 // same shape of check as Matrix's homeserver had.
 type Config struct {
 	ServerURL string `json:"server_url"`
+
+	// ContentType is how the message should be rendered: plain, or markdown.
+	// Empty means plain, and plain is what Gotify does with no extras at all.
+	//
+	// Unlike Telegram's parse_mode, getting this wrong is not expensive.
+	// Gotify does not validate the body against the type -- markup it cannot
+	// parse is shown as written, where Telegram refuses the whole message. So
+	// this is safe to turn on for text somebody typed, which parse_mode is not.
+	ContentType string `json:"content_type"`
 }
 
 // ParseConfig reads what was stored with the credential.
@@ -44,6 +54,16 @@ func (c *Config) validate() error {
 		return errs.InvalidInputErr("gotify settings have no server url")
 	}
 
+	switch c.ContentType {
+	case "":
+		c.ContentType = TypePlain
+	case TypePlain, TypeMarkdown:
+	default:
+		return errs.InvalidInputErr("gotify settings name an unknown content type").
+			WithStr(fmt.Sprintf("content_type %q, want %q or %q",
+				c.ContentType, TypePlain, TypeMarkdown))
+	}
+
 	u, err := url.Parse(c.ServerURL)
 	if err != nil {
 		return errs.InvalidInputErr("gotify server url is not a url")
@@ -59,4 +79,16 @@ func (c *Config) validate() error {
 		return errs.InvalidInputErr("gotify server url must be a bare address")
 	}
 	return nil
+}
+
+// renderAs is the extras block for this configuration, or nothing.
+//
+// Plain gets nil rather than an explicit "text/plain": that is Gotify's own
+// default, and saying it out loud would put a key on the wire for every message
+// this service has ever sent, to say what was already true.
+func (c Config) renderAs() *extras {
+	if c.ContentType == "" || c.ContentType == TypePlain {
+		return nil
+	}
+	return &extras{Display: display{ContentType: c.ContentType}}
 }
